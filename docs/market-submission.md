@@ -105,8 +105,8 @@ Invoke-RestMethod -Method Put -Headers @{ Authorization = "Bearer $env:GH_TOKEN"
 `context-guardian`、`dsh-ballast`（上下文占用归属面板）等。收录规则第 4 条是
 「已被现有条目覆盖的，先来者保留位置」。
 
-当前骨架的定位是**参考实现 + 只读用量面板**（`/ctx` 显示用量/预算/阈值，只读状态接口，
+当前骨架的定位是**参考实现 + 只读用量面板**（`/ctx` 显示用量/上下文/阈值，只读状态接口，
 不改历史），这个定位本身是可以如实描述的，描述里已经写明「不压缩、不改写历史」，
 不会因夸大被打回。但如果希望一次就过、且真的有人用，建议先补一个别人没有的点再提交，
-例如：按 provider/model 自动取窗口预算、把 `compaction-basic` 的 `auto` 与阈值做成设置面板、
+例如：按 provider/model 自动取窗口上下文、把 `compaction-basic` 的 `auto` 与阈值做成设置面板、
 在超过阈值时主动提示并给出一键 `/compact`。

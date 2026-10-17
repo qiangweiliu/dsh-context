@@ -2,8 +2,8 @@
 
 DSH（DeepSeek Harness）的**上下文长度管理**插件，分两个平面：
 
-- **宿主半侧（`index.js`，装完即有）**：`/ctx` 读出当前会话的 token 用量与预算，只读的设置面板 + `GET /api/ctx-mon-and-con/status`；**不修改会话**。
-- **控制半侧（`control.js`，需要挂进 agent preset）**：到达预算就自动压缩，或手动 `/ctx-compact`；走官方 `ctx.compaction` seam，不自己造压缩。
+- **宿主半侧（`index.js`，装完即有）**：`/ctx` 读出当前会话的 token 用量与上下文，只读的设置面板 + `GET /api/ctx-mon-and-con/status`；**不修改会话**。
+- **控制半侧（`control.js`，需要挂进 agent preset）**：到达上下文就自动压缩，或手动 `/ctx-compact`；走官方 `ctx.compaction` seam，不自己造压缩。
 
 ## 设置面板在哪
 
@@ -17,7 +17,7 @@ DSH（DeepSeek Harness）的**上下文长度管理**插件，分两个平面：
 
 ```
 ctx —— 上下文长度控制
-┌ 预算 ─────────────────────────────────────────────────┐
+┌ 上下文 ─────────────────────────────────────────────────┐
 │ 已同步  6%   7.4K / 128K                               │
 │ ▓▓▓░░░░░░░░░░░░░░░░░░░░░░░  4px（四色分段）            │
 │ [提示词 1.4K·20%] [工具定义 5.2K·73%]                   │
@@ -25,7 +25,7 @@ ctx —— 上下文长度控制
 │ [警告阈值 75%] [超限阈值 90%] [控制 已启用]             │
 └────────────────────────────────────────────────────────┘
 ┌ 控制 ───────────────────┐ ┌ 全局配置 ─────────────────┐
-│ 已启用 + 说明 + [停用按钮] │ │ 默认预算 / 警告 / 超限      │
+│ 已启用 + 说明 + [停用按钮] │ │ 默认上下文 / 警告 / 超限      │
 └─────────────────────────┘ │ 提示 + [保存]              │
                             └───────────────────────────┘
 ```
@@ -52,9 +52,9 @@ ctx —— 上下文长度控制
   `border-radius: var(--dsw-radius-sm)`，hover 背景 `--dsw-alias-interactive-bg-hover`；左侧是 14×14 的
   环形进度（轨道 `--dsw-alias-border-l3`）。
 - 点开是一个**与内置 HUD 同规格的浮层**（264px、`--dsw-radius-lg`、`--dsw-specific-menu`、
-  `--dsw-elevation-prominent`、12px/20px）：`预算 | 6% | ~7.4K / 128K` + 4px 进度条 +
+  `--dsw-elevation-prominent`、12px/20px）：`上下文 | 6% | ~7.4K / 128K` + 4px 进度条 +
   实测用量 / 剩余 / 控制状态三行。
-- 百分比按**插件预算**算（7,379 / 128,000 ≈ 6%）。
+- 百分比按**插件上下文**算（7,379 / 128,000 ≈ 6%）。
 - DSH 自带那块 `上下文已用 3% ~9.3K / 262K` **保持原样**：它显示模型真实窗口（262K）与官方
   tokenMeter 投影，插件没有覆盖它。两者口径不同是刻意的。
 - 指示器只在**已选中会话的 composer** 上渲染；空白首页（Hero）没有会话，不显示。
@@ -66,13 +66,13 @@ ctx —— 上下文长度控制
 `--dsw-alias-*` token，不引入 CSS 文件/Tailwind）：
 
 - 卡片：`--dsw-alias-bg-layer-1` 背景 + `0.5px --dsw-alias-border-l1` 边框 + 12px 圆角
-- 概览卡（占整行）：大号百分比 + 4px 预算条 + 阈值/控制 chip（`--dsw-alias-interactive-bg-hover` 胶囊）
+- 概览卡（占整行）：大号百分比 + 4px 上下文条 + 阈值/控制 chip（`--dsw-alias-interactive-bg-hover` 胶囊）
 - 控制卡 + 全局配置卡并排两列，**全部常展开、没有折叠**
-- 不使用柱状趋势图；最近一次测量直接体现在概览卡的百分比/时间与 `预算` 卡里
+- 不使用柱状趋势图；最近一次测量直接体现在概览卡的百分比/时间与 `上下文` 卡里
 
-## 预算构成四色（skill / 提示词 / 上文 / 本轮用户）
+## 上下文构成四色（skill / 提示词 / 上文 / 本轮用户）
 
-概览卡的预算条和 dock 浮层里的进度条都按**四桶构成**分段着色，下面跟一行图例：
+概览卡的上下文条和 dock 浮层里的进度条都按**四桶构成**分段着色，下面跟一行图例：
 
 | 色块 | 名称 | 含义 | 颜色 |
 |---|---|---|---|
@@ -138,7 +138,7 @@ ctx 整页底部新增「工具与提示词」卡，展示**当前会话**这次
 
 | 状态 | 位置 | remove + 重新 add | 官方 `update` |
 |---|---|---|---|
-| 全局预算/阈值/全局提示词/全局工具/autoMount 标志 | profile `cordis.patch.yml` | ✅ 文件逐字节不变 | ✅ 文件逐字节不变 |
+| 全局上下文/阈值/全局提示词/全局工具/autoMount 标志 | profile `cordis.patch.yml` | ✅ 文件逐字节不变 | ✅ 文件逐字节不变 |
 | preset 控制行 | profile `cordis.patch.yml` | ✅ 保留 | ✅ 保留 |
 | 会话开关/会话文本/自动挂载标志 | `~/.dsh/ctx-mon-and-con/session-toggles.json` | ✅ sha256 不变 | ✅ sha256 不变 |
 
@@ -180,19 +180,19 @@ dsh plugin --profile web add ctx-mon-and-con
 
 | 状态 | 存储位置 | 关闭 DSH 再启动 |
 |---|---|---|
-| 面板全局配置（预算/阈值） | profile `cordis.patch.yml` | ✅ 保留 |
+| 面板全局配置（上下文/阈值） | profile `cordis.patch.yml` | ✅ 保留 |
 | 全局提示词覆盖（promptOverrides） | profile config | ✅ 保留并在下一次请求生效 |
 | 全局工具禁用（disabledTools） | profile config | ✅ 保留并在下一次请求生效 |
 | 控制半侧是否启用 | agent preset 行 | ✅ 保留 |
 | 会话级工具/提示词开关 | `~/.dsh/ctx-mon-and-con/session-toggles.json`（按 sessionId） | ✅ 保留（v0.12.0 起） |
-| `/ctx <tokens>` 会话预算覆盖 | 进程内存 | ❌ 丢失 |
+| `/ctx <tokens>` 会话上下文覆盖 | 进程内存 | ❌ 丢失 |
 | 工具/提示词清单（inventory） | 进程内存 | ❌ 清空，需在新会话里先发一条消息重新装配 |
 | 最近测量/压缩记录 | 进程内存 | ❌ 丢失 |
 
 > 注意：全局工具禁用在 v0.11.2 之前**只写进了配置、重启后不会真正生效**（宿主平面拿不到 agent 的工具注册表）；
 > 现在由控制半侧把全局禁用并入 `agent.ctx.tools.restrict`，重启后同样生效（实测工具数 26 → 25）。
 
-## 一键启用自动压缩（让压缩也按插件预算）
+## 一键启用自动压缩（让压缩也按插件上下文）
 
 控制半侧默认**自动挂载**（v0.13.0）：
 
@@ -204,32 +204,32 @@ dsh plugin --profile web add ctx-mon-and-con
 
 - **启用自动压缩（写入 agent preset）** —— 把 `ctx-mon-and-con/control` 行写进 `preset-standard`
   的 compaction 组（走宿主 `ctx.configEditor`，写进 profile 的 patch 层），重挂后
-  `control.active=true`，轮末超预算即压缩。
+  `control.active=true`，轮末超出上下文即压缩。
 - **停用自动压缩（移除 preset 行）** —— 把该行移除。
 
 写入的是 **preset-standard 的整段 config 快照**，这是 DSH 的既定行为；DSH 升级 preset 后
-需要按新默认重新点一次或手工同步。默认 `mode: idle`：轮末检查、超预算就压。
+需要按新默认重新点一次或手工同步。默认 `mode: idle`：轮末检查、超出上下文就压。
 
 ## 三条功能
 
 | # | 功能 | 怎么用 |
 | --- | --- | --- |
 | 1 | 监控当前会话上下文长度 | 会话里发 `/ctx`；设置 → 上下文面板；`GET /api/ctx-mon-and-con/status` |
-| 2 | 设置上下文长度（预算） | `/ctx <tokens>` 设**当前会话**的临时预算、`/ctx reset` 恢复默认；全局默认在插件 `Config.contextWindowTokens`（profile patch 或 preset 里改） |
-| 3 | 到达预算时主动压缩 | 控制半侧 `mode: idle`（默认）在轮末自动压缩；需要 step 内触发用 `pre-step`；也可 `/ctx-compact` 手动压 |
+| 2 | 设置上下文长度（上下文） | `/ctx <tokens>` 设**当前会话**的临时上下文、`/ctx reset` 恢复默认；全局默认在插件 `Config.contextWindowTokens`（profile patch 或 preset 里改） |
+| 3 | 到达上下文时主动压缩 | 控制半侧 `mode: idle`（默认）在轮末自动压缩；需要 step 内触发用 `pre-step`；也可 `/ctx-compact` 手动压 |
 
-**预算三级取值**（控制半侧每次触发时实时计算，改完立即生效）：会话级覆盖（`/ctx <tokens>`）→ 宿主默认（`Config.contextWindowTokens`）→ 控制行自己的 `maxContextTokens`。
+**上下文三级取值**（控制半侧每次触发时实时计算，改完立即生效）：会话级覆盖（`/ctx <tokens>`）→ 宿主默认（`Config.contextWindowTokens`）→ 控制行自己的 `maxContextTokens`。
 
 ## 控制半侧做什么
 
 | `mode` | 行为 |
 | --- | --- |
-| `idle`（默认） | 每轮结束（`agent/status === 'idle'`）测量，超过预算就调用 `ctx.compaction.compactNow()` 强制压缩；压完仍超会按 `maxAttempts` 重试，直到降到预算以下或无可安全压缩的范围 |
+| `idle`（默认） | 每轮结束（`agent/status === 'idle'`）测量，超过上下文就调用 `ctx.compaction.compactNow()` 强制压缩；压完仍超会按 `maxAttempts` 重试，直到降到上下文以下或无可安全压缩的范围 |
 | `pre-step` | 每个 step 边界调用 `ctx.compaction.compactIfNeeded(agent, 'pressure', signal)`，由本插件决定触发时机（适合把 `compaction-basic.auto` 关掉后接管） |
 | `notify` | 只测量并写日志，不动作 |
 | `off` | 完全不启用 |
 
-压缩目标是「**降到预算以下即可**」：复用引擎自己的选区逻辑，不自己算范围、不写 `surfaceOp`、不碰影子价。另外注册 `/ctx-compact`：立刻对该会话做一次 idle 压缩（同样要求 agent 空闲）。
+压缩目标是「**降到上下文以下即可**」：复用引擎自己的选区逻辑，不自己算范围、不写 `surfaceOp`、不碰影子价。另外注册 `/ctx-compact`：立刻对该会话做一次 idle 压缩（同样要求 agent 空闲）。
 
 ```yaml
 # 设置 → Agent preset（或在 profile patch 的 preset 配置里）加一行：
@@ -238,7 +238,7 @@ dsh plugin --profile web add ctx-mon-and-con
   config:
     mode: idle          # off | notify | idle | pre-step
     cooldownMs: 60000   # 两次自动压缩最小间隔
-    maxAttempts: 2      # 压完仍超预算时最多连续压几次
+    maxAttempts: 2      # 压完仍超出上下文时最多连续压几次
     # maxContextTokens: 100000  # 0（默认）= 跟随宿主默认与会话覆盖
 ```
 
@@ -280,15 +280,15 @@ powershell -NoProfile -ExecutionPolicy Bypass -File scripts/verify-uninstall.ps1
 | 文件 | 作用 |
 | --- | --- |
 | `index.js` | Cordis 插件（宿主侧）：`name` / `inject` / `Config`（手写 Standard Schema）/ `apply(ctx, config)`，注册 `/ctx` 命令、状态路由与 `POST /api/ctx-mon-and-con/config`（经 `ctx.configEditor` 写回 profile patch） |
-| `control.js` | Cordis 插件（preset 侧）：预算控制 + `/ctx-compact`，零 import，只用 `ctx.compaction` 服务 |
-| `state.js` | 两个半侧共享的进程内状态（默认预算 / 会话覆盖 / 控制状态）；只是同包相对 import |
+| `control.js` | Cordis 插件（preset 侧）：上下文控制 + `/ctx-compact`，零 import，只用 `ctx.compaction` 服务 |
+| `state.js` | 两个半侧共享的进程内状态（默认上下文 / 会话覆盖 / 控制状态）；只是同包相对 import |
 | `client.js` | 浏览器半侧：`apply(ctx)` 里注册 `sidebar.panellist`（左侧 `ctx` 图标）、`main`（整页 `key: ctx`）与 `settings.section`（设置分区），三处共用同一面板组件 |
 | `dsh.bundle.patch.yml` | bundle 层：往 profile 的 boot graph `insert` 一行 `id: ctx-mon-and-con` |
 | `locale/{en,zh}.json` | 插件市场/插件管理页显示的 `meta.title` / `meta.description` |
 | `icon.svg` | 插件图标（`exports["./icon"]` 暴露） |
 | `test/static.mjs` | 纯离线静态检查（40 项，不需要 DSH） |
 | `test/smoke.mjs` | 用真实 Cordis 的集成冒烟测试（43 项，需先 `node test/prepare-deps.mjs`） |
-| `test/control.mjs` | 控制半侧的离线测试（33 项：预算来源、idle/pre-step/notify、重试、cooldown、命令、状态回写、卸载） |
+| `test/control.mjs` | 控制半侧的离线测试（33 项：上下文来源、idle/pre-step/notify、重试、cooldown、命令、状态回写、卸载） |
 | `test/prepare-deps.mjs` | 从 app.asar 离线解出 cordis/cosmokit 到 `test/deps/`（交付不带第三方副本） |
 | `test/dump-config-smoke.txt` | 隔离 profile 里 `--dump-config` 的实际输出证据 |
 
@@ -345,7 +345,7 @@ bash /mnt/c/<repo>/scripts/wsl-uninstall.sh web    # 卸载并核对残留
    node --check index.js; node --check control.js; node --check client.js
    node test/prepare-deps.mjs  # 可选：从 app.asar 解出 cordis，第一次需要
    node test/smoke.mjs         # 43/43：真实 Cordis 里加载、/ctx 与 reset、状态路由、卸载清理
-   node test/control.mjs       # 33/33：预算来源、idle/pre-step/notify、重试、cooldown、命令、状态回写、卸载
+   node test/control.mjs       # 33/33：上下文来源、idle/pre-step/notify、重试、cooldown、命令、状态回写、卸载
    ```
 
 2. **确认 bundle 层生效**：

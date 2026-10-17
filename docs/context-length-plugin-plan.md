@@ -1,6 +1,6 @@
 # 给 DeepSeek Harness 写一个「上下文长度管理」插件：实施方案
 
-> 目标读者：想在 DSH（DeepSeek Harness）里做上下文长度/预算管理的插件作者。
+> 目标读者：想在 DSH（DeepSeek Harness）里做上下文长度/上下文管理的插件作者。
 > 全部结论基于本机安装的 DSH（Electron Desktop，profile `desktop`）实测；证据与行号见
 > [`research/arch.md`](../research/arch.md)（插件机制）与 [`research/context-core.md`](../research/context-core.md)（上下文/压缩子系统）。
 
@@ -18,7 +18,7 @@ DSH 自带一整套上下文管理设施，插件要做的是**在既有 seam �
 | 溢出兜底 | `dsh-compaction-image-offload` | `/image/offload` 投影 | 只读 |
 | 展示 | 3 个 sessionProjection 键 + Web client 插件 | `tokenUsage` / `contextPressure` / `contextBreakdown` | 自由扩展 |
 
-一句话：**「上下文长度管理」= 预算（读 tokenMeter）+ 决策（compaction seam）+ 变换（summarize / pruner）+ 展示（client 插件）**。
+一句话：**「上下文长度管理」= 上下文（读 tokenMeter）+ 决策（compaction seam）+ 变换（summarize / pruner）+ 展示（client 插件）**。
 你只要挑其中一层介入，不用四层全做。
 
 ---
@@ -62,7 +62,7 @@ session 事件日志 ──deriveMessages()──> frozen messages ──buildRe
 | `modelPolicies` | `[]` | 按模型覆盖 |
 | `auto` | `true` | 自动触发开关 |
 
-触发阈值 = `min(W * thresholdRatio, W - O - headroomTokens)`，保留预算 = `(W - O) * retainRatio`（W=窗口，O=输出上限）。
+触发阈值 = `min(W * thresholdRatio, W - O - headroomTokens)`，保留上下文 = `(W - O) * retainRatio`（W=窗口，O=输出上限）。
 
 **Web 形态的关键坑**：`dsh-web-app` 把 host 平面的 `compaction-basic` / `command-compact` / `tool-result-pruner` 三行设成 `disabled: true`，
 真正的实例挂在 `preset-standard` 这个 agent preset 的 `cordis:group`（`isolate: {compaction, toolResultPruner}`）里
@@ -104,7 +104,7 @@ session 事件日志 ──deriveMessages()──> frozen messages ──buildRe
 
 ### L1 · 观察 + 软提醒（host plane，最安全，1 天级）
 
-不碰压缩，只做「预算可视化 + 快满时提醒模型/用户」。
+不碰压缩，只做「上下文可视化 + 快满时提醒模型/用户」。
 
 - 插入位置：**host plane**（bundle patch `insert` 一行即可）。
 - 依赖：`inject = ['sessions', 'tokenMeter']`。
@@ -121,7 +121,7 @@ session 事件日志 ──deriveMessages()──> frozen messages ──buildRe
 
 - 插入位置：preset 的 `compaction` isolate 组内，**替换 `tool-result-pruner` 行**为自己实现的 `ctx.toolResultPruner` 服务。
 - 契约：`compaction-basic` 在压力确认后会先调 pruner，再决定是否摘要。
-- 红线：做 `tool/result` replace 时必须发匹配的 `compaction/prune` 影子价事件，否则 token-meter 的预算判断失真
+- 红线：做 `tool/result` replace 时必须发匹配的 `compaction/prune` 影子价事件，否则 token-meter 的上下文判断失真
   （错误信息：`token surface: replace at seq ... has no adjacent shadow price`）。
 - 更轻的等价做法：挂 `tools/post-execute`（`spill-policy` 同层）做「工具返回即截断」，完全不碰压缩协议。
 
@@ -323,7 +323,7 @@ window.__ModuleLoader__.load({
 1. **不要绕过会话日志**改请求体：会破坏回放、分支、KV 记账。
 2. **锁**：`compaction/start` 未闭合即 busy；自研后端必须「开始前不 yield、失败恰好闭合一次」。
 3. **选区**：必须 `toolPairingBalancedBefore/After`；节点 0（system）绝不可遮蔽；`shadowedRange` 与 `shadowedSeqs` 首尾一致。
-4. **影子价格**：任何 surface replace / prune 都要发匹配的 `compaction/summary` / `compaction/prune`，否则预算 delta=0、判断失真。
+4. **影子价格**：任何 surface replace / prune 都要发匹配的 `compaction/summary` / `compaction/prune`，否则上下文 delta=0、判断失真。
 5. **generation**：自动压缩依赖 `surface.replaceGeneration` 前进才重试。
 6. **KV cache**：replace 会作废被遮蔽前缀；摘要调用要复用原 system/tools 前缀，否则每次压缩都贵。
 7. **token 低估**：token-meter 用固定 4 字符/token，对中文与 JSON schema 严重低估；阈值必须留 headroom，不要贴边。
@@ -349,15 +349,15 @@ window.__ModuleLoader__.load({
 | 文件 | 作用 |
 |---|---|
 | `index.js` | Cordis 插件（宿主侧）：`name` / `inject = ['commands','tokenMeter']` / 手写 Standard Schema 的 `Config` / `apply(ctx, config)`；注册 `/ctx` 命令 + `GET /api/ctx-mon-and-con/status` 只读路由 |
-| `control.js` | Cordis 插件（preset 侧，`ctx-mon-and-con/control`）：预算控制 —— `mode: idle` 在轮末调 `compactNow()` 并重试到低于预算、`mode: pre-step` 在 step 边界调 `compactIfNeeded()`、`notify` 只记录；另注册 `/ctx-compact` |
-| `state.js` | 两个半侧共享的进程内状态（默认预算 / 会话级覆盖 / 控制状态），同包相对 import，不涉及 npm 依赖 |
+| `control.js` | Cordis 插件（preset 侧，`ctx-mon-and-con/control`）：上下文控制 —— `mode: idle` 在轮末调 `compactNow()` 并重试到低于上下文、`mode: pre-step` 在 step 边界调 `compactIfNeeded()`、`notify` 只记录；另注册 `/ctx-compact` |
+| `state.js` | 两个半侧共享的进程内状态（默认上下文 / 会话级覆盖 / 控制状态），同包相对 import，不涉及 npm 依赖 |
 | `client.js` | `apply(ctx)` 注册 `sidebar.panellist`（左侧 `ctx` 图标）、`main`（整页 `key: ctx`）、`settings.section`（设置分区），共用同一面板；配置编辑通过宿主 `POST /api/ctx-mon-and-con/config` → `ctx.configEditor` 写回 profile patch |
 | `dsh.bundle.patch.yml` | `- insert: [- id: ctx-mon-and-con, name: ctx-mon-and-con]` |
 | `package.json` | `dsh.bundle.patch` + `dsh.client` + `exports`（含 `./control`）+ `files` |
 | `locale/{en,zh}.json`、`icon.svg` | 插件管理与设置页的展示元数据 |
 | `test/static.mjs` | 32 项纯离线静态检查（导出形状、Config 拒绝非法/未知键、exports、locale、client mock、control 形状） |
 | `test/smoke.mjs` | 43 项真实 Cordis 集成冒烟（加载、`/ctx` 与 `/ctx reset`、命令输出、路由 200/405、卸载清理） |
-| `test/control.mjs` | 33 项控制半侧测试（预算来源三级优先、idle 压缩与重试、cooldown、notify、pre-step 调 `compactIfNeeded` 并继续 waterfall、失败不打断、`/ctx-compact` 成功/失败、状态回写、卸载清理、`mode: off`） |
+| `test/control.mjs` | 33 项控制半侧测试（上下文来源三级优先、idle 压缩与重试、cooldown、notify、pre-step 调 `compactIfNeeded` 并继续 waterfall、失败不打断、`/ctx-compact` 成功/失败、状态回写、卸载清理、`mode: off`） |
 | `test/dump-config-smoke.txt` | 隔离 profile 的 `--dump-config` 实证：`# == ctx-mon-and-con` 后跟着插入行 |
 
 实测结果：`node test/static.mjs` **32/32**、`node test/smoke.mjs` **43/43**、`node test/control.mjs` **33/33**、

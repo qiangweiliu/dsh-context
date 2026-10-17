@@ -11,14 +11,14 @@ DSH 已经内置了完整的上下文管理底座——计量（`ctx.tokenMeter`
 工具结果裁剪（`ctx.toolResultPruner`）、会话投影（`ctx.sessionProjections`）。
 本仓库不重新造压缩，而是把「**插件应该在哪一层介入、怎么介入、有哪些红线**」讲清楚，
 并给出一个能装在 Desktop 里的最小实现：宿主半侧的 `/ctx` 监控面板，加上挂在 agent preset 内、
-按预算自动压缩的 `ctx-mon-and-con/control` 控制半侧。
+按上下文自动压缩的 `ctx-mon-and-con/control` 控制半侧。
 
 ## 仓库结构
 
 | 路径 | 内容 |
 |---|---|
 | [`docs/context-length-plugin-plan.md`](docs/context-length-plugin-plan.md) | 完整实施方案：请求组装链路、四条介入路线（L0 配置 / L1 观察 / L2 裁剪 / L3 换后端）、可抄的 patch 片段、安装验证、红线清单 |
-| [`plugin-skeleton/`](plugin-skeleton) | 可安装插件：宿主半侧 `/ctx`（监控 + 会话级预算覆盖）与 `settings.section` 面板；控制半侧 `control.js` 挂进 agent preset 后按预算自动压缩。含 32 项静态检查、43 项 Cordis 冒烟、33 项控制测试 |
+| [`plugin-skeleton/`](plugin-skeleton) | 可安装插件：宿主半侧 `/ctx`（监控 + 会话级上下文覆盖）与 `settings.section` 面板；控制半侧 `control.js` 挂进 agent preset 后按上下文自动压缩。含 32 项静态检查、43 项 Cordis 冒烟、33 项控制测试 |
 | [`research/arch.md`](research/arch.md) | DSH 插件机制调研：三层结构、Host 插件形态、`dsh` 清单字段、patch DSL、客户端 slots、安装与 HMR |
 | [`research/context-core.md`](research/context-core.md) | 上下文/压缩子系统调研：请求组装、token 计量、压缩服务与事件协议、默认后端配置、五条内容变换通道、真实装配层 |
 | [`research/sample-plugin.md`](research/sample-plugin.md) | 参考实现分析：`billion-context` / `dsh-bloom-theme` / `dshmarket`，以及第三方插件的模块解析结论 |
@@ -26,7 +26,7 @@ DSH 已经内置了完整的上下文管理底座——计量（`ctx.tokenMeter`
 | [`submission/`](submission) | 可直接复制进收录 PR 的条目文件 `qiangweiliu__dsh-context--plugin-skeleton.yml` |
 | [`scripts/verify-uninstall.ps1`](scripts/verify-uninstall.ps1) | 实测「安装 → 生效 → 卸载 → 无残留」：快照对比、残留分类、`-Clean` 清理通用残留 |
 | [`scripts/ui-probe.mjs`](scripts/ui-probe.mjs) | 无头浏览器（Windows Edge + CDP）实测 UI：打开设置、点开「上下文长度」、执行 `/ctx`，抓控制台错误 |
-| [`scripts/ui-probe-ctx.mjs`](scripts/ui-probe-ctx.mjs) · [`ui-check-dock.mjs`](scripts/ui-check-dock.mjs) · [`ui-check-inventory.mjs`](scripts/ui-check-inventory.mjs) | 实测侧边栏 `ctx` 整页、面板改预算/一键启用压缩、输入框 ctx 指示器，以及工具/提示词开关（会话生效 + 全局持久化） |
+| [`scripts/ui-probe-ctx.mjs`](scripts/ui-probe-ctx.mjs) · [`ui-check-dock.mjs`](scripts/ui-check-dock.mjs) · [`ui-check-inventory.mjs`](scripts/ui-check-inventory.mjs) | 实测侧边栏 `ctx` 整页、面板改上下文/一键启用压缩、输入框 ctx 指示器，以及工具/提示词开关（会话生效 + 全局持久化） |
 | [`scripts/wsl-install.sh`](scripts/wsl-install.sh) · [`scripts/wsl-uninstall.sh`](scripts/wsl-uninstall.sh) | 在 WSL 的 DSH profile 里安装/卸载并核对残留（含运行时探针说明） |
 
 ## 快速开始
@@ -43,15 +43,15 @@ DSH 已经内置了完整的上下文管理底座——计量（`ctx.tokenMeter`
 
 重启 Desktop，然后在会话里：
 
-- 发 `/ctx` —— 显示当前会话的 `总用量 / 预算 / 百分比 / 状态`
-- 发 `/ctx 200000` —— 把**本会话**的预算临时改成 200000 tokens；`/ctx reset` 恢复默认
-- 左侧导航的 **`ctx`** —— 整页控制面板：用量/预算/控制状态、可编辑的全局配置、一键启用自动压缩
-- 输入框下方常驻 **`ctx 预算 …`** 指示器（按插件预算算百分比，不改 DSH 自带 HUD）
+- 发 `/ctx` —— 显示当前会话的 `总用量 / 上下文 / 百分比 / 状态`
+- 发 `/ctx 200000` —— 把**本会话**的上下文临时改成 200000 tokens；`/ctx reset` 恢复默认
+- 左侧导航的 **`ctx`** —— 整页控制面板：用量/上下文/控制状态、可编辑的全局配置、一键启用自动压缩
+- 输入框下方常驻 **`ctx 上下文 …`** 指示器（按插件上下文算百分比，不改 DSH 自带 HUD）
 - **工具与提示词清单**：每个工具/提示词 section 可分别用「会话 / 全局」开关决定是否参与请求
 - 设置 → **上下文长度** —— 同一块面板
   （装完必须**重启 dsh 进程**；只刷新页面不会加载新插件）
 
-到达预算后自动压缩需要把控制半侧挂进 agent preset（否则插件只做监控）：
+到达上下文后自动压缩需要把控制半侧挂进 agent preset（否则插件只做监控）：
 
 ```yaml
 - id: ctx-mon-and-con-control

@@ -30,15 +30,15 @@ window.__ModuleLoader__.load({
       ctxBrand: 'ctx',
       title: 'Context length',
       pageTitle: 'ctx — context length control',
-      description: 'Monitors this session’s context usage and edits the plugin’s global budget.',
-      budget: 'Budget',
+      description: 'Monitors this session’s context usage and edits the plugin’s global context limit.',
+      budget: 'Context limit',
       used: 'Measured',
       remaining: 'Remaining',
       ratio: 'Used',
       status: 'Status',
       statusOk: 'ok',
       statusWarn: 'warning',
-      statusError: 'over budget',
+      statusError: 'over the context limit',
       warnAt: 'Warn at',
       errorAt: 'Error at',
       recent: 'Recent /ctx measurements',
@@ -52,7 +52,7 @@ window.__ModuleLoader__.load({
       control: 'Control',
       controlOn: 'enabled',
       controlOff: 'not active',
-      controlReady: 'Control row is mounted in the agent preset; the budget is enforced automatically.',
+      controlReady: 'Control row is mounted in the agent preset; the context limit is enforced automatically.',
       controlMissing: 'Not active yet — mount ctx-mon-and-con/control inside the agent preset (Settings → Agent preset → compaction group).',
       controlLast: 'Last compaction',
       controlEnable: 'Enable auto-compaction (writes the agent preset)',
@@ -60,7 +60,7 @@ window.__ModuleLoader__.load({
       controlPresetHint: 'Writes one row into preset-standard; the preset config becomes a profile override.',
       controlBusy: 'Applying…',
       controlWriteFailed: 'Could not update the agent preset',
-      controlEnabled: 'Auto-compaction is now enforced with this budget.',
+      controlEnabled: 'Auto-compaction is now enforced with this context limit.',
       controlDisabled: 'Auto-compaction row removed from the agent preset.',
       configTitle: 'Global configuration',
       configHint: 'Writes to the profile’s config row; the plugin reloads with the new values.',
@@ -70,12 +70,12 @@ window.__ModuleLoader__.load({
       saved: 'Saved. The plugin reloaded with the new configuration.',
       saveRefused: 'The Host refused the write.',
       saveFailed: 'Save failed',
-      invalidTokens: 'Budget must be a positive integer.',
+      invalidTokens: 'Context limit must be a positive integer.',
       invalidRatios: 'Thresholds must be in (0, 1] and warn must be below error.',
-      defaultBudget: 'Default budget (tokens)',
+      defaultBudget: 'Default context limit (tokens)',
       warnLabel: 'Warn ratio',
       errorLabel: 'Error ratio',
-      meterAria: 'ctx budget',
+      meterAria: 'ctx context limit',
       synced: 'synced',
       inventoryTitle: 'Tools & prompt sections',
       inventoryTools: 'Tools',
@@ -122,8 +122,8 @@ window.__ModuleLoader__.load({
       ctxBrand: 'ctx',
       title: '上下文长度',
       pageTitle: 'ctx —— 上下文长度控制',
-      description: '监控当前会话的上下文占用，并编辑插件的全局预算配置。',
-      budget: '预算',
+      description: '监控当前会话的上下文占用，并编辑插件的全局上下文配置。',
+      budget: '上下文',
       used: '实测用量',
       remaining: '剩余',
       ratio: '已用',
@@ -138,13 +138,13 @@ window.__ModuleLoader__.load({
       refresh: '刷新',
       retry: '重试',
       error: '读取状态失败',
-      hint: '提示：/ctx <tokens> 临时覆盖本会话预算；/ctx reset 恢复默认。',
+      hint: '提示：/ctx <tokens> 临时覆盖本会话上下文；/ctx reset 恢复默认。',
       tokens: 'tokens',
       at: '测量时间',
       control: '控制',
       controlOn: '已启用',
       controlOff: '未启用',
-      controlReady: '控制行已挂在 agent preset 内，超预算会自动压缩。',
+      controlReady: '控制行已挂在 agent preset 内，超出上下文会自动压缩。',
       controlMissing: '尚未生效 —— 需要把 ctx-mon-and-con/control 加到 agent preset 的 compaction 组里（设置 → Agent preset → compaction group）。',
       controlLast: '最近一次压缩',
       controlEnable: '启用自动压缩（写入 agent preset）',
@@ -152,7 +152,7 @@ window.__ModuleLoader__.load({
       controlPresetHint: '会往 preset-standard 里加一行；preset 配置会变成 profile 覆盖层。',
       controlBusy: '正在应用…',
       controlWriteFailed: '更新 agent preset 失败',
-      controlEnabled: '自动压缩已启用，按当前预算执行。',
+      controlEnabled: '自动压缩已启用，按当前上下文执行。',
       controlDisabled: '已从 agent preset 移除自动压缩行。',
       configTitle: '全局配置',
       configHint: '写入 profile 里本插件的 config 行，保存后插件会按新配置重挂。',
@@ -162,12 +162,12 @@ window.__ModuleLoader__.load({
       saved: '已保存，插件已按新配置重挂。',
       saveRefused: '宿主拒绝了这次写入。',
       saveFailed: '保存失败',
-      invalidTokens: '预算必须是正整数。',
+      invalidTokens: '上下文必须是正整数。',
       invalidRatios: '阈值必须在 (0, 1] 之间，且警告阈值要小于超限阈值。',
-      defaultBudget: '默认预算（tokens）',
+      defaultBudget: '默认上下文（tokens）',
       warnLabel: '警告比例',
       errorLabel: '超限比例',
-      meterAria: 'ctx 预算',
+      meterAria: 'ctx 上下文',
       synced: '已同步',
       inventoryTitle: '工具与提示词',
       inventoryTools: '工具',
@@ -282,7 +282,7 @@ window.__ModuleLoader__.load({
       return 'var(--dsw-alias-brand-primary)'
     }
 
-    // ── 预算构成四色（前三色沿用内置 HUD，第 4 色用主题 accent） ─────────────
+    // ── 上下文构成四色（前三色沿用内置 HUD，第 4 色用主题 accent） ─────────────
     const BREAKDOWN_COLORS = {
       system: 'var(--dsw-static-neutral-bluish-400)',
       tools: '#a78bfa',
@@ -307,7 +307,7 @@ window.__ModuleLoader__.load({
       return rows.map((row) => ({ ...row, share: total > 0 ? row.tokens / total : 0 }))
     }
 
-    /** 分段预算条：外层长度=已用/预算，内部颜色=四桶占比；首次渲染从 0 平滑增长。 */
+    /** 分段上下文条：外层长度=已用/上下文，内部颜色=四桶占比；首次渲染从 0 平滑增长。 */
     function SegmentedBar(props) {
       const usedRatio = Math.max(0, Math.min(1, Number(props.usedRatio) || 0))
       const categories = Array.isArray(props.categories) ? props.categories : []

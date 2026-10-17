@@ -12,13 +12,13 @@
  *     name: 'ctx-mon-and-con/control'
  *     config: { mode: idle }
  *
- * 预算从哪来（三级）：
+ * 上下文从哪来（三级）：
  *   1. 会话级临时覆盖：宿主半侧 `/ctx <tokens>` 写入（同包 ./state.js 共享）
  *   2. 全局默认：宿主半侧 Config.contextWindowTokens
  *   3. 本行 Config.maxContextTokens（0 = 跟随前两级；宿主没装时才用它）
  *
  * 控制语义（v1，只走官方 seam，不 import 任何包）：
- *   - mode: 'idle'     每轮结束（agent/status === 'idle'）检查用量，超过预算就调用
+ *   - mode: 'idle'     每轮结束（agent/status === 'idle'）检查用量，超过上下文就调用
  *                      `compaction.compactNow()` 强制压缩；压完仍超会重试（maxAttempts）。
  *   - mode: 'pre-step' 每个 step 边界调用 `compaction.compactIfNeeded(agent, 'pressure',
  *                      signal)`，把触发时机交给本插件（配合把 `compaction-basic.auto` 关掉）。
@@ -26,7 +26,7 @@
  *   - mode: 'off'      完全禁用。
  * 另注册 `/ctx-compact` 手动强制压缩一次（同样要求 agent 空闲）。
  *
- * 压缩目标按「降到预算以下即可」实现：复用引擎自己的选区逻辑（compactNow），
+ * 压缩目标按「降到上下文以下即可」实现：复用引擎自己的选区逻辑（compactNow），
  * 不自己算范围、不写 surfaceOp、不碰影子价。
  */
 
@@ -49,17 +49,17 @@ export const name = 'ctx-mon-and-con-control'
 /** 硬依赖：没有测量服务就没有控制依据。 */
 export const inject = ['tokenMeter']
 
-/** 宿主没装、本行也没配时的兜底预算。 */
+/** 宿主没装、本行也没配时的兜底上下文。 */
 const FALLBACK_BUDGET = 100000
 
 const DEFAULT_CONFIG = {
-  /** 触发预算；0 = 跟随宿主默认与会话覆盖。 */
+  /** 触发上下文；0 = 跟随宿主默认与会话覆盖。 */
   maxContextTokens: 0,
   /** 触发时机：off / notify / idle / pre-step。 */
   mode: 'idle',
   /** 两次自动压缩之间的最小间隔，防止同一轮里反复触发。 */
   cooldownMs: 60000,
-  /** 一次触发里最多连续压缩几次（压完仍超预算时重试）。 */
+  /** 一次触发里最多连续压缩几次（压完仍超出上下文时重试）。 */
   maxAttempts: 2,
 }
 
@@ -236,7 +236,7 @@ export function apply(ctx, config) {
 
   const sessionIdOf = (agent) => agent?.session?.id ?? agent?.sessionId
 
-  /** 某会话的实际预算：会话覆盖 > 宿主默认 > 本行配置 > 兜底。 */
+  /** 某会话的实际上下文：会话覆盖 > 宿主默认 > 本行配置 > 兜底。 */
   const budgetOf = (agent) => budgetFor(sessionIdOf(agent), config.maxContextTokens || FALLBACK_BUDGET)
 
   /** 测量；任何异常都返回 null，绝不打断轮次。 */
@@ -273,7 +273,7 @@ export function apply(ctx, config) {
     )
 
     /**
-     * 反复压缩直到低于预算或压不动（「降到设置值以下即可」的实现）。
+     * 反复压缩直到低于上下文或压不动（「降到设置值以下即可」的实现）。
      * @returns {Promise<{ before: number, after: number | null, rounds: number, result: unknown }>}
      */
     const enforce = async (agent, trigger) => {
@@ -364,12 +364,12 @@ export function apply(ctx, config) {
               try {
                 const { before, after, result, rounds } = await enforce(agent, 'manual')
                 if (rounds === 0) {
-                  return { kind: 'success', text: `未超过预算（${formatTokens(before)} ≤ ${formatTokens(budgetOf(agent))}），无需压缩。` }
+                  return { kind: 'success', text: `未超过上下文（${formatTokens(before)} ≤ ${formatTokens(budgetOf(agent))}），无需压缩。` }
                 }
                 return {
                   kind: 'success',
                   text: [
-                    `压缩完成：${formatTokens(before)} → ${typeof after === 'number' ? formatTokens(after) : '?'} tokens（${rounds} 轮，预算 ${formatTokens(budgetOf(agent))}）`,
+                    `压缩完成：${formatTokens(before)} → ${typeof after === 'number' ? formatTokens(after) : '?'} tokens（${rounds} 轮，上下文 ${formatTokens(budgetOf(agent))}）`,
                     `- ${describeResult(result)}`,
                   ].join('\n'),
                 }

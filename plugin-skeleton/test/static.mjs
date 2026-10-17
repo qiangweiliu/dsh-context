@@ -82,7 +82,7 @@ check(
 const controlBadMode = controlValidate({ mode: 'nope' })
 check('control 非法 mode 被拒绝', Array.isArray(controlBadMode.issues) && controlBadMode.issues.some((issue) => issue.path?.join('.') === 'mode'), JSON.stringify(controlBadMode.issues))
 const controlBadBudget = controlValidate({ maxContextTokens: -1 })
-check('control 负预算被拒绝', Array.isArray(controlBadBudget.issues) && controlBadBudget.issues.some((issue) => issue.path?.join('.') === 'maxContextTokens'), JSON.stringify(controlBadBudget.issues))
+check('control 负上下文被拒绝', Array.isArray(controlBadBudget.issues) && controlBadBudget.issues.some((issue) => issue.path?.join('.') === 'maxContextTokens'), JSON.stringify(controlBadBudget.issues))
 const controlBadAttempts = controlValidate({ maxAttempts: 0 })
 check('control maxAttempts 越界被拒绝', Array.isArray(controlBadAttempts.issues) && controlBadAttempts.issues.some((issue) => issue.path?.join('.') === 'maxAttempts'), JSON.stringify(controlBadAttempts.issues))
 const controlBadKey = controlValidate({ nope: 1 })

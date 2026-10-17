@@ -7,8 +7,8 @@
  *                  并可把 tokenMeter 的数值"压小"来模拟压缩生效
  *   - commands   : register() 返回 disposer
  *
- * 覆盖：插件形状 / 配置校验 / 预算来源（会话覆盖 > 宿主默认 > 本行配置）/
- * idle 压缩 / 重试到低于预算 / cooldown / notify / pre-step / 失败不打断轮次 /
+ * 覆盖：插件形状 / 配置校验 / 上下文来源（会话覆盖 > 宿主默认 > 本行配置）/
+ * idle 压缩 / 重试到低于上下文 / cooldown / notify / pre-step / 失败不打断轮次 /
  * /ctx-compact 成功与失败 / 状态回写 / 卸载清理 / mode off。
  *
  * 运行：node test/control.mjs（前提：先 node test/prepare-deps.mjs）
@@ -121,7 +121,7 @@ check('exports inject', controlPlugin.inject?.join(',') === 'tokenMeter', JSON.s
 check('exports Config standard schema', typeof controlPlugin.Config?.['~standard']?.validate === 'function')
 check('exports apply function', typeof controlPlugin.apply === 'function')
 
-// ── 2. idle 模式：超预算压缩一次并回写状态 ────────────────────────────────
+// ── 2. idle 模式：超出上下文压缩一次并回写状态 ────────────────────────────────
 {
   const { root, fiber, meter, compaction, agent } = await mount({ mode: 'idle', cooldownMs: 0, maxAttempts: 2 })
   check('激活后 control.active = true', state.control.active === true && state.control.mode === 'idle', JSON.stringify(state.control))
@@ -129,14 +129,14 @@ check('exports apply function', typeof controlPlugin.apply === 'function')
   meter.tokens = 40000
   root.emit('agent/status', { agent, status: 'idle' })
   await tick()
-  check('idle 未超预算不压缩', compaction.calls.length === 0, compaction.calls.length)
+  check('idle 未超出上下文不压缩', compaction.calls.length === 0, compaction.calls.length)
 
   meter.tokens = 180000
   compaction.shrinkTo = 50000
   root.emit('agent/status', { agent, status: 'idle' })
   await tick()
-  check('idle 超预算调用 compactNow', compaction.calls.length === 1 && compaction.calls[0].kind === 'compactNow', JSON.stringify(compaction.calls.map((c) => c.kind)))
-  check('超预算时按预算触发（默认 0 = 跟随/兜底）', state.control.last?.before === 180000 && state.control.last?.after === 50000, JSON.stringify(state.control.last))
+  check('idle 超出上下文调用 compactNow', compaction.calls.length === 1 && compaction.calls[0].kind === 'compactNow', JSON.stringify(compaction.calls.map((c) => c.kind)))
+  check('超出上下文时按上下文触发（默认 0 = 跟随/兜底）', state.control.last?.before === 180000 && state.control.last?.after === 50000, JSON.stringify(state.control.last))
 
   meter.tokens = 180000
   compaction.calls.length = 0
@@ -148,7 +148,7 @@ check('exports apply function', typeof controlPlugin.apply === 'function')
   await root.fiber.dispose()
 }
 
-// ── 3. 预算来源：会话覆盖 > 宿主默认 > 本行配置 ────────────────────────────
+// ── 3. 上下文来源：会话覆盖 > 宿主默认 > 本行配置 ────────────────────────────
 {
   const { root, fiber, meter, compaction, agent } = await mount({ mode: 'idle', cooldownMs: 0, maxContextTokens: 200000 })
   compaction.shrinkTo = 10000
@@ -161,7 +161,7 @@ check('exports apply function', typeof controlPlugin.apply === 'function')
   state.setDefaultBudget(120000)
   root.emit('agent/status', { agent, status: 'idle' })
   await tick()
-  check('宿主默认预算覆盖本行配置（150k > 120k 触发）', compaction.calls.length === 1, compaction.calls.length)
+  check('宿主默认上下文覆盖本行配置（150k > 120k 触发）', compaction.calls.length === 1, compaction.calls.length)
 
   compaction.calls.length = 0
   meter.tokens = 150000
@@ -178,14 +178,14 @@ check('exports apply function', typeof controlPlugin.apply === 'function')
   await root.fiber.dispose()
 }
 
-// ── 4. 压完仍超预算：按 maxAttempts 重试 ──────────────────────────────────
+// ── 4. 压完仍超出上下文：按 maxAttempts 重试 ──────────────────────────────────
 {
   const { root, fiber, meter, compaction, agent } = await mount({ mode: 'idle', cooldownMs: 0, maxContextTokens: 100000, maxAttempts: 2 })
-  compaction.shrinkTo = 120000 // 压了但仍在预算之上
+  compaction.shrinkTo = 120000 // 压了但仍在上下文之上
   meter.tokens = 180000
   root.emit('agent/status', { agent, status: 'idle' })
   await tick()
-  check('压完仍超预算时重试 maxAttempts 次', compaction.calls.length === 2, compaction.calls.length)
+  check('压完仍超出上下文时重试 maxAttempts 次', compaction.calls.length === 2, compaction.calls.length)
   check('重试后状态记录最终用量', state.control.last?.after === 120000, JSON.stringify(state.control.last))
   await fiber.dispose()
   await root.fiber.dispose()
@@ -229,7 +229,7 @@ check('exports apply function', typeof controlPlugin.apply === 'function')
 
   meter.tokens = 5000
   const returned2 = await root.waterfall('agent/pre-step', { agent, signal }, () => 'inner-reached')
-  check('未超预算时不压缩但继续链', compaction.calls.length === 1 && returned2 === 'inner-reached', `${compaction.calls.length}/${returned2}`)
+  check('未超出上下文时不压缩但继续链', compaction.calls.length === 1 && returned2 === 'inner-reached', `${compaction.calls.length}/${returned2}`)
   await fiber.dispose()
   await root.fiber.dispose()
 }
@@ -257,7 +257,7 @@ check('exports apply function', typeof controlPlugin.apply === 'function')
   check('/ctx-compact 调用了 compactNow', compaction.calls.some((c) => c.kind === 'compactNow'), JSON.stringify(compaction.calls.map((c) => c.kind)))
 
   const idle = await definition.handler({ agent, signal: new AbortController().signal })
-  check('/ctx-compact 未超预算时提示无需压缩', idle.kind === 'success' && /无需压缩/.test(idle.text), idle.text)
+  check('/ctx-compact 未超出上下文时提示无需压缩', idle.kind === 'success' && /无需压缩/.test(idle.text), idle.text)
 
   meter.tokens = 150000
   compaction.fail = new Error('manual compaction requires an idle agent')

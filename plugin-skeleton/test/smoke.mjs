@@ -9,7 +9,7 @@
  * 验证点：
  *   1. 插件是合法 Cordis 插件（name/inject/Config/apply 被识别）
  *   2. Config 走 Standard Schema 同步校验，非法配置被拒绝
- *   3. /ctx 注册成功、输出格式正确、参数覆盖预算生效、非法参数返回 error
+ *   3. /ctx 注册成功、输出格式正确、参数覆盖上下文生效、非法参数返回 error
  *   4. 浏览器状态路由 /api/ctx-mon-and-con/status 注册、返回 JSON、非 GET 405
  *   5. 卸载插件后命令注销（disposer 生效）
  *   6. 包资源（client/icon/locale）能被 exports 解析，dsh.client 声明合法
@@ -116,11 +116,11 @@ const invoke = async (rawInput = '') => {
 const normal = await invoke()
 check('/ctx 正常输出 success', normal.kind === 'success', normal.text)
 check('/ctx 显示总用量', normal.text?.includes('42,350'), normal.text)
-check('/ctx 显示预算', normal.text?.includes('128,000'), normal.text)
+check('/ctx 显示上下文', normal.text?.includes('128,000'), normal.text)
 check('/ctx 显示百分比与状态', normal.text?.includes('33.1%') && normal.text?.includes('ok'), normal.text)
 
 const warned = await invoke('48000')
-check('/ctx 参数覆盖预算', warned.kind === 'success' && warned.text?.includes('48,000'), warned.text)
+check('/ctx 参数覆盖上下文', warned.kind === 'success' && warned.text?.includes('48,000'), warned.text)
 check('/ctx 到达 warnAt 标记警告', warned.text?.includes('88.2%') && warned.text?.includes('警告'), warned.text)
 
 const over = await invoke('40000')
@@ -132,7 +132,7 @@ check('/ctx 非法参数返回 error', bad.kind === 'error' && bad.text?.include
 const reset = await invoke('reset')
 check('/ctx reset 清除会话覆盖', reset.kind === 'success' && reset.text?.includes('128,000'), reset.text)
 const resetAgain = await invoke('reset')
-check('/ctx reset 无覆盖时说明使用默认', resetAgain.kind === 'success' && resetAgain.text?.includes('没有临时预算'), resetAgain.text)
+check('/ctx reset 无覆盖时说明使用默认', resetAgain.kind === 'success' && resetAgain.text?.includes('没有临时上下文'), resetAgain.text)
 
 const cancelled = await definition.handler({ commandId: 'c', agent, rawInput: '', signal: AbortSignal.abort() })
 check('/ctx 已取消信号返回 error', cancelled.kind === 'error', cancelled.text)
@@ -156,9 +156,9 @@ const statusResponse = makeResponse()
 statusRoute?.handler({ method: 'GET' }, statusResponse)
 const statusPayload = statusResponse.body ? JSON.parse(statusResponse.body) : {}
 check('状态路由 200 + JSON', statusResponse.statusCode === 200 && String(statusResponse.headers['content-type']).includes('application/json'), statusResponse.statusCode)
-check('状态含预算', statusPayload.budget?.tokens === 128000, JSON.stringify(statusPayload.budget))
+check('状态含上下文', statusPayload.budget?.tokens === 128000, JSON.stringify(statusPayload.budget))
 check('状态含最近测量', statusPayload.measurements?.[0]?.id === 'smoke-session', JSON.stringify(statusPayload.measurements))
-check('状态含会话预算列表（reset 后为空）', Array.isArray(statusPayload.sessionBudgets) && statusPayload.sessionBudgets.length === 0, JSON.stringify(statusPayload.sessionBudgets))
+check('状态含会话上下文列表（reset 后为空）', Array.isArray(statusPayload.sessionBudgets) && statusPayload.sessionBudgets.length === 0, JSON.stringify(statusPayload.sessionBudgets))
 check('状态含控制状态（未挂控制行 = 未激活）', statusPayload.control?.active === false, JSON.stringify(statusPayload.control))
 const methodResponse = makeResponse()
 statusRoute?.handler({ method: 'POST' }, methodResponse)

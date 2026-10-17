@@ -6,12 +6,12 @@
 
 | # | 操作 | 写到哪 | 触发方式 | 撤销方式 | 写前备份 |
 |---|---|---|---|---|---|
-| 1 | 全局预算/阈值 | profile `cordis.patch.yml` 的 `ctx-mon-and-con` 行 | 面板保存 | 改成原值（原值可见/可恢复） | ✅ `cordis.patch.*.bak` |
+| 1 | 全局上下文/阈值 | profile `cordis.patch.yml` 的 `ctx-mon-and-con` 行 | 面板保存 | 改成原值（原值可见/可恢复） | ✅ `cordis.patch.*.bak` |
 | 2 | 全局提示词覆盖 | 同上 `promptOverrides` | 面板「保存到全局」 | 「恢复原文」/「恢复全部提示词」 | ✅ |
 | 3 | 全局工具禁用 | 同上 `disabledTools` | 面板全局开关 | 反向开关 / 恢复全部 | ✅ |
 | 4 | preset 控制行（自动挂载） | `preset-standard` 的 config 覆盖 | 启动检测缺失时自动写入；面板启用/停用 | 面板「停用自动压缩」移除；restore 脚本移除 | ✅（configEditor.edit 包装） |
 | 5 | 会话级开关 / 会话提示词文本 / autoMount 标志 | `~/.dsh/ctx-mon-and-con/session-toggles.json` | 面板会话开关、会话保存 | 反向操作 / 恢复全部 / 删文件 | ✅ `session-toggles.restore-*.bak` |
-| 6 | `/ctx <tokens>` 会话预算 | 进程内存 | 命令 | `/ctx reset` / 重启 | —（不落盘） |
+| 6 | `/ctx <tokens>` 会话上下文 | 进程内存 | 命令 | `/ctx reset` / 重启 | —（不落盘） |
 | 7 | 压缩 | 通过官方 `ctx.compaction` seam 写会话历史（shadow/replace） | 控制半侧 idle/pre-step、`/ctx-compact` | **不可逆**（压缩本身是官方语义），但只在该 seam 内进行 | 不适用 |
 
 ## 2. 不破坏 DSH 核心

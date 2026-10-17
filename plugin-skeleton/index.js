@@ -49,7 +49,7 @@ import {
 export const inject = ['commands', 'tokenMeter']
 
 /** 与 package.json 的 version 保持一致（只用于状态接口的自述）。 */
-const PLUGIN_VERSION = '0.13.2'
+const PLUGIN_VERSION = '0.13.3'
 
 /** 浏览器半侧 client.js 拉的只读状态接口；两处路径必须一致。 */
 const STATUS_PATH = '/api/ctx-mon-and-con/status'
@@ -58,7 +58,7 @@ const STATUS_PATH = '/api/ctx-mon-and-con/status'
 const MAX_MEASUREMENTS = 10
 
 const DEFAULT_CONFIG = {
-  // 上下文窗口预算（token）。不同模型窗口不同，按需覆盖。
+  // 上下文窗口上下文（token）。不同模型窗口不同，按需覆盖。
   contextWindowTokens: 128000,
   // 达到窗口的多少比例时标记“警告”。
   warnAt: 0.75,
@@ -310,28 +310,28 @@ function formatRatio(value) {
   return `${(value * 100).toFixed(1)}%`
 }
 
-/** 统一的 /ctx 输出：一眼看到“用了多少 / 预算多少 / 是否该压缩”。 */
+/** 统一的 /ctx 输出：一眼看到“用了多少 / 上下文多少 / 是否该压缩”。 */
 function renderUsage(measurement, budget, config) {
   const used = measurement.totalTokens
   const ratio = used / budget
-  const status = ratio >= config.errorAt ? '超限（建议立刻压缩）' : ratio >= config.warnAt ? '警告（接近预算）' : 'ok'
+  const status = ratio >= config.errorAt ? '超限（建议立刻压缩）' : ratio >= config.warnAt ? '警告（接近上下文）' : 'ok'
   const lines = [
     `上下文长度：${formatTokens(used)} / ${formatTokens(budget)} tokens（${formatRatio(ratio)}，状态：${status}）`,
     `- 消息表面 surfaceTokens：${formatTokens(measurement.surfaceTokens)}`,
     `- 测量基线 baseline：${measurement.baseline?.kind ?? 'unknown'} ${formatTokens(measurement.baseline?.tokens ?? used)}`,
   ]
   if (Array.isArray(measurement.nodes)) lines.push(`- 计费节点 nodes：${measurement.nodes.length} 个`)
-  lines.push('提示：/ctx <tokens> 临时改本会话预算，/ctx reset 恢复默认；控制半侧挂进 preset 后到点自动压缩。')
+  lines.push('提示：/ctx <tokens> 临时改本会话上下文，/ctx reset 恢复默认；控制半侧挂进 preset 后到点自动压缩。')
   return lines.join('\n')
 }
 
 /**
- * 注册 `/ctx`：显示当前会话的 token 用量；可选参数临时覆盖预算。
+ * 注册 `/ctx`：显示当前会话的 token 用量；可选参数临时覆盖上下文。
  * @param ctx Cordis 上下文（已注入 commands/tokenMeter）
  * @param config 经 Config 校验后的配置
  */
 export function apply(ctx, config) {
-  // 全局默认预算写进共享状态：控制半侧（control.js）在没有会话覆盖时用它。
+  // 全局默认上下文写进共享状态：控制半侧（control.js）在没有会话覆盖时用它。
   setDefaultBudget(config.contextWindowTokens)
   setGlobalPromptOverrides(config.promptOverrides)
   setGlobalDisabledTools(config.disabledTools)
@@ -401,21 +401,21 @@ export function apply(ctx, config) {
         const cleared = typeof sessionId === 'string' ? clearSessionBudget(sessionId) : false
         budget = budgetOf(agent)
         prefix = cleared
-          ? `已清除本会话的临时预算，回到默认 ${formatTokens(budget)} tokens。\n`
-          : `本会话没有临时预算，当前使用默认 ${formatTokens(budget)} tokens。\n`
+          ? `已清除本会话的临时上下文，回到默认 ${formatTokens(budget)} tokens。\n`
+          : `本会话没有临时上下文，当前使用默认 ${formatTokens(budget)} tokens。\n`
       } else {
         if (!/^\d+$/.test(argument)) {
           return { kind: 'error', text: '用法：/ctx [tokens|reset]（例如 /ctx 200000 或 /ctx reset）' }
         }
         const next = Number(argument)
         if (!Number.isSafeInteger(next) || next <= 0) {
-          return { kind: 'error', text: '预算必须是正整数 token 数。' }
+          return { kind: 'error', text: '上下文必须是正整数 token 数。' }
         }
         if (typeof sessionId !== 'string' || !setSessionBudget(sessionId, next)) {
-          return { kind: 'error', text: '当前会话没有可用的 id，无法设置预算。' }
+          return { kind: 'error', text: '当前会话没有可用的 id，无法设置上下文。' }
         }
         budget = next
-        prefix = `已把本会话预算改为 ${formatTokens(budget)} tokens（会话级覆盖；/ctx reset 可清除）。\n`
+        prefix = `已把本会话上下文改为 ${formatTokens(budget)} tokens（会话级覆盖；/ctx reset 可清除）。\n`
       }
     }
     // agent.session 是会话对象；ctx.tokenMeter.measure(session) 返回
@@ -714,7 +714,7 @@ export function apply(ctx, config) {
     })
   }
 
-  // 浏览器半侧（client.js）通过这个只读接口取预算与最近测量值。
+  // 浏览器半侧（client.js）通过这个只读接口取上下文与最近测量值。
   // 用 ctx.inject(['webServer']) 而不是写进 export const inject：
   // 无 Web server 的 profile（纯 CLI/headless）也能正常挂载本插件。
   const statusHandler = (request, response) => {
@@ -768,7 +768,7 @@ export function apply(ctx, config) {
   }
 
   // 可写配置：宿主平面有 configEditor 服务时（Web/Desktop profile 都有），
-  // 面板可以把预算/阈值写回 profile 的 patch 层，写完后 Loader 会按新配置重挂本插件。
+  // 面板可以把上下文/阈值写回 profile 的 patch 层，写完后 Loader 会按新配置重挂本插件。
   let configEditor = null
   ctx.inject(['configEditor'], (sub) => {
     configEditor = sub?.configEditor ?? null

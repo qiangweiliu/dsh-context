@@ -196,6 +196,25 @@ export function apply(ctx, config) {
     })
   }, 'ctx-mon-and-con: /ctx command')
 
+  // 控制半侧（control.js）挂在 agent preset 的 compaction 组里。宿主平面在 Web
+  // 形态下看不到该服务（dsh-web-app 把宿主 compression 行 disable 了），所以用
+  // 它判断「控制是否已生效」，并在面板里给出提示。
+  const controlState = () => {
+    let visible = false
+    try {
+      visible = typeof ctx.get === 'function' ? Boolean(ctx.get('compaction')) : false
+    } catch {
+      visible = false
+    }
+    return {
+      compactionVisible: visible,
+      presetRow: 'ctx-mon-and-con/control',
+      hint: visible
+        ? 'control row is mounted in this realm'
+        : 'mount ctx-mon-and-con/control inside the agent preset (Settings → Agent preset → compaction group)',
+    }
+  }
+
   // 浏览器半侧（client.js）通过这个只读接口取预算与最近测量值。
   // 用 ctx.inject(['webServer']) 而不是写进 export const inject：
   // 无 Web server 的 profile（纯 CLI/headless）也能正常挂载本插件。
@@ -210,6 +229,7 @@ export function apply(ctx, config) {
       plugin: 'ctx-mon-and-con',
       version: PLUGIN_VERSION,
       budget: { tokens: config.contextWindowTokens, warnAt: config.warnAt, errorAt: config.errorAt },
+      control: controlState(),
       measurements: [...measurements.values()].reverse(),
     })
     response.statusCode = 200
@@ -226,7 +246,7 @@ export function apply(ctx, config) {
     else register()
   })
 
-  // TODO(需确认)：若要做“主动拦截/自动压缩”，需要注入请求发送前的 seam
-  // （例如 ctx.on('session/event') 或 compaction 服务的 compactIfNeeded），
-  // 本骨架只读取测量值，不修改会话。
+  // 注意：本文件是宿主半侧，只读测量、不改会话历史。真正的「控制」在
+  // control.js：它必须挂在 agent preset 的 compaction 组里，才能看到
+  // ctx.compaction 并调用 compactNow / compactIfNeeded。
 }

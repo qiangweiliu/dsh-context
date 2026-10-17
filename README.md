@@ -10,14 +10,15 @@ DeepSeek Harness（DSH）的**上下文长度管理**插件：实施方案 + 可
 DSH 已经内置了完整的上下文管理底座——计量（`ctx.tokenMeter`）、压缩 seam（`ctx.compaction`）、
 工具结果裁剪（`ctx.toolResultPruner`）、会话投影（`ctx.sessionProjections`）。
 本仓库不重新造压缩，而是把「**插件应该在哪一层介入、怎么介入、有哪些红线**」讲清楚，
-并给出一个能装在 Desktop 里的最小实现（`/ctx` 命令 + 设置面板）。
+并给出一个能装在 Desktop 里的最小实现：宿主半侧的 `/ctx` 监控面板，加上挂在 agent preset 内、
+按预算自动压缩的 `ctx-mon-and-con/control` 控制半侧。
 
 ## 仓库结构
 
 | 路径 | 内容 |
 |---|---|
 | [`docs/context-length-plugin-plan.md`](docs/context-length-plugin-plan.md) | 完整实施方案：请求组装链路、四条介入路线（L0 配置 / L1 观察 / L2 裁剪 / L3 换后端）、可抄的 patch 片段、安装验证、红线清单 |
-| [`plugin-skeleton/`](plugin-skeleton) | 可安装的最小骨架（L1）：`/ctx` 命令 + `settings.section` 面板，含 26 项静态检查与 39 项 Cordis 集成冒烟测试 |
+| [`plugin-skeleton/`](plugin-skeleton) | 可安装插件：宿主半侧 `/ctx` + `settings.section` 面板；控制半侧 `control.js` 挂进 agent preset 后按预算自动压缩。含 30 项静态检查、39 项 Cordis 冒烟、21 项控制测试 |
 | [`research/arch.md`](research/arch.md) | DSH 插件机制调研：三层结构、Host 插件形态、`dsh` 清单字段、patch DSL、客户端 slots、安装与 HMR |
 | [`research/context-core.md`](research/context-core.md) | 上下文/压缩子系统调研：请求组装、token 计量、压缩服务与事件协议、默认后端配置、五条内容变换通道、真实装配层 |
 | [`research/sample-plugin.md`](research/sample-plugin.md) | 参考实现分析：`billion-context` / `dsh-bloom-theme` / `dshmarket`，以及第三方插件的模块解析结论 |

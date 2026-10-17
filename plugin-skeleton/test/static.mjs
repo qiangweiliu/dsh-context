@@ -40,7 +40,7 @@ check('warnAt >= errorAt 被拒绝', Array.isArray(inverted.issues) && inverted.
 
 // ── 3. 包资源解析（宿主 readPluginMeta / client-modules 都走 ESM 解析器）──
 const require = createRequire(new URL('../package.json', import.meta.url))
-for (const specifier of ['ctx-mon-and-con/client', 'ctx-mon-and-con/icon', 'ctx-mon-and-con/locale/en.json', 'ctx-mon-and-con/locale/zh.json']) {
+for (const specifier of ['ctx-mon-and-con/client', 'ctx-mon-and-con/control', 'ctx-mon-and-con/icon', 'ctx-mon-and-con/locale/en.json', 'ctx-mon-and-con/locale/zh.json']) {
   let resolved
   try {
     resolved = require.resolve(specifier)
@@ -62,8 +62,25 @@ for (const language of ['en', 'zh']) {
   check(`locale/${language}.json 有 meta.title/description`, typeof meta?.title === 'string' && meta.title.trim() !== '' && typeof meta?.description === 'string' && meta.description.trim() !== '', JSON.stringify(meta))
 }
 
-// ── 4. manifest 与 bundle patch 结构 ───────────────────────────────────────
-check('dsh.client 声明合法', manifest.dsh?.client?.platform === 'web' && typeof manifest.dsh.client.immediately === 'boolean' && Array.isArray(manifest.dsh.client.inject), JSON.stringify(manifest.dsh?.client))
+// ── 3b. 控制半侧（preset 平面）——零依赖 ESM，可直接 import 验证形状 ──
+const control = await import(new URL('../control.js', import.meta.url))
+check(
+  'control 导出 name/inject/Config/apply',
+  control.name === 'ctx-mon-and-con-control' &&
+    control.inject?.join(',') === 'tokenMeter' &&
+    typeof control.Config?.['~standard']?.validate === 'function' &&
+    typeof control.apply === 'function',
+  `${control.name} / ${control.inject}`,
+)
+const controlValidate = control.Config['~standard'].validate
+const controlDefault = controlValidate({})
+check('control 默认配置带默认值', !controlDefault.issues && controlDefault.value?.mode === 'idle' && controlDefault.value?.maxContextTokens === 100000, JSON.stringify(controlDefault))
+const controlBadMode = controlValidate({ mode: 'nope' })
+check('control 非法 mode 被拒绝', Array.isArray(controlBadMode.issues) && controlBadMode.issues.some((issue) => issue.path?.join('.') === 'mode'), JSON.stringify(controlBadMode.issues))
+const controlBadKey = controlValidate({ nope: 1 })
+check('control 未知配置键被拒绝', Array.isArray(controlBadKey.issues) && controlBadKey.issues.length > 0, JSON.stringify(controlBadKey.issues))
+
+// ── 4. manifest 与 bundle patch 结构 ───────────────────────────────────────check('dsh.client 声明合法', manifest.dsh?.client?.platform === 'web' && typeof manifest.dsh.client.immediately === 'boolean' && Array.isArray(manifest.dsh.client.inject), JSON.stringify(manifest.dsh?.client))
 check('dsh.bundle.patch 指向存在的文件', existsSync(new URL(`../${manifest.dsh?.bundle?.patch ?? 'missing'}`, import.meta.url)))
 const patch = readFileSync(new URL('../dsh.bundle.patch.yml', import.meta.url), 'utf8')
 check('bundle patch 含 insert 层', /^- insert:/m.test(patch))

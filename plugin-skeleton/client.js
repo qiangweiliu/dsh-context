@@ -48,6 +48,9 @@ window.__ModuleLoader__.load({
       statusOk: 'ok',
       statusWarn: 'warning',
       statusError: 'over budget',
+      control: 'Control',
+      controlReady: 'Control row is mounted in the agent preset.',
+      controlMissing: 'Not active yet — mount ctx-mon-and-con/control inside the agent preset (Settings → Agent preset → compaction group).',
     }
 
     const zh = {
@@ -72,6 +75,9 @@ window.__ModuleLoader__.load({
       statusOk: '正常',
       statusWarn: '警告',
       statusError: '已超限',
+      control: '控制',
+      controlReady: '控制行已挂在 agent preset 内，超预算会自动压缩。',
+      controlMissing: '尚未生效 —— 需要把 ctx-mon-and-con/control 加到 agent preset 的 compaction 组里（设置 → Agent preset → compaction group）。',
     }
 
     /** 必需服务（浏览器 cordis 的 fiber inject）。 */
@@ -206,6 +212,14 @@ window.__ModuleLoader__.load({
               h('span', { style: styles.label }, t('errorAt')),
               h('span', { style: styles.mono }, formatPercent(budget.errorAt)),
             ),
+          ),
+        )
+        const control = data.control || {}
+        children.push(
+          h(
+            'p',
+            { key: 'control', style: styles.text },
+            `${t('control')}: ${control.compactionVisible ? t('controlReady') : t('controlMissing')}`,
           ),
         )
         const measurements = Array.isArray(data.measurements) ? data.measurements : []

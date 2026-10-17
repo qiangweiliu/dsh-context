@@ -732,7 +732,7 @@ window.__ModuleLoader__.load({
 
       const toggle = (kind, name, layer, enabled) => {
         if (enabled) {
-          post({ kind, name, layer, enabled: true })
+          post({ kind, name, layer, enabled: true, ...(layer === 'session' && props.sessionId ? { sessionId: props.sessionId } : {}) })
           return
         }
         setPending({ kind, name, layer })
@@ -740,7 +740,7 @@ window.__ModuleLoader__.load({
 
       const confirm = () => {
         if (!pending) return
-        post({ ...pending, enabled: false })
+        post({ ...pending, enabled: false, ...(pending.layer === 'session' && props.sessionId ? { sessionId: props.sessionId } : {}) })
         setPending(null)
       }
 
@@ -1196,7 +1196,7 @@ window.__ModuleLoader__.load({
         children.push(
           h('div', { key: 'cols', style: styles.cols }, h(ControlSection, { t, control, onToggled: load }), h(ConfigSection, { t, budget, editable: Boolean(data.configEditable), onSaved: load })),
         )
-        children.push(h(InventoryCard, { key: 'inventory', t, data: invState.data, reload: reloadInv }))
+        children.push(h(InventoryCard, { key: 'inventory', t, data: invState.data, reload: reloadInv, sessionId: activeSession }))
         children.push(h('button', { key: 'refresh', type: 'button', style: styles.button, onClick: () => { load(); reloadLive(); reloadInv() } }, t('refresh')))
       }
       return h('div', { style: styles.root }, children)

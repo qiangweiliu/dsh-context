@@ -16,12 +16,14 @@
 export const name = 'ctx-mon-and-con'
 
 /** 与 control.js 共享的进程内状态（同一包内相对 import，不涉及 npm 依赖）。 */
-import { existsSync, readFileSync, readdirSync, realpathSync, statSync } from 'node:fs'
+import { existsSync, mkdirSync, readFileSync, readdirSync, realpathSync, statSync, writeFileSync } from 'node:fs'
+import { homedir } from 'node:os'
 import { dirname, join } from 'node:path'
 
 import {
   budgetFor,
   clearSessionToggles,
+  hydrateSessionToggles,
   setGlobalDisabledTools,
   setGlobalPromptOverrides,
   getAppliedTools,
@@ -30,6 +32,7 @@ import {
   getSessionDisabledTools,
   setSessionPromptEnabled,
   setSessionToolEnabled,
+  snapshotSessionToggles,
   control as controlState,
   getSessionBudget,
   listSessionBudgets,
@@ -42,7 +45,7 @@ import {
 export const inject = ['commands', 'tokenMeter']
 
 /** 与 package.json 的 version 保持一致（只用于状态接口的自述）。 */
-const PLUGIN_VERSION = '0.11.2'
+const PLUGIN_VERSION = '0.12.0'
 
 /** 浏览器半侧 client.js 拉的只读状态接口；两处路径必须一致。 */
 const STATUS_PATH = '/api/ctx-mon-and-con/status'
@@ -322,6 +325,28 @@ export function apply(ctx, config) {
   setDefaultBudget(config.contextWindowTokens)
   setGlobalPromptOverrides(config.promptOverrides)
   setGlobalDisabledTools(config.disabledTools)
+
+  // 会话级开关持久化：~/.dsh/ctx-mon-and-con/session-toggles.json（按 sessionId 区分，跨 profile 共享）。
+  const SESSION_TOGGLES_PATH = join(homedir(), '.dsh', 'ctx-mon-and-con', 'session-toggles.json')
+  const saveSessionToggles = () => {
+    try {
+      mkdirSync(dirname(SESSION_TOGGLES_PATH), { recursive: true })
+      writeFileSync(SESSION_TOGGLES_PATH, JSON.stringify(snapshotSessionToggles(), null, 2) + '\n', 'utf8')
+    } catch (error) {
+      const logger = ctx.logger
+      if (typeof logger?.warn === 'function') logger.warn('ctx-mon-and-con: could not save session toggles: ' + (error instanceof Error ? error.message : String(error)))
+    }
+  }
+  const loadSessionToggles = () => {
+    try {
+      if (!existsSync(SESSION_TOGGLES_PATH)) return
+      hydrateSessionToggles(JSON.parse(readFileSync(SESSION_TOGGLES_PATH, 'utf8')))
+    } catch (error) {
+      const logger = ctx.logger
+      if (typeof logger?.warn === 'function') logger.warn('ctx-mon-and-con: could not load session toggles: ' + (error instanceof Error ? error.message : String(error)))
+    }
+  }
+  loadSessionToggles()
   const inFlight = new Set()
   // 浏览器状态接口的数据源：按 session id 保留最近 MAX_MEASUREMENTS 条。
   const measurements = new Map()
@@ -810,7 +835,7 @@ export function apply(ctx, config) {
     }
     const requested = requestUrl(request).searchParams.get('sessionId') ?? ''
     const session = requested && sessions && typeof sessions.get === 'function' ? sessions.get(requested) : latestSession()
-    const sessionId = session?.id
+    const sessionId = requested || session?.id
     return send(200, {
       ok: true,
       sessionId,
@@ -856,9 +881,12 @@ export function apply(ctx, config) {
       if (layer === 'global' && kind !== 'tool') return send(400, { ok: false, error: 'prompts only support the session layer' })
       const session = latestSession()
       if (layer === 'session') {
-        if (!session) return send(409, { ok: false, error: 'no session yet' })
-        if (kind === 'tool') setSessionToolEnabled(session.id, name, enabled)
-        else setSessionPromptEnabled(session.id, name, enabled)
+        const requestedSession = typeof input?.sessionId === 'string' && input.sessionId.length > 0 ? input.sessionId : null
+        const targetId = requestedSession || session?.id
+        if (!targetId) return send(409, { ok: false, error: 'no session yet' })
+        if (kind === 'tool') setSessionToolEnabled(targetId, name, enabled)
+        else setSessionPromptEnabled(targetId, name, enabled)
+        saveSessionToggles()
         return send(202, { ok: true, layer, kind, name, enabled, note: 'applies to the next request' })
       }
       const editor = configEditor
@@ -903,9 +931,11 @@ export function apply(ctx, config) {
       const layer = input?.layer
       if (!['session', 'global', 'all'].includes(layer)) return send(400, { ok: false, error: 'layer must be session, global or all' })
       if (layer === 'session' || layer === 'all') {
-        const session = latestSession()
-        if (!session) return send(409, { ok: false, error: 'no session yet' })
-        clearSessionToggles(session.id)
+        const requestedSession = typeof input?.sessionId === 'string' && input.sessionId.length > 0 ? input.sessionId : null
+        const targetId = requestedSession || latestSession()?.id
+        if (!targetId) return send(409, { ok: false, error: 'no session yet' })
+        clearSessionToggles(targetId)
+        saveSessionToggles()
       }
       if (layer === 'global' || layer === 'all') {
         const editor = configEditor

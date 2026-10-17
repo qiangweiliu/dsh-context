@@ -184,3 +184,22 @@ export function setGlobalDisabledTools(value) {
 export function getGlobalDisabledTools() {
   return globalDisabledTools
 }
+
+/** 会话开关持久化：导出为纯 JSON。 */
+export function snapshotSessionToggles() {
+  const tools = {}
+  const prompts = {}
+  for (const [sessionId, set] of sessionTools) if (set.size > 0) tools[sessionId] = [...set]
+  for (const [sessionId, set] of sessionPrompts) if (set.size > 0) prompts[sessionId] = [...set]
+  return { tools, prompts }
+}
+
+/** 启动时从磁盘恢复会话开关。 */
+export function hydrateSessionToggles(data) {
+  sessionTools.clear()
+  sessionPrompts.clear()
+  const tools = data && data.tools && typeof data.tools === 'object' ? data.tools : {}
+  const prompts = data && data.prompts && typeof data.prompts === 'object' ? data.prompts : {}
+  for (const [sessionId, names] of Object.entries(tools)) if (Array.isArray(names) && names.length > 0) sessionTools.set(sessionId, new Set(names))
+  for (const [sessionId, names] of Object.entries(prompts)) if (Array.isArray(names) && names.length > 0) sessionPrompts.set(sessionId, new Set(names))
+}

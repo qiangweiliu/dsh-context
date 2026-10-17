@@ -142,7 +142,7 @@ ctx 整页底部新增「工具与提示词」卡，展示**当前会话**这次
 | 全局提示词覆盖（promptOverrides） | profile config | ✅ 保留并在下一次请求生效 |
 | 全局工具禁用（disabledTools） | profile config | ✅ 保留并在下一次请求生效 |
 | 控制半侧是否启用 | agent preset 行 | ✅ 保留 |
-| 会话级工具/提示词开关 | 进程内存（state.js） | ❌ 丢失（仅当前运行期） |
+| 会话级工具/提示词开关 | `~/.dsh/ctx-mon-and-con/session-toggles.json`（按 sessionId） | ✅ 保留（v0.12.0 起） |
 | `/ctx <tokens>` 会话预算覆盖 | 进程内存 | ❌ 丢失 |
 | 工具/提示词清单（inventory） | 进程内存 | ❌ 清空，需在新会话里先发一条消息重新装配 |
 | 最近测量/压缩记录 | 进程内存 | ❌ 丢失 |

@@ -1,6 +1,7 @@
 # dsh-context
 
 DeepSeek Harness（DSH）的**上下文长度管理**插件：实施方案 + 可直接安装的最小骨架。
+插件包名 **`context-monitor-and-control`**（目录 `plugin-skeleton/`）。
 
 > A context-length management plugin for DeepSeek Harness: a design document plus a minimal, installable plugin skeleton.
 

@@ -47,8 +47,14 @@ dsh plugin --profile mkt-add add "github:qiangweiliu/dsh-context#path:/plugin-sk
 
 说明 bundle 补丁在安装后的 profile 里确实生效 —— 也就是「可安装」这一关已经过了。
 
-> 注意：安装时 pnpm 会对 `https://github.com/qiangweiliu/dsh-context` 做一个 HEAD 探测，
-> 本机会先超时重试 3 次（约 1 分 40 秒）再改走 git 成功。这是网络侧现象，不是打包问题。
+> 注意 1：**机器上必须有 `git` 且在 `PATH` 里**，否则 pnpm 报
+> `[ERR_PNPM_GIT_RESOLVE_FAILED] ... git ls-remote failed: 'git' 不是内部或外部命令`。
+> 这个报错下面还会跟一句「git-hosted plugins build on install via their prepare script ...
+> add allowBuilds」——那是 dsh 的通用提示，**不是真正原因**，别去改 allowBuilds；
+> 装完 Git for Windows 后把 `C:\Program Files\Git\cmd` 加进 `PATH` 再重跑即可（本次 3.1 秒装好）。
+>
+> 注意 2：安装时 pnpm 会对 `https://github.com/qiangweiliu/dsh-context` 做一个 HEAD 探测，
+> 网络不好时会先超时重试（约 1 分 40 秒）再改走 git。这是网络侧现象，不是打包问题。
 
 ## 4. 还差什么
 

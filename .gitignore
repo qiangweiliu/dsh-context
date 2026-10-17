@@ -1,0 +1,17 @@
+# 本仓库只提交源码与文档；以下为本地侦察/依赖产物
+.probe/
+node_modules/
+test/deps/
+pnpm-store/
+.pnpm-store/
+
+# 日志与临时文件
+*.log
+*.tmp
+dump-config*.txt
+!plugin-skeleton/test/dump-config-smoke.txt
+
+# 系统杂项
+Thumbs.db
+Desktop.ini
+.DS_Store

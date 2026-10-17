@@ -1,0 +1,17 @@
+# dsh-context-guard 的 bundle patch 层。
+#
+# 当 profile 的 package.json 里 dsh.profile.bundles 列出 dsh-context-guard 时
+# 本层自动挂载（`dsh plugin --profile desktop add <本目录>` 会做这件事）；loader
+# 从 profile 的 node_modules 解析 `name`。
+#
+# 本插件是 "只新增" 的一层：只 insert 一行，不覆盖任何宿主行。
+#
+# 备注：如果将来要关掉宿主自带的自动压缩，别指望在这里按 id 命中
+# `compaction-basic` —— dsh-web-app 层已把宿主平面那一行 disabled，真正运行的
+# 实例在 preset-standard 条目内部，bundle 层无法按 id 寻址（billion-context 的
+# dsh.bundle.patch.yml 注释里记录了同一限制，见 DSH #2474）；需要在 profile 级
+# cordis.patch.yml 里对 preset-standard 做整段 config 覆盖（patch 是整段替换、
+# 不做深合并）。
+- insert:
+    - id: context-guard
+      name: dsh-context-guard

@@ -1,0 +1,6 @@
+{
+  "meta": {
+    "title": "Context Guard",
+    "description": "Shows context length, token budget and recent /ctx measurements; warns before the window fills up."
+  }
+}

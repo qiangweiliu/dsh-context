@@ -23,6 +23,7 @@ import { dirname, join } from 'node:path'
 import {
   budgetFor,
   clearSessionToggles,
+  clearSessionPromptText,
   hydrateSessionToggles,
   setGlobalDisabledTools,
   setGlobalPromptOverrides,
@@ -31,6 +32,7 @@ import {
   getSessionDisabledPrompts,
   getSessionDisabledTools,
   setSessionPromptEnabled,
+  setSessionPromptText,
   setSessionToolEnabled,
   snapshotSessionToggles,
   control as controlState,
@@ -45,7 +47,7 @@ import {
 export const inject = ['commands', 'tokenMeter']
 
 /** 与 package.json 的 version 保持一致（只用于状态接口的自述）。 */
-const PLUGIN_VERSION = '0.12.0'
+const PLUGIN_VERSION = '0.12.1'
 
 /** 浏览器半侧 client.js 拉的只读状态接口；两处路径必须一致。 */
 const STATUS_PATH = '/api/ctx-mon-and-con/status'
@@ -1023,6 +1025,63 @@ export function apply(ctx, config) {
     })
   }
 
+  /** 会话级提示词文本覆盖：POST /inventory/prompt/session {name, text, sessionId?}。 */
+  const sessionPromptHandler = (request, response) => {
+    const send = (code, payload) => {
+      response.statusCode = code
+      response.setHeader('content-type', 'application/json; charset=utf-8')
+      response.end(JSON.stringify(payload))
+    }
+    if (request.method !== 'POST') {
+      response.setHeader('allow', 'POST')
+      return send(405, { ok: false, error: 'method not allowed' })
+    }
+    const chunks = []
+    request.on('data', (chunk) => chunks.push(chunk))
+    request.on('end', () => {
+      let input
+      try {
+        input = JSON.parse(Buffer.concat(chunks).toString('utf8'))
+      } catch {
+        return send(400, { ok: false, error: 'invalid body' })
+      }
+      if (typeof input?.name !== 'string' || input.name.length === 0 || typeof input.text !== 'string') return send(400, { ok: false, error: 'name/text are required' })
+      const targetId = typeof input.sessionId === 'string' && input.sessionId.length > 0 ? input.sessionId : latestSession()?.id
+      if (!targetId) return send(409, { ok: false, error: 'no session yet' })
+      setSessionPromptText(targetId, input.name, input.text)
+      saveSessionToggles()
+      return send(202, { ok: true, layer: 'session', sessionId: targetId, name: input.name })
+    })
+  }
+
+  /** 清除会话级提示词文本覆盖：POST /inventory/prompt/session/reset {name?, sessionId?}。 */
+  const sessionPromptResetHandler = (request, response) => {
+    const send = (code, payload) => {
+      response.statusCode = code
+      response.setHeader('content-type', 'application/json; charset=utf-8')
+      response.end(JSON.stringify(payload))
+    }
+    if (request.method !== 'POST') {
+      response.setHeader('allow', 'POST')
+      return send(405, { ok: false, error: 'method not allowed' })
+    }
+    const chunks = []
+    request.on('data', (chunk) => chunks.push(chunk))
+    request.on('end', () => {
+      let input
+      try {
+        input = JSON.parse(Buffer.concat(chunks).toString('utf8'))
+      } catch {
+        return send(400, { ok: false, error: 'invalid body' })
+      }
+      const targetId = typeof input?.sessionId === 'string' && input.sessionId.length > 0 ? input.sessionId : latestSession()?.id
+      if (!targetId) return send(409, { ok: false, error: 'no session yet' })
+      clearSessionPromptText(targetId, typeof input?.name === 'string' && input.name.length > 0 ? input.name : undefined)
+      saveSessionToggles()
+      return send(202, { ok: true, layer: 'session', sessionId: targetId })
+    })
+  }
+
   ctx.inject(['webServer'], (sub) => {
     const server = sub?.webServer
     if (!server || typeof server.register !== 'function') return
@@ -1037,6 +1096,8 @@ export function apply(ctx, config) {
         server.register({ kind: 'exact', path: `${STATUS_PATH}/inventory/reset`, handler: inventoryResetHandler }),
         server.register({ kind: 'exact', path: `${STATUS_PATH}/inventory/prompt`, handler: promptEditHandler }),
         server.register({ kind: 'exact', path: `${STATUS_PATH}/inventory/prompt/reset`, handler: promptResetHandler }),
+        server.register({ kind: 'exact', path: `${STATUS_PATH}/inventory/prompt/session`, handler: sessionPromptHandler }),
+        server.register({ kind: 'exact', path: `${STATUS_PATH}/inventory/prompt/session/reset`, handler: sessionPromptResetHandler }),
       ]
       return () => offs.forEach((off) => off())
     }

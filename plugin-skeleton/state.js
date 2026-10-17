@@ -191,7 +191,7 @@ export function snapshotSessionToggles() {
   const prompts = {}
   for (const [sessionId, set] of sessionTools) if (set.size > 0) tools[sessionId] = [...set]
   for (const [sessionId, set] of sessionPrompts) if (set.size > 0) prompts[sessionId] = [...set]
-  return { tools, prompts }
+  return { tools, prompts, promptText: snapshotSessionPromptText() }
 }
 
 /** 启动时从磁盘恢复会话开关。 */
@@ -202,4 +202,49 @@ export function hydrateSessionToggles(data) {
   const prompts = data && data.prompts && typeof data.prompts === 'object' ? data.prompts : {}
   for (const [sessionId, names] of Object.entries(tools)) if (Array.isArray(names) && names.length > 0) sessionTools.set(sessionId, new Set(names))
   for (const [sessionId, names] of Object.entries(prompts)) if (Array.isArray(names) && names.length > 0) sessionPrompts.set(sessionId, new Set(names))
+  hydrateSessionPromptText(data && data.promptText)
+}
+
+/** sessionId -> Map(section name -> 文本)：会话级提示词覆盖（比全局优先）。 */
+const sessionPromptText = new Map()
+
+export function setSessionPromptText(sessionId, name, text) {
+  let map = sessionPromptText.get(sessionId)
+  if (!map) {
+    map = new Map()
+    sessionPromptText.set(sessionId, map)
+  }
+  map.set(name, String(text))
+}
+
+export function clearSessionPromptText(sessionId, name) {
+  const map = sessionPromptText.get(sessionId)
+  if (!map) return
+  if (typeof name === "string") map.delete(name)
+  else map.clear()
+  if (map.size === 0) sessionPromptText.delete(sessionId)
+}
+
+export function getSessionPromptTextMap(sessionId) {
+  return sessionPromptText.get(sessionId) ?? null
+}
+
+export function snapshotSessionPromptText() {
+  const out = {}
+  for (const [sessionId, map] of sessionPromptText) {
+    if (map.size === 0) continue
+    out[sessionId] = Object.fromEntries(map)
+  }
+  return out
+}
+
+export function hydrateSessionPromptText(data) {
+  sessionPromptText.clear()
+  if (!data || typeof data !== "object") return
+  for (const [sessionId, entries] of Object.entries(data)) {
+    if (!entries || typeof entries !== "object") continue
+    const map = new Map()
+    for (const [name, text] of Object.entries(entries)) if (typeof text === "string") map.set(name, text)
+    if (map.size > 0) sessionPromptText.set(sessionId, map)
+  }
 }

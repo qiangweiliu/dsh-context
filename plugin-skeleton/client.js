@@ -101,6 +101,14 @@ window.__ModuleLoader__.load({
       resetOriginal: 'Restore original',
       restoreAllPrompts: 'Restore all prompt edits (global)',
       overridden: 'overridden (global)',
+      globalOverridden: 'overridden (global)',
+      sessionOverridden: 'overridden (session)',
+      saveSession: 'Save to this session',
+      saveGlobal: 'Save globally',
+      savedSession: 'Saved for this session (applies to the next request).',
+      savedGlobal: 'Saved globally.',
+      confirmGlobal: 'Save globally? It affects every session and is written to the profile.',
+      resetSession: 'Reset session override',
       editHint: 'Writes profile config (global). Original kept for restore.',
       promptTokens: 'Prompt',
       toolTokens: 'Tools',
@@ -185,6 +193,14 @@ window.__ModuleLoader__.load({
       resetOriginal: '恢复原文',
       restoreAllPrompts: '恢复全部提示词（全局）',
       overridden: '已覆盖（全局）',
+      globalOverridden: '已覆盖（全局）',
+      sessionOverridden: '已覆盖（会话）',
+      saveSession: '仅保存到本会话',
+      saveGlobal: '保存到全局',
+      savedSession: '已保存到本会话（下一次请求生效）。',
+      savedGlobal: '已保存到全局。',
+      confirmGlobal: '确认保存到全局？将影响所有会话并写入 profile。',
+      resetSession: '清除会话覆盖',
       editHint: '写入 profile 配置（全局生效），原文保留可恢复。',
       promptTokens: '提示词',
       toolTokens: '工具定义',
@@ -712,6 +728,7 @@ window.__ModuleLoader__.load({
       const [promptBusy, setPromptBusy] = react.useState(false)
       const [restorePending, setRestorePending] = react.useState(false)
       const [localEdits, setLocalEdits] = react.useState({})
+      const [notice, setNotice] = react.useState(null)
 
       const post = (body) => {
         setBusy(body)
@@ -780,10 +797,50 @@ window.__ModuleLoader__.load({
             setPromptBusy(false)
             setEditDraft(null)
             setPromptSave(null)
-            if (suffix === '') setLocalEdits((prev) => ({ ...prev, [body.name]: body.text }))
+            if (suffix === '') { setLocalEdits((prev) => ({ ...prev, [body.name]: body.text })); setNotice(t('savedGlobal')) }
             else if (body && typeof body.name === 'string') setLocalEdits((prev) => { const next = { ...prev }; delete next[body.name]; return next })
             else setLocalEdits({})
             setTimeout(() => props.reload && props.reload(), 1200)
+          })
+          .catch(() => setPromptBusy(false))
+      }
+
+      const postSessionPrompt = (name, text) => {
+        setPromptBusy(true)
+        fetch(`${STATUS_PATH}/inventory/prompt/session`, {
+          method: 'POST',
+          headers: { 'content-type': 'application/json' },
+          body: JSON.stringify({ name, text, ...(props.sessionId ? { sessionId: props.sessionId } : {}) }),
+        })
+          .then((response) => response.json().catch(() => ({})))
+          .then(() => {
+            setPromptBusy(false)
+            setEditDraft(null)
+            setPromptSave(null)
+            setLocalEdits((prev) => ({ ...prev, [name]: text }))
+            setNotice(t('savedSession'))
+            setTimeout(() => props.reload && props.reload(), 800)
+          })
+          .catch(() => setPromptBusy(false))
+      }
+
+      const postSessionPromptReset = (name) => {
+        setPromptBusy(true)
+        fetch(`${STATUS_PATH}/inventory/prompt/session/reset`, {
+          method: 'POST',
+          headers: { 'content-type': 'application/json' },
+          body: JSON.stringify({ name, ...(props.sessionId ? { sessionId: props.sessionId } : {}) }),
+        })
+          .then((response) => response.json().catch(() => ({})))
+          .then(() => {
+            setPromptBusy(false)
+            setLocalEdits((prev) => {
+              const next = { ...prev }
+              delete next[name]
+              return next
+            })
+            setNotice(null)
+            setTimeout(() => props.reload && props.reload(), 800)
           })
           .catch(() => setPromptBusy(false))
       }
@@ -919,11 +976,11 @@ window.__ModuleLoader__.load({
             })
           : h('div', { style: styles.detailBox },
               h('div', { style: styles.detailHead },
-                h('span', { style: styles.cardSub }, dirty ? t('overridden') : t('editHint')),
+                h('span', { style: styles.cardSub }, dirty ? (section.sessionOverridden ? t('sessionOverridden') : t('globalOverridden')) : t('editHint')),
                 h('span', { style: { ...styles.cardSub, fontFamily: 'ui-monospace, monospace', maxWidth: '46%', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }, title: sourceOf(section.name) || t('sourceUnknown') }, `${t('source')}: ${sourceOf(section.name) || t('sourceUnknown')}`),
                 h('span', { style: { display: 'inline-flex', gap: '6px' } },
                   h('button', { type: 'button', style: styles.copyBtn, 'data-ctx-prompt-edit': section.name, onClick: () => { setEditDraft({ name: section.name, text: effectiveText }); setPromptSave(null) }, disabled: promptBusy }, t('edit')),
-                  dirty ? h('button', { type: 'button', style: styles.copyBtn, 'data-ctx-prompt-reset': section.name, onClick: () => postPrompt('/reset', { name: section.name }), disabled: promptBusy }, t('resetOriginal')) : null,
+                  dirty ? h('button', { type: 'button', style: styles.copyBtn, 'data-ctx-prompt-reset': section.name, onClick: () => (section.sessionOverridden ? postSessionPromptReset(section.name) : postPrompt('/reset', { name: section.name })), disabled: promptBusy }, section.sessionOverridden ? t('resetSession') : t('resetOriginal')) : null,
                   h('button', { type: 'button', style: styles.copyBtn, onClick: () => copy(key, effectiveText) }, copied === key ? t('copied') : t('copy')),
                 ),
               ),
@@ -940,7 +997,7 @@ window.__ModuleLoader__.load({
               { type: 'button', style: styles.inventoryHead, 'data-ctx-expand': key, 'aria-expanded': isOpen, onClick: () => setExpanded({ ...expanded, [key]: !isOpen }) },
               chevron(isOpen),
               h('span', { style: styles.inventoryName }, section.name),
-              dirty ? h('span', { style: styles.cardSub }, t('overridden')) : null,
+              dirty ? h('span', { style: styles.cardSub }, section.sessionOverridden ? t('sessionOverridden') : t('globalOverridden')) : null,
               section.tokens !== null && section.tokens !== undefined ? h('span', { style: styles.cardSub }, `~${compactTokens(section.tokens)} ${t('tokensShort')}`) : null,
             ),
             h(
@@ -950,13 +1007,15 @@ window.__ModuleLoader__.load({
             ),
           ),
           isOpen ? editorNode : null,
+          isOpen && notice ? h('p', { style: styles.cardSub }, notice) : null,
           isOpen && editing
             ? h('div', { style: { display: 'flex', gap: '6px', alignItems: 'center', flexWrap: 'wrap' } },
                 promptSave === section.name
-                  ? [h('span', { key: 'q', style: styles.cardSub }, t('confirmSave')),
+                  ? [h('span', { key: 'q', style: styles.cardSub }, t('confirmGlobal')),
                      h('button', { key: 'ok', type: 'button', style: styles.copyBtn, 'data-ctx-prompt-confirm': section.name, onClick: () => postPrompt('', { name: section.name, text: editDraft.text }), disabled: promptBusy }, t('confirm')),
                      h('button', { key: 'no', type: 'button', style: styles.copyBtn, onClick: () => setPromptSave(null) }, t('cancel'))]
-                  : [h('button', { key: 'save', type: 'button', style: styles.copyBtn, 'data-ctx-prompt-save': section.name, onClick: () => setPromptSave(section.name), disabled: promptBusy }, t('save')),
+                  : [h('button', { key: 'session', type: 'button', style: styles.copyBtn, 'data-ctx-prompt-save-session': section.name, onClick: () => postSessionPrompt(section.name, editDraft.text), disabled: promptBusy }, t('saveSession')),
+                     h('button', { key: 'save', type: 'button', style: styles.copyBtn, 'data-ctx-prompt-save': section.name, onClick: () => setPromptSave(section.name), disabled: promptBusy }, t('saveGlobal')),
                      h('button', { key: 'cancel', type: 'button', style: styles.copyBtn, onClick: () => { setEditDraft(null); setPromptSave(null) } }, t('cancel')),
                      h('span', { key: 'hint', style: styles.cardSub }, t('editHint'))],
               )

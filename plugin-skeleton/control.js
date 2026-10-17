@@ -35,6 +35,7 @@ import {
   getSessionDisabledPrompts,
   getSessionDisabledTools,
   getGlobalDisabledTools,
+  getSessionPromptTextMap,
   getGlobalPromptOverrides,
   recordAppliedTools,
   recordCompaction,
@@ -172,14 +173,20 @@ export function apply(ctx, config) {
         try {
           const disabled = new Set(getSessionDisabledPrompts(sessionId))
           const overrides = getGlobalPromptOverrides()
+          const sessionTexts = getSessionPromptTextMap(sessionId) || new Map()
           const raw = Array.isArray(result.sections) ? result.sections : []
           const mapped = []
           const inventory = []
           for (const section of raw) {
             if (disabled.has(section.name)) continue
             const original = String(section.text === undefined || section.text === null ? '' : section.text)
-            const overridden = Object.prototype.hasOwnProperty.call(overrides, section.name)
-            const effective = overridden ? String(overrides[section.name]) : original
+            const globalOverridden = Object.prototype.hasOwnProperty.call(overrides, section.name)
+            const sessionOverridden = sessionTexts.has(section.name)
+            const effective = sessionOverridden
+              ? String(sessionTexts.get(section.name))
+              : globalOverridden
+                ? String(overrides[section.name])
+                : original
             // 原 section 可能是 frozen 的：不改它，重建一个 AssembledSection。
             const next = { name: section.name, text: effective }
             if (section.interpolate !== undefined) next.interpolate = section.interpolate
@@ -189,7 +196,9 @@ export function apply(ctx, config) {
               tokens: Math.ceil(effective.length / 4),
               text: effective,
               originalText: original,
-              overridden,
+              overridden: globalOverridden || sessionOverridden,
+              globalOverridden,
+              sessionOverridden,
             })
           }
           result.sections = mapped

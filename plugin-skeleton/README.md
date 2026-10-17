@@ -102,6 +102,31 @@ ctx —— 上下文长度控制
 提示词 1.4K · 20.3%    工具定义 5.2K · 72.7%    上文 12 · 0.2%    本轮用户对话 483 · 6.8%
 ```
 
+## 工具与提示词清单（可开关）
+
+ctx 整页底部新增「工具与提示词」卡，展示**当前会话**这次请求实际用到的：
+
+- **工具**：26 个（名称 + `~token` 估算），每个工具有 **两个开关**：
+  - `会话`：只对当前会话生效（内存，重启/切换会话恢复）
+  - `全局`：写入 profile 的 `disabledTools`，所有会话生效（改配置会重挂插件）
+- **提示词 section**：22 个（`harness:identity`、`tool:bash`、`ui:deliverable-file-references` 等，
+  名称 + `~token` 估算），每个 section 一个 `会话` 开关（按你的选择，提示词不做全局开关）。
+- 关闭前会二次确认；底部「恢复全部（会话）」一键清空本会话开关；卡片上标注风险提示。
+
+实现（全部走官方 seam，不 import 任何包）：
+
+- 会话级工具：`agent.ctx.tools.restrict({ deny })`，在 `agent/pre-step` 里按当前开关重装/撤销，
+  下一次请求生效（实测 `applied.deny` 里能看到被摘掉的工具名）。
+- 会话级提示词：在 `agent.ctx` 上挂 `system-prompt/assemble` waterfall，`await next()` 后
+  `sections.filter(...)` 剔除被关的 section（实测装配结果里该 section 消失）。
+- 全局工具：插件 `Config.disabledTools` + 根作用域 `ctx.tools.restrict`，经 `ctx.configEditor`
+  写回 profile（实测 `cordis.patch.yml` 出现 `disabledTools: [...]`）。
+- 清单来源：每次装配时把 `result.sections` / `result.tools` 的名称与 token 估算记进 `state.js`，
+  宿主 `GET /api/ctx-mon-and-con/status/inventory` 提供给面板。
+
+> 会话级开关依赖 **`ctx-mon-and-con/control` 已挂进 agent preset**（见上一节）；没挂时开关能存，
+> 但不会应用到请求。
+
 ## 一键启用自动压缩（让压缩也按插件预算）
 
 面板的控制区带一个按钮：

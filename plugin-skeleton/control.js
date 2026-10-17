@@ -32,7 +32,12 @@
 
 import {
   budgetFor,
+  getSessionDisabledPrompts,
+  getSessionDisabledTools,
+  recordAppliedTools,
   recordCompaction,
+  recordInventory,
+  recordSyncDebug,
   setControlActive,
 } from './state.js'
 
@@ -135,6 +140,66 @@ export function apply(ctx, config) {
 
   /** 每个 agent 上次自动压缩的时间（WeakMap：agent 释放即回收）。 */
   const lastRun = new WeakMap()
+
+  // ── 工具 / 提示词开关：按 agent 作用域应用 ────────────────────────────────
+  const agentGates = new WeakMap()
+
+  const syncGates = (agent) => {
+    const sessionId = sessionIdOf(agent)
+    try { if (sessionId) recordSyncDebug(sessionId, { gate: 'pre-step', hasCtx: Boolean(agent?.ctx), hasTools: Boolean(agent?.ctx?.tools), deny: getSessionDisabledTools(sessionId) }) } catch {}
+    if (!sessionId || !agent?.ctx) return
+    let gate = agentGates.get(agent)
+    if (!gate) {
+      gate = { denyKey: '', dispose: null, promptInstalled: false }
+      agentGates.set(agent, gate)
+    }
+    const deny = getSessionDisabledTools(sessionId)
+    const key = deny.join('\u0000')
+    if (key !== gate.denyKey) {
+      try {
+        gate.dispose?.()
+      } catch {}
+      gate.dispose = deny.length > 0 && typeof agent.ctx.tools?.restrict === 'function' ? agent.ctx.tools.restrict({ deny }) : null
+      gate.denyKey = key
+      recordAppliedTools(sessionId, deny)
+    }
+    if (!gate.promptInstalled && typeof agent.ctx.on === 'function') {
+      gate.promptInstalled = true
+      agent.ctx.on('system-prompt/assemble', async (assembly, _context, next) => {
+        const result = await next()
+        try {
+          const disabled = new Set(getSessionDisabledPrompts(sessionId))
+          if (disabled.size > 0 && Array.isArray(result.sections)) {
+            result.sections = result.sections.filter((section) => !disabled.has(section.name))
+          }
+          recordInventory(sessionId, {
+            sections: (result.sections || []).map((section) => ({ name: section.name, tokens: Math.ceil(String(section.text || '').length / 4) })),
+            tools: (result.tools || []).map((tool) => ({
+              name: tool.name,
+              description: typeof tool.description === 'string' ? tool.description.slice(0, 160) : undefined,
+              tokens: Math.ceil(JSON.stringify(tool).length / 4),
+            })),
+          })
+        } catch {}
+        return result
+      })
+    }
+  }
+
+  ctx.on('agent/pre-step', async ({ agent }, next) => {
+    try {
+      syncGates(agent)
+    } catch (error) {
+      log('warn', `toggle sync failed: ${error instanceof Error ? error.message : String(error)}`)
+    }
+    return next()
+  })
+
+  ctx.on('agent/created', ({ agent }) => {
+    try {
+      syncGates(agent)
+    } catch {}
+  })
 
   const sessionIdOf = (agent) => agent?.session?.id ?? agent?.sessionId
 

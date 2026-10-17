@@ -97,3 +97,69 @@ export function setControlActive(active, mode) {
   control.active = Boolean(active)
   control.mode = active ? (mode ?? null) : null
 }
+
+// ── 工具 / 提示词开关（当前会话，内存态；重启清空） ────────────────────────
+
+/** sessionId -> Set(tool name) */
+const sessionTools = new Map()
+/** sessionId -> Set(prompt section name) */
+const sessionPrompts = new Map()
+/** sessionId -> 最近一次请求装配后的清单 */
+const inventories = new Map()
+/** sessionId -> 最近一次实际应用的工具黑名单 */
+const applied = new Map()
+
+function toggleSet(map, sessionId, name, enabled) {
+  let set = map.get(sessionId)
+  if (!set) {
+    set = new Set()
+    map.set(sessionId, set)
+  }
+  if (enabled) set.delete(name)
+  else set.add(name)
+  if (set.size === 0) map.delete(sessionId)
+}
+
+export function setSessionToolEnabled(sessionId, name, enabled) {
+  toggleSet(sessionTools, sessionId, name, enabled)
+}
+
+export function setSessionPromptEnabled(sessionId, name, enabled) {
+  toggleSet(sessionPrompts, sessionId, name, enabled)
+}
+
+export function getSessionDisabledTools(sessionId) {
+  return [...(sessionTools.get(sessionId) ?? [])]
+}
+
+export function getSessionDisabledPrompts(sessionId) {
+  return [...(sessionPrompts.get(sessionId) ?? [])]
+}
+
+export function clearSessionToggles(sessionId) {
+  sessionTools.delete(sessionId)
+  sessionPrompts.delete(sessionId)
+}
+
+export function recordInventory(sessionId, inventory) {
+  inventories.set(sessionId, { at: new Date().toISOString(), ...inventory })
+}
+
+export function getInventory(sessionId) {
+  return inventories.get(sessionId) ?? null
+}
+
+export function recordAppliedTools(sessionId, deny) {
+  applied.set(sessionId, { at: new Date().toISOString(), deny: [...deny] })
+}
+
+const syncDebug = new Map()
+export function recordSyncDebug(sessionId, entry) {
+  syncDebug.set(sessionId, { at: new Date().toISOString(), ...entry })
+}
+export function getSyncDebug(sessionId) {
+  return syncDebug.get(sessionId) ?? null
+}
+export function getAppliedTools(sessionId) {
+  return applied.get(sessionId) ?? null
+}

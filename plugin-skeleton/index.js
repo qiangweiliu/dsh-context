@@ -18,6 +18,14 @@ export const name = 'ctx-mon-and-con'
 /** 与 control.js 共享的进程内状态（同一包内相对 import，不涉及 npm 依赖）。 */
 import {
   budgetFor,
+  clearSessionToggles,
+  getAppliedTools,
+  getInventory,
+  getSessionDisabledPrompts,
+  getSessionDisabledTools,
+  getSyncDebug,
+  setSessionPromptEnabled,
+  setSessionToolEnabled,
   control as controlState,
   getSessionBudget,
   listSessionBudgets,
@@ -30,7 +38,7 @@ import {
 export const inject = ['commands', 'tokenMeter']
 
 /** 与 package.json 的 version 保持一致（只用于状态接口的自述）。 */
-const PLUGIN_VERSION = '0.8.2'
+const PLUGIN_VERSION = '0.9.0'
 
 /** 浏览器半侧 client.js 拉的只读状态接口；两处路径必须一致。 */
 const STATUS_PATH = '/api/ctx-mon-and-con/status'
@@ -45,9 +53,12 @@ const DEFAULT_CONFIG = {
   warnAt: 0.75,
   // 达到窗口的多少比例时标记“超限”（骨架里只影响 /ctx 的输出标记，不做拦截）。
   errorAt: 0.9,
+  // 全局禁用的工具名（从每个请求的 tools 里摘掉，schema token 一并省掉）。
+  disabledTools: [],
 }
 
 const CONFIG_KEYS = Object.keys(DEFAULT_CONFIG)
+const NUMERIC_KEYS = ['contextWindowTokens', 'warnAt', 'errorAt']
 
 /**
  * 手写的 Standard Schema（零依赖）。
@@ -60,8 +71,8 @@ function validateConfig(input) {
   if (typeof raw !== 'object' || raw === null || Array.isArray(raw)) {
     return { issues: [{ message: 'config must be an object' }] }
   }
-  const config = { ...DEFAULT_CONFIG }
-  for (const key of CONFIG_KEYS) {
+  const config = { ...DEFAULT_CONFIG, disabledTools: [] }
+  for (const key of NUMERIC_KEYS) {
     const value = raw[key]
     if (value === undefined) continue
     if (typeof value !== 'number' || !Number.isFinite(value)) {
@@ -70,8 +81,23 @@ function validateConfig(input) {
     }
     config[key] = value
   }
+  if (raw.disabledTools !== undefined) {
+    if (!Array.isArray(raw.disabledTools)) {
+      issues.push({ message: 'expected an array of tool names', path: ['disabledTools'] })
+    } else {
+      const names = []
+      for (const candidate of raw.disabledTools) {
+        if (typeof candidate !== 'string' || candidate.length === 0) {
+          issues.push({ message: 'expected a non-empty tool name', path: ['disabledTools'] })
+          break
+        }
+        if (!names.includes(candidate)) names.push(candidate)
+      }
+      config.disabledTools = names
+    }
+  }
   for (const key of Object.keys(raw)) {
-    if (!CONFIG_KEYS.includes(key)) issues.push({ message: 'unknown config key', path: [key] })
+    if (!CONFIG_KEYS.includes(key) && key !== 'disabledTools') issues.push({ message: 'unknown config key', path: [key] })
   }
   if (!Number.isInteger(config.contextWindowTokens) || config.contextWindowTokens <= 0) {
     issues.push({ message: 'expected a positive integer', path: ['contextWindowTokens'] })
@@ -515,6 +541,8 @@ export function apply(ctx, config) {
     return { ...patch, ...ratios }
   }
 
+  let configWrite = null
+
   /** POST 配置：先 202 应答，再在后台让 configEditor 落盘并重挂（重挂会销毁本路由）。 */
   const configHandler = (request, response) => {
     if (request.method !== 'POST') {
@@ -570,6 +598,146 @@ export function apply(ctx, config) {
     })
   }
 
+  // 全局工具黑名单：从 profile 配置读取，限制所有 agent 的可见工具集。
+  ctx.inject(['tools'], (sub) => {
+    const tools = sub?.tools
+    if (!tools || typeof tools.restrict !== 'function') return
+    const install = () => {
+      const deny = Array.isArray(config.disabledTools) ? [...config.disabledTools] : []
+      return deny.length > 0 ? tools.restrict({ deny }) : () => {}
+    }
+    if (typeof sub.effect === 'function') {
+      let dispose
+      sub.effect(
+        () => {
+          dispose = install()
+          return () => {
+            try {
+              dispose?.()
+            } catch {}
+          }
+        },
+        'ctx-mon-and-con: global tool restriction',
+      )
+    } else install()
+  })
+
+  /** 最近一个会话（与 /live 同一口径）。 */
+  const latestSession = () => {
+    if (!sessions || typeof sessions.list !== 'function') return undefined
+    const all = sessions.list()
+    return Array.isArray(all) && all.length > 0 ? all[all.length - 1] : undefined
+  }
+
+  /** GET 当前会话的工具/提示词清单与开关状态。 */
+  const inventoryHandler = (request, response) => {
+    const send = (code, payload) => {
+      response.statusCode = code
+      response.setHeader('content-type', 'application/json; charset=utf-8')
+      response.setHeader('cache-control', 'no-store')
+      response.end(JSON.stringify(payload))
+    }
+    if (request.method !== 'GET') {
+      response.setHeader('allow', 'GET')
+      return send(405, { ok: false, error: 'method not allowed' })
+    }
+    const session = latestSession()
+    const sessionId = session?.id
+    return send(200, {
+      ok: true,
+      sessionId,
+      inventory: sessionId ? getInventory(sessionId) : null,
+      disabledSessionTools: sessionId ? getSessionDisabledTools(sessionId) : [],
+      disabledSessionPrompts: sessionId ? getSessionDisabledPrompts(sessionId) : [],
+      disabledTools: Array.isArray(config.disabledTools) ? config.disabledTools : [],
+      applied: sessionId ? getAppliedTools(sessionId) : null,
+      debug: sessionId ? getSyncDebug(sessionId) : null,
+      configWrite,
+    })
+  }
+
+  /** POST /inventory/toggle {kind, name, layer, enabled}。 */
+  const inventoryToggleHandler = (request, response) => {
+    const send = (code, payload) => {
+      response.statusCode = code
+      response.setHeader('content-type', 'application/json; charset=utf-8')
+      response.end(JSON.stringify(payload))
+    }
+    if (request.method !== 'POST') {
+      response.setHeader('allow', 'POST')
+      return send(405, { ok: false, error: 'method not allowed' })
+    }
+    const chunks = []
+    request.on('data', (chunk) => chunks.push(chunk))
+    request.on('end', () => {
+      let input
+      try {
+        input = JSON.parse(Buffer.concat(chunks).toString('utf8'))
+      } catch {
+        return send(400, { ok: false, error: 'invalid body' })
+      }
+      const kind = input?.kind
+      const layer = input?.layer
+      const name = input?.name
+      const enabled = input?.enabled
+      if (!['tool', 'prompt'].includes(kind) || !['session', 'global'].includes(layer) || typeof name !== 'string' || name.length === 0 || typeof enabled !== 'boolean') {
+        return send(400, { ok: false, error: 'kind/layer/name/enabled are invalid' })
+      }
+      if (layer === 'global' && kind !== 'tool') return send(400, { ok: false, error: 'prompts only support the session layer' })
+      const session = latestSession()
+      if (layer === 'session') {
+        if (!session) return send(409, { ok: false, error: 'no session yet' })
+        if (kind === 'tool') setSessionToolEnabled(session.id, name, enabled)
+        else setSessionPromptEnabled(session.id, name, enabled)
+        return send(202, { ok: true, layer, kind, name, enabled, note: 'applies to the next request' })
+      }
+      const editor = configEditor
+      const entry = editor && typeof editor.entries === 'function' ? editor.entries().find((candidate) => candidate?.options?.id === 'ctx-mon-and-con') : undefined
+      if (!editor || typeof editor.edit !== 'function' || !entry) return send(501, { ok: false, error: 'config editor unavailable in this profile' })
+      const current = Array.isArray(config.disabledTools) ? [...config.disabledTools] : []
+      const next = enabled ? current.filter((item) => item !== name) : current.includes(name) ? current : [...current, name]
+      send(202, { ok: true, layer, kind, name, enabled, note: 'writes profile config; plugin reloads' })
+      void editor
+        .edit(entry, (value) => ({ ...(value ?? {}), disabledTools: next }))
+        .then(() => {
+          configWrite = { at: new Date().toISOString(), disabledTools: next }
+        })
+        .catch((error) => {
+          configWrite = { at: new Date().toISOString(), error: error instanceof Error ? error.message : String(error) }
+        const logger = ctx.logger
+        if (typeof logger?.warn === 'function') logger.warn(`ctx-mon-and-con: inventory write failed: ${error instanceof Error ? error.message : String(error)}`)
+      })
+    })
+  }
+
+  /** POST /inventory/reset {layer:'session'}：清空当前会话的全部开关。 */
+  const inventoryResetHandler = (request, response) => {
+    const send = (code, payload) => {
+      response.statusCode = code
+      response.setHeader('content-type', 'application/json; charset=utf-8')
+      response.end(JSON.stringify(payload))
+    }
+    if (request.method !== 'POST') {
+      response.setHeader('allow', 'POST')
+      return send(405, { ok: false, error: 'method not allowed' })
+    }
+    const chunks = []
+    request.on('data', (chunk) => chunks.push(chunk))
+    request.on('end', () => {
+      let input
+      try {
+        input = JSON.parse(Buffer.concat(chunks).toString('utf8'))
+      } catch {
+        return send(400, { ok: false, error: 'invalid body' })
+      }
+      if (input?.layer !== 'session') return send(400, { ok: false, error: 'only session layer can be reset' })
+      const session = latestSession()
+      if (!session) return send(409, { ok: false, error: 'no session yet' })
+      clearSessionToggles(session.id)
+      return send(202, { ok: true, layer: 'session' })
+    })
+  }
+
   ctx.inject(['webServer'], (sub) => {
     const server = sub?.webServer
     if (!server || typeof server.register !== 'function') return
@@ -579,6 +747,9 @@ export function apply(ctx, config) {
         server.register({ kind: 'exact', path: `${STATUS_PATH}/config`, handler: configHandler }),
         server.register({ kind: 'exact', path: `${STATUS_PATH}/live`, handler: liveHandler }),
         server.register({ kind: 'exact', path: `${STATUS_PATH}/config/preset`, handler: presetHandler }),
+        server.register({ kind: 'exact', path: `${STATUS_PATH}/inventory`, handler: inventoryHandler }),
+        server.register({ kind: 'exact', path: `${STATUS_PATH}/inventory/toggle`, handler: inventoryToggleHandler }),
+        server.register({ kind: 'exact', path: `${STATUS_PATH}/inventory/reset`, handler: inventoryResetHandler }),
       ]
       return () => offs.forEach((off) => off())
     }

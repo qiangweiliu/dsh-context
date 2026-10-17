@@ -77,6 +77,18 @@ window.__ModuleLoader__.load({
       errorLabel: 'Error ratio',
       meterAria: 'ctx budget',
       synced: 'synced',
+      inventoryTitle: 'Tools & prompt sections',
+      inventoryTools: 'Tools',
+      inventoryPrompts: 'Prompt sections',
+      inventoryEmpty: 'No request yet in this session. Send one message, then reopen this page.',
+      inventoryRisk: 'Disabling removes the item from the next request. The model may behave unexpectedly; you can restore everything here.',
+      sessionSwitch: 'session',
+      globalSwitch: 'global',
+      confirmDisable: 'Disable on next request?',
+      confirm: 'Confirm',
+      cancel: 'Cancel',
+      restoreAll: 'Restore all (session)',
+      tokensShort: 'tok',
       promptTokens: 'Prompt',
       toolTokens: 'Tools',
       historyTokens: 'History',
@@ -136,6 +148,18 @@ window.__ModuleLoader__.load({
       errorLabel: '超限比例',
       meterAria: 'ctx 预算',
       synced: '已同步',
+      inventoryTitle: '工具与提示词',
+      inventoryTools: '工具',
+      inventoryPrompts: '提示词 section',
+      inventoryEmpty: '本会话还没有发起过请求。先发一条消息，再回来打开本页。',
+      inventoryRisk: '关闭后该项会从下一次请求里移除，模型行为可能异常；可以在这里一键恢复。',
+      sessionSwitch: '会话',
+      globalSwitch: '全局',
+      confirmDisable: '确认从下一次请求移除？',
+      confirm: '确认',
+      cancel: '取消',
+      restoreAll: '恢复全部（会话）',
+      tokensShort: 'tok',
       promptTokens: '提示词',
       toolTokens: '工具定义',
       historyTokens: '上文',
@@ -330,6 +354,7 @@ window.__ModuleLoader__.load({
       barSegment: { height: '100%', minWidth: '2px' },
       row: { display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: '12px', fontSize: '12.5px' },
       text: { margin: 0, fontSize: '12px', lineHeight: 1.6, color: 'var(--dsw-alias-label-secondary)' },
+      emptyText: { margin: 0, fontSize: '12px', lineHeight: 1.6, color: 'var(--dsw-alias-label-tertiary)' },
       error: { margin: 0, fontSize: '12px', lineHeight: 1.6, color: 'var(--dsw-alias-state-error-primary)' },
       button: { alignSelf: 'flex-start', border: '0.5px solid var(--dsw-alias-border-l2)', background: 'transparent', color: 'inherit', borderRadius: '8px', padding: '4px 10px', fontSize: '12.5px', cursor: 'pointer' },
       field: { display: 'flex', flexDirection: 'column', gap: '4px', fontSize: '12px' },
@@ -598,6 +623,158 @@ window.__ModuleLoader__.load({
       )
     }
 
+    /** 本会话工具 / 提示词 section 清单 + 会话级 / 全局级开关。 */
+    function InventoryCard(props) {
+      const t = props.t
+      const data = props.data || {}
+      const inventory = data.inventory
+      const disabledSessionTools = Array.isArray(data.disabledSessionTools) ? data.disabledSessionTools : []
+      const disabledSessionPrompts = Array.isArray(data.disabledSessionPrompts) ? data.disabledSessionPrompts : []
+      const disabledGlobalTools = Array.isArray(data.disabledTools) ? data.disabledTools : []
+      const [pending, setPending] = react.useState(null)
+      const [busy, setBusy] = react.useState(null)
+
+      const post = (body) => {
+        setBusy(body)
+        fetch(`${STATUS_PATH}/inventory/toggle`, {
+          method: 'POST',
+          headers: { 'content-type': 'application/json' },
+          body: JSON.stringify(body),
+        })
+          .then((response) => response.json().catch(() => ({})))
+          .then(() => {
+            setBusy(null)
+            setTimeout(() => {
+              if (typeof props.reload === 'function') props.reload()
+            }, 900)
+          })
+          .catch(() => setBusy(null))
+      }
+
+      const toggle = (kind, name, layer, enabled) => {
+        if (enabled) {
+          post({ kind, name, layer, enabled: true })
+          return
+        }
+        setPending({ kind, name, layer })
+      }
+
+      const confirm = () => {
+        if (!pending) return
+        post({ ...pending, enabled: false })
+        setPending(null)
+      }
+
+      const restore = () => {
+        fetch(`${STATUS_PATH}/inventory/reset`, {
+          method: 'POST',
+          headers: { 'content-type': 'application/json' },
+          body: JSON.stringify({ layer: 'session' }),
+        })
+          .then((response) => response.json().catch(() => ({})))
+          .then(() => setTimeout(() => props.reload && props.reload(), 500))
+          .catch(() => {})
+      }
+
+      const switchNode = (kind, name, layer, enabled) => {
+        const key = `${kind}:${name}:${layer}`
+        const confirming = pending && pending.kind === kind && pending.name === name && pending.layer === layer
+        const working = busy && busy.kind === kind && busy.name === name && busy.layer === layer
+        if (confirming) {
+          return h(
+            'span',
+            { style: { display: 'inline-flex', gap: '4px', alignItems: 'center' } },
+            h('button', { type: 'button', style: styles.button, onClick: confirm, 'data-ctx-confirm': '1' }, t('confirm')),
+            h('button', { type: 'button', style: styles.button, onClick: () => setPending(null) }, t('cancel')),
+          )
+        }
+        return h(
+          'button',
+          {
+            type: 'button',
+            role: 'switch',
+            'aria-checked': enabled,
+            'data-ctx-switch': key,
+            title: `${t(layer === 'global' ? 'globalSwitch' : 'sessionSwitch')}${enabled ? ' ✓' : ''}`,
+            style: {
+              width: '30px',
+              height: '16px',
+              borderRadius: '999px',
+              border: 'none',
+              padding: '1px',
+              cursor: working ? 'wait' : 'pointer',
+              background: enabled ? 'var(--dsw-static-green-500)' : 'var(--dsw-alias-interactive-bg-hover)',
+              display: 'inline-flex',
+              alignItems: 'center',
+              justifyContent: enabled ? 'flex-end' : 'flex-start',
+              transition: 'background .15s ease',
+              opacity: working ? 0.5 : 1,
+            },
+            onClick: () => toggle(kind, name, layer, !enabled),
+          },
+          h('span', { style: { width: '14px', height: '14px', borderRadius: '50%', background: '#fff', opacity: enabled ? 1 : 0.85 } }),
+        )
+      }
+
+      const row = (children, key) => h('li', { key, style: styles.legendRow }, children)
+
+      const tools = inventory && Array.isArray(inventory.tools) ? inventory.tools.slice() : []
+      for (const name of [...disabledSessionTools, ...disabledGlobalTools]) {
+        if (!tools.some((tool) => tool.name === name)) tools.push({ name, tokens: null, description: undefined })
+      }
+      const sections = inventory && Array.isArray(inventory.sections) ? inventory.sections.slice() : []
+      for (const name of disabledSessionPrompts) {
+        if (!sections.some((section) => section.name === name)) sections.push({ name, tokens: null })
+      }
+
+      const empty = tools.length === 0 && sections.length === 0
+      return h(
+        Card,
+        { title: t('inventoryTitle'), sub: data.sessionId ? String(data.sessionId).slice(0, 8) : undefined },
+        empty ? h('p', { style: styles.emptyText }, t('inventoryEmpty')) : null,
+        !empty
+          ? h(
+              'div',
+              { style: { display: 'flex', flexDirection: 'column', gap: '10px' } },
+              h('div', null, h('p', { style: styles.cardTitle }, t('inventoryTools')), h('ul', { style: styles.legend },
+                tools.map((tool) =>
+                  row(
+                    [
+                      h('span', { key: 'name', style: { ...styles.legendLabel, minWidth: 0, gap: '6px' } },
+                        h('span', { style: { fontFamily: 'ui-monospace, SFMono-Regular, Menlo, monospace', fontSize: '12px' } }, tool.name),
+                        tool.tokens !== null && tool.tokens !== undefined ? h('span', { style: styles.cardSub }, `~${compactTokens(tool.tokens)} ${t('tokensShort')}`) : null,
+                      ),
+                      h('span', { key: 'switches', style: { display: 'inline-flex', gap: '8px', alignItems: 'center' } },
+                        h('span', { style: styles.cardSub }, t('sessionSwitch')), switchNode('tool', tool.name, 'session', !disabledSessionTools.includes(tool.name)),
+                        h('span', { style: styles.cardSub }, t('globalSwitch')), switchNode('tool', tool.name, 'global', !disabledGlobalTools.includes(tool.name)),
+                      ),
+                    ],
+                    tool.name,
+                  ),
+                ),
+              )),
+              h('div', null, h('p', { style: styles.cardTitle }, t('inventoryPrompts')), h('ul', { style: styles.legend },
+                sections.map((section) =>
+                  row(
+                    [
+                      h('span', { key: 'name', style: styles.legendLabel }, section.name),
+                      h('span', { key: 'meta', style: { display: 'inline-flex', gap: '8px', alignItems: 'center' } },
+                        section.tokens !== null && section.tokens !== undefined ? h('span', { style: styles.cardSub }, `~${compactTokens(section.tokens)} ${t('tokensShort')}`) : null,
+                        h('span', { style: styles.cardSub }, t('sessionSwitch')), switchNode('prompt', section.name, 'session', !disabledSessionPrompts.includes(section.name)),
+                      ),
+                    ],
+                    section.name,
+                  ),
+                ),
+              )),
+              h('p', { style: styles.text }, t('inventoryRisk')),
+              h('button', { type: 'button', style: styles.button, onClick: restore }, t('restoreAll')),
+            )
+          : null,
+        h('button', { key: 'reload', type: 'button', style: styles.button, onClick: props.reload }, t('refresh')),
+      )
+    }
+
     function ControlSection(props) {
       const t = props.t
       const control = props.control || {}
@@ -758,6 +935,7 @@ window.__ModuleLoader__.load({
       const t = props.t
       const [state, load] = useStatus(STATUS_PATH)
       const [liveState, reloadLive] = useLive(`${STATUS_PATH}/live`)
+      const [invState, reloadInv] = useLive(`${STATUS_PATH}/inventory`)
       const live = liveState.data
       const data = state.phase === 'ready' ? state.data || {} : null
       const budget = data ? data.budget || {} : {}
@@ -781,7 +959,8 @@ window.__ModuleLoader__.load({
         children.push(
           h('div', { key: 'cols', style: styles.cols }, h(ControlSection, { t, control, onToggled: load }), h(ConfigSection, { t, budget, editable: Boolean(data.configEditable), onSaved: load })),
         )
-        children.push(h('button', { key: 'refresh', type: 'button', style: styles.button, onClick: () => { load(); reloadLive() } }, t('refresh')))
+        children.push(h(InventoryCard, { key: 'inventory', t, data: invState.data, reload: reloadInv }))
+        children.push(h('button', { key: 'refresh', type: 'button', style: styles.button, onClick: () => { load(); reloadLive(); reloadInv() } }, t('refresh')))
       }
       return h('div', { style: styles.root }, children)
     }

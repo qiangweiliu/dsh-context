@@ -26,7 +26,7 @@ DSH 已经内置了完整的上下文管理底座——计量（`ctx.tokenMeter`
 | [`submission/`](submission) | 可直接复制进收录 PR 的条目文件 `qiangweiliu__dsh-context--plugin-skeleton.yml` |
 | [`scripts/verify-uninstall.ps1`](scripts/verify-uninstall.ps1) | 实测「安装 → 生效 → 卸载 → 无残留」：快照对比、残留分类、`-Clean` 清理通用残留 |
 | [`scripts/ui-probe.mjs`](scripts/ui-probe.mjs) | 无头浏览器（Windows Edge + CDP）实测 UI：打开设置、点开「上下文长度」、执行 `/ctx`，抓控制台错误 |
-| [`scripts/ui-probe-ctx.mjs`](scripts/ui-probe-ctx.mjs) · [`ui-check-dock.mjs`](scripts/ui-check-dock.mjs) | 实测侧边栏 `ctx` 整页、面板改预算/一键启用压缩，以及输入框下方 ctx 指示器 |
+| [`scripts/ui-probe-ctx.mjs`](scripts/ui-probe-ctx.mjs) · [`ui-check-dock.mjs`](scripts/ui-check-dock.mjs) · [`ui-check-inventory.mjs`](scripts/ui-check-inventory.mjs) | 实测侧边栏 `ctx` 整页、面板改预算/一键启用压缩、输入框 ctx 指示器，以及工具/提示词开关（会话生效 + 全局持久化） |
 | [`scripts/wsl-install.sh`](scripts/wsl-install.sh) · [`scripts/wsl-uninstall.sh`](scripts/wsl-uninstall.sh) | 在 WSL 的 DSH profile 里安装/卸载并核对残留（含运行时探针说明） |
 
 ## 快速开始
@@ -47,6 +47,7 @@ DSH 已经内置了完整的上下文管理底座——计量（`ctx.tokenMeter`
 - 发 `/ctx 200000` —— 把**本会话**的预算临时改成 200000 tokens；`/ctx reset` 恢复默认
 - 左侧导航的 **`ctx`** —— 整页控制面板：用量/预算/控制状态、可编辑的全局配置、一键启用自动压缩
 - 输入框下方常驻 **`ctx 预算 …`** 指示器（按插件预算算百分比，不改 DSH 自带 HUD）
+- **工具与提示词清单**：每个工具/提示词 section 可分别用「会话 / 全局」开关决定是否参与请求
 - 设置 → **上下文长度** —— 同一块面板
   （装完必须**重启 dsh 进程**；只刷新页面不会加载新插件）
 

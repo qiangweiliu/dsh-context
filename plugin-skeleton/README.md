@@ -39,6 +39,37 @@ DSH（DeepSeek Harness）的**上下文长度管理**插件，分两个平面：
 
 **为什么必须挂在 preset 里**：Web 形态下 `dsh-web-app` 把宿主平面的 `compaction-basic` / `command-compact` / `tool-result-pruner` 全部置为 `disabled`，真正运行的 `compaction` 服务在 `preset-standard` 的 `cordis:group`（`isolate: { compaction: true }`）内。宿主上下文 `ctx.get('compaction')` 拿不到它 —— 面板里的「控制」一行会直接显示当前是否已生效（状态经 `state.js` 在两个半侧之间共享）。
 
+## 卸载与残留（实测）
+
+```powershell
+# 官方通道，等价于插件管理器的 remove_bundle
+& <dsh> plugin --profile desktop remove ctx-mon-and-con
+```
+
+实测结论（隔离 profile 20/20 项通过，真实 desktop profile 同样验过）：
+
+| 场景 | package.json / bundles | pnpm-lock | cordis.patch.yml | 命令/面板 |
+| --- | --- | --- | --- | --- |
+| **冷卸载**（先退出 Desktop） | 恢复原样 | 恢复原样 | 未改动 | 重启后消失 |
+| **热卸载**（Desktop 运行中，`link:` 本地目录安装） | 恢复原样 | 恢复原样 | 未改动 | 重启后消失 |
+| **热卸载**（`github:` / npm 安装） | 恢复原样 | 恢复原样 | 未改动 | 重启后消失 |
+
+热卸载唯一的差异：`link:` 安装会残留一个 `node_modules/ctx-mon-and-con` **junction**（pnpm 在应用占用该目录时删不掉，实测 cold 卸载不会）。它只指向你的插件源码目录、不是真实副本，用下面的脚本 `-Clean` 可以安全移除（`rmdir` 只删 junction，不碰源码）：
+
+```powershell
+# 需要 PowerShell（Windows 自带 powershell.exe 即可）
+powershell -NoProfile -ExecutionPolicy Bypass -File scripts/verify-uninstall.ps1 -Profile desktop -Clean
+```
+
+脚本会：快照 → 安装 → 校验（依赖/bundles/link/组合树）→ 卸载 → 与快照对比 → 分类报告残留。
+不带 `-Clean` 时只报告不清理；带上则顺带清掉三类**通用**残留（任何插件都一样）：
+空 `pnpm-lock.yaml`、空的 `node_modules/.pnpm` 与 `.pnpm-workspace-state-v1.json`、本次操作产生的 `.plugin-manager/logs/operation-*`。
+
+第三方观测到的两个注意点：
+
+- **重启 Desktop 后** `/ctx`、`/ctx-compact` 与设置面板才会真正消失：运行中的进程会保留已加载的模块，卸载只改 profile 配置，不会热卸载已激活的插件。
+- `desktop` profile 由 Electron 独占，CLI 拒绝 `--dump-config`；组合树是否含该行要在非 desktop profile 或应用重启后验证（脚本会自动跳过这一项并说明）。
+
 ## 文件
 
 | 文件 | 作用 |

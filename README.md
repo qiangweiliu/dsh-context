@@ -24,6 +24,7 @@ DSH 已经内置了完整的上下文管理底座——计量（`ctx.tokenMeter`
 | [`research/sample-plugin.md`](research/sample-plugin.md) | 参考实现分析：`billion-context` / `dsh-bloom-theme` / `dshmarket`，以及第三方插件的模块解析结论 |
 | [`docs/market-submission.md`](docs/market-submission.md) | 为什么在插件市场里搜不到、收录规则逐条核对、已实测的安装命令，以及还差的三步 |
 | [`submission/`](submission) | 可直接复制进收录 PR 的条目文件 `qiangweiliu__dsh-context--plugin-skeleton.yml` |
+| [`scripts/verify-uninstall.ps1`](scripts/verify-uninstall.ps1) | 实测「安装 → 生效 → 卸载 → 无残留」：快照对比、残留分类、`-Clean` 清理通用残留 |
 
 ## 快速开始
 
@@ -61,6 +62,9 @@ DSH 已经内置了完整的上下文管理底座——计量（`ctx.tokenMeter`
 
 插件市场（dshmarket）目前搜不到本插件：市场只收录 `awesome-dsh-plugin` 精选目录里的条目。
 原因与收录步骤见 [`docs/market-submission.md`](docs/market-submission.md)。
+
+卸载与残留实测：`& <dsh> plugin --profile desktop remove ctx-mon-and-con`，
+详见 [`scripts/verify-uninstall.ps1`](scripts/verify-uninstall.ps1) 与 [`plugin-skeleton/README.md`](plugin-skeleton/README.md#卸载与残留实测)。
 
 ## 关键结论（写插件前先看）
 

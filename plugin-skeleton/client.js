@@ -93,6 +93,8 @@ window.__ModuleLoader__.load({
       copy: 'Copy',
       copied: 'Copied',
       parameters: 'Parameters (JSON Schema)',
+      source: 'Source',
+      sourceUnknown: 'unidentified',
       edit: 'Edit',
       save: 'Save',
       confirmSave: 'Overwrite the global prompt section on next request?',
@@ -175,6 +177,8 @@ window.__ModuleLoader__.load({
       copy: '复制',
       copied: '已复制',
       parameters: '参数（JSON Schema）',
+      source: '来源',
+      sourceUnknown: '未识别',
       edit: '编辑',
       save: '保存',
       confirmSave: '确认覆盖该提示词 section（全局，下一次请求生效）？',
@@ -661,6 +665,9 @@ window.__ModuleLoader__.load({
     function InventoryCard(props) {
       const t = props.t
       const data = props.data || {}
+      const sources = data.sources || {}
+      const sourceOf = (name) => (sources.sections && sources.sections[name]) || null
+      const toolSourceOf = (name) => (sources.tools && sources.tools[name]) || null
       const inventory = data.inventory
       const disabledSessionTools = Array.isArray(data.disabledSessionTools) ? data.disabledSessionTools : []
       const disabledSessionPrompts = Array.isArray(data.disabledSessionPrompts) ? data.disabledSessionPrompts : []
@@ -883,6 +890,7 @@ window.__ModuleLoader__.load({
           : h('div', { style: styles.detailBox },
               h('div', { style: styles.detailHead },
                 h('span', { style: styles.cardSub }, dirty ? t('overridden') : t('editHint')),
+                h('span', { style: { ...styles.cardSub, fontFamily: 'ui-monospace, monospace', maxWidth: '46%', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }, title: sourceOf(section.name) || t('sourceUnknown') }, `${t('source')}: ${sourceOf(section.name) || t('sourceUnknown')}`),
                 h('span', { style: { display: 'inline-flex', gap: '6px' } },
                   h('button', { type: 'button', style: styles.copyBtn, 'data-ctx-prompt-edit': section.name, onClick: () => { setEditDraft({ name: section.name, text: effectiveText }); setPromptSave(null) }, disabled: promptBusy }, t('edit')),
                   dirty ? h('button', { type: 'button', style: styles.copyBtn, 'data-ctx-prompt-reset': section.name, onClick: () => postPrompt('/reset', { name: section.name }), disabled: promptBusy }, t('resetOriginal')) : null,

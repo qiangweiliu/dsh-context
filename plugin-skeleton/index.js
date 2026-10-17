@@ -16,6 +16,9 @@
 export const name = 'ctx-mon-and-con'
 
 /** 与 control.js 共享的进程内状态（同一包内相对 import，不涉及 npm 依赖）。 */
+import { existsSync, realpathSync, statSync } from 'node:fs'
+import { dirname, join } from 'node:path'
+
 import {
   budgetFor,
   clearSessionToggles,
@@ -39,7 +42,7 @@ import {
 export const inject = ['commands', 'tokenMeter']
 
 /** 与 package.json 的 version 保持一致（只用于状态接口的自述）。 */
-const PLUGIN_VERSION = '0.10.2'
+const PLUGIN_VERSION = '0.11.0'
 
 /** 浏览器半侧 client.js 拉的只读状态接口；两处路径必须一致。 */
 const STATUS_PATH = '/api/ctx-mon-and-con/status'
@@ -143,6 +146,78 @@ export const Config = Object.freeze({
     validate: validateConfig,
   }),
 })
+
+const SOURCE_HINTS = {
+  section(name) {
+    if (name.startsWith('harness:') || name.startsWith('deployment:')) return 'dsh-system-prompt'
+    if (name.startsWith('tools:')) return 'dsh-tools'
+    if (name.startsWith('tool:')) return 'dsh-tools'
+    if (name.startsWith('ui:')) return 'dsh-client-ui-deliverables'
+    if (name === 'plan:policy') return 'dsh-plan-mode'
+    if (name === 'app:web-surface') return 'dsh-web-app'
+    if (name === 'mcp-resource-servers') return 'dsh-mcp'
+    return null
+  },
+  tool(name) {
+    if (name === 'bash') return 'dsh-bash-local'
+    if (['read', 'write', 'edit', 'glob', 'grep', 'read_image'].includes(name)) return 'dsh-client-ui-sidebar-files'
+    if (['job_list', 'job_kill', 'job_output'].includes(name)) return 'dsh-api-job-controller'
+    if (name === 'skill') return 'dsh-client-ui-skill'
+    if (['get_goal', 'create_goal', 'update_goal'].includes(name)) return 'dsh-client-ui-goal'
+    if (name === 'todo_write') return 'dsh-client-ui-plan'
+    if (['subagent', 'subagent_fork', 'list_agents', 'interrupt_agent', 'send_message'].includes(name)) return 'dsh-agent'
+    if (name === 'ask_user_question') return 'dsh-client-ui-input-trigger'
+    return null
+  },
+}
+
+let packagesRootCache
+const packagesRoot = () => {
+  if (packagesRootCache !== undefined) return packagesRootCache
+  packagesRootCache = null
+  const consider = (scopeDirectory) => {
+    for (const marker of ['dsh-system-prompt', 'dsh-tools', 'dsh']) {
+      if (existsSync(join(scopeDirectory, marker, 'package.json'))) {
+        packagesRootCache = scopeDirectory
+        return true
+      }
+    }
+    return false
+  }
+  try {
+    let dir = realpathSync(process.argv[1] ? process.argv[1] : process.cwd())
+    if (existsSync(dir) && !statSync(dir).isDirectory()) dir = dirname(dir)
+    for (let index = 0; index < 20; index += 1) {
+      if (consider(join(dir, '@deepseek-ai'))) break
+      if (consider(join(dir, 'node_modules', '@deepseek-ai'))) break
+      if (consider(dir)) break
+      const parent = dirname(dir)
+      if (parent === dir) break
+      dir = parent
+    }
+  } catch {}
+  return packagesRootCache
+}
+
+const sourceFileFor = (packageName) => {
+  if (typeof packageName !== 'string' || packageName.length === 0) return null
+  const root = packagesRoot()
+  if (!root) return null
+  const file = join(root, packageName, 'lib', 'index.js')
+  return existsSync(file) ? file : null
+}
+
+const sourcesFor = (inventory) => {
+  const sections = {}
+  const tools = {}
+  for (const section of inventory && Array.isArray(inventory.sections) ? inventory.sections : []) {
+    sections[section.name] = sourceFileFor(SOURCE_HINTS.section(section.name))
+  }
+  for (const tool of inventory && Array.isArray(inventory.tools) ? inventory.tools : []) {
+    tools[tool.name] = sourceFileFor(SOURCE_HINTS.tool(tool.name))
+  }
+  return { sections, tools }
+}
 
 const numberFormat = new Intl.NumberFormat('en-US')
 
@@ -669,7 +744,10 @@ export function apply(ctx, config) {
     return send(200, {
       ok: true,
       sessionId,
-      inventory: sessionId ? getInventory(sessionId) : null,
+      inventory: sessionId ? (() => {
+        const found = getInventory(sessionId)
+        return found ? { ...found, sources: sourcesFor(found) } : null
+      })() : null,
       disabledSessionTools: sessionId ? getSessionDisabledTools(sessionId) : [],
       disabledSessionPrompts: sessionId ? getSessionDisabledPrompts(sessionId) : [],
       disabledTools: Array.isArray(config.disabledTools) ? config.disabledTools : [],

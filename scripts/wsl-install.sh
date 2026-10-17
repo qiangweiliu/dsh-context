@@ -1,0 +1,78 @@
+#!/usr/bin/env bash
+# 在 WSL 的 DSH profile 里安装 ctx-mon-and-con，并核对安装结果。
+#
+# 用法（在 Windows 侧执行）：
+#   wsl.exe -d Ubuntu-24.04 -e bash /mnt/c/Users/40410/Desktop/context/scripts/wsl-install.sh [profile]
+#
+# 默认 profile=web；插件源码默认取本仓库的 plugin-skeleton，并复制到 ~/dsh-plugins/ctx-mon-and-con
+# （不直接在 /mnt/c 上 link 安装：drvfs 上的符号链接/性能都不适合做 profile 依赖）。
+set -uo pipefail
+export PATH="$HOME/.local/bin:$PATH"
+
+PROFILE="${1:-web}"
+SRC="/mnt/c/Users/40410/Desktop/context/plugin-skeleton"
+DEST="$HOME/dsh-plugins/ctx-mon-and-con"
+P="$HOME/.dsh/profiles/$PROFILE"
+PKG="ctx-mon-and-con"
+
+say() { printf '%s\n' "$*"; }
+fail() { printf 'FAIL - %s\n' "$*"; FAILED=1; }
+ok() { printf 'ok   - %s\n' "$*"; }
+FAILED=0
+
+say "== 目标 profile=$PROFILE 源码=$SRC"
+[ -d "$P" ] || { say "找不到 profile 目录：$P"; exit 1; }
+
+say "== 1. 同步插件源码到 ~/dsh-plugins"
+rm -rf "$DEST"
+mkdir -p "$HOME/dsh-plugins"
+cp -a "$SRC" "$DEST"
+rm -rf "$DEST/test/deps"
+ok "源码已复制到 $DEST（$(ls "$DEST" | wc -l) 个条目）"
+
+say "== 2. 离线自检（不需要 DSH 运行）"
+if (cd "$DEST" && node test/static.mjs >/tmp/ctx-static.log 2>&1); then
+  ok "static.mjs：$(tail -1 /tmp/ctx-static.log)"
+else
+  fail "static.mjs 失败，见 /tmp/ctx-static.log"
+fi
+
+say "== 3. 检查装前状态"
+if node -e "const p=require('$P/package.json'); const b=p.dsh?.profile?.bundles??[]; const d=Object.keys(p.dependencies??{}); process.exit(b.includes('$PKG')||d.includes('$PKG')?0:1)"; then
+  say "插件已经装过：先执行 dsh plugin --profile $PROFILE remove $PKG 再重跑"
+  exit 1
+fi
+ok "装前未安装"
+
+say "== 4. 安装"
+if dsh plugin --profile "$PROFILE" add "$DEST" >/tmp/ctx-install.log 2>&1; then
+  ok "dsh plugin add 成功：$(grep -E '^\+\s' /tmp/ctx-install.log | tail -1 | xargs)"
+else
+  fail "dsh plugin add 失败："; tail -5 /tmp/ctx-install.log; exit 1
+fi
+
+say "== 5. 核对安装结果"
+node -e "
+const fs=require('fs');
+const p=JSON.parse(fs.readFileSync('$P/package.json','utf8'));
+const b=p.dsh?.profile?.bundles??[]; const d=Object.keys(p.dependencies??{});
+console.log('ok   - bundles 含该包: '+b.includes('$PKG'));
+console.log('ok   - dependencies 含该包: '+d.includes('$PKG'));
+" || fail "package.json 核对失败"
+[ -e "$P/node_modules/$PKG" ] && ok "node_modules/$PKG 存在（link -> $(readlink -f "$P/node_modules/$PKG")）" || fail "node_modules/$PKG 不存在"
+
+ROWS=$(dsh --profile "$PROFILE" --dump-config 2>/tmp/ctx-dump.err | grep -c 'ctx-mon-and-con' || true)
+[ "$ROWS" -gt 0 ] && ok "--dump-config 出现该行（$ROWS 处）" || fail "--dump-config 未出现该行（见 /tmp/ctx-dump.err）"
+grep -q 'patch: entry' /tmp/ctx-dump.err && say "（提示：cordis.patch.yml 里有既存的 patch 警告，与本插件无关）"
+
+VER=$(node -e "console.log(require('$P/node_modules/$PKG/package.json').version)")
+say "== 安装完成：$PKG@$VER 已进入 profile $PROFILE"
+say ""
+say "接下来（需要时）："
+say "  - 启动/重启该 profile 的 dsh，会话里发 /ctx 看用量"
+say "  - 想测自动压缩：把控制行挂进 agent preset："
+say "      - id: ctx-mon-and-con-control"
+say "        name: 'ctx-mon-and-con/control'"
+say "        config: { mode: idle }"
+say "  - 卸载：dsh plugin --profile $PROFILE remove $PKG"
+exit 0

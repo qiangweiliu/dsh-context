@@ -25,6 +25,7 @@ DSH 已经内置了完整的上下文管理底座——计量（`ctx.tokenMeter`
 | [`docs/market-submission.md`](docs/market-submission.md) | 为什么在插件市场里搜不到、收录规则逐条核对、已实测的安装命令，以及还差的三步 |
 | [`submission/`](submission) | 可直接复制进收录 PR 的条目文件 `qiangweiliu__dsh-context--plugin-skeleton.yml` |
 | [`scripts/verify-uninstall.ps1`](scripts/verify-uninstall.ps1) | 实测「安装 → 生效 → 卸载 → 无残留」：快照对比、残留分类、`-Clean` 清理通用残留 |
+| [`scripts/wsl-install.sh`](scripts/wsl-install.sh) · [`scripts/wsl-uninstall.sh`](scripts/wsl-uninstall.sh) | 在 WSL 的 DSH profile 里安装/卸载并核对残留（含运行时探针说明） |
 
 ## 快速开始
 

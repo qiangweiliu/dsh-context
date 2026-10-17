@@ -116,8 +116,19 @@ $dsh = "C:\Users\40410\AppData\Local\Programs\DeepSeek Harness\resources\runtime
 
 > ⚠️ 不要在做安装实验时把 `DSH_HOME` 指到插件目录内部（例如 `<插件>/test/dsh-home`）：profile 的 `node_modules` 会 link 回插件目录，而 profile 又在插件目录里，形成自我引用的无限嵌套。实验用 profile 放到插件目录之外。
 
-### 方式 C：手工（不推荐）
+### WSL（Linux 侧的 dsh）
 
+```bash
+# 在 WSL 里执行；<repo> 换成本仓库路径
+bash /mnt/c/<repo>/scripts/wsl-install.sh web      # 安装并核对
+bash /mnt/c/<repo>/scripts/wsl-uninstall.sh web    # 卸载并核对残留
+```
+
+脚本把插件复制到 `~/dsh-plugins/ctx-mon-and-con` 再执行 `dsh plugin add`（不在 `/mnt/c` 上做 link，避免 drvfs 链接与性能问题）。
+实测结论：安装后 `--dump-config` 出现该行、运行时 `/api/ctx-mon-and-con/status` 返回 200、客户端 bundle 正常下发；
+卸载后 package.json / bundles / lock / 组合树均无该插件，pnpm 在 Linux 上会残留一个指向插件目录的 symlink，脚本会自动移除。
+
+### 方式 C：手工（不推荐）
 等价于管理器做的事：在 profile 目录 `pnpm add link:<插件目录>`，再手动把 `ctx-mon-and-con` 追加到 profile `package.json` 的 `dsh.profile.bundles`。漏掉任何一步插件都不会成为 profile 层（`dsh.bundle.patch` 解析失败时只作为普通依赖安装，管理器会打印 `declares no dsh.bundle` 警告并跳过）。
 
 ## 验证

@@ -1,6 +1,6 @@
 {
-  "name": "dsh-context-guard",
-  "version": "0.1.0",
+  "name": "context-monitor-and-control",
+  "version": "0.2.0",
   "description": "DSH 上下文长度管理最小插件：/ctx 显示当前会话 token 用量与预算，并在设置里提供只读面板",
   "type": "module",
   "main": "index.js",

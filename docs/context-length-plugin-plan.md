@@ -199,7 +199,7 @@ ctx-length/                       # 放在工作区，不要放在 $DSH_HOME 下
 ```json
 {
   "name": "@local/ctx-length",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "private": true,
   "type": "module",
   "exports": {
@@ -348,17 +348,17 @@ window.__ModuleLoader__.load({
 
 | 文件 | 作用 |
 |---|---|
-| `index.js` | Cordis 插件：`name` / `inject = ['commands','tokenMeter']` / 手写 Standard Schema 的 `Config` / `apply(ctx, config)`；注册 `/ctx` 命令 + `GET /api/context-guard/status` 只读路由 |
+| `index.js` | Cordis 插件：`name` / `inject = ['commands','tokenMeter']` / 手写 Standard Schema 的 `Config` / `apply(ctx, config)`；注册 `/ctx` 命令 + `GET /api/context-monitor-and-control/status` 只读路由 |
 | `client.js` | `window.__ModuleLoader__.load({ id, factory })`，`apply(ctx)` 里 `ctx.slots.inject('settings.section', …)` 注册面板 |
-| `dsh.bundle.patch.yml` | `- insert: [- id: context-guard, name: dsh-context-guard]` |
+| `dsh.bundle.patch.yml` | `- insert: [- id: context-monitor-and-control, name: context-monitor-and-control]` |
 | `package.json` | `dsh.bundle.patch` + `dsh.client` + `exports["./client"]` + `files` |
 | `locale/{en,zh}.json`、`icon.svg` | 插件管理与设置页的展示元数据 |
 | `test/static.mjs` | 26 项纯离线静态检查（导出形状、Config 拒绝非法/未知键、exports、locale、client mock） |
 | `test/smoke.mjs` | 39 项真实 Cordis 集成冒烟（加载、命令注册与输出、路由 200/405、卸载清理） |
-| `test/dump-config-smoke.txt` | 隔离 profile 的 `--dump-config` 实证：`# == dsh-context-guard` 后跟着插入行 |
+| `test/dump-config-smoke.txt` | 隔离 profile 的 `--dump-config` 实证：`# == context-monitor-and-control` 后跟着插入行 |
 
 实测结果：`node test/static.mjs` **26/26**、`node test/smoke.mjs` **39/39**、`node --check` 通过、
-`--dump-config` 里能看到 `- id: context-guard / name: dsh-context-guard`（说明 bundle 组合层真的生效）。
+`--dump-config` 里能看到 `- id: context-monitor-and-control / name: context-monitor-and-control`（说明 bundle 组合层真的生效）。
 
 它刻意**不 import 任何 npm 包**，也**不自动压缩**——只读测量，用作起点。
 

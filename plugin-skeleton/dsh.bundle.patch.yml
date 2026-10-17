@@ -1,6 +1,6 @@
-# dsh-context-guard 的 bundle patch 层。
+# context-monitor-and-control 的 bundle patch 层。
 #
-# 当 profile 的 package.json 里 dsh.profile.bundles 列出 dsh-context-guard 时
+# 当 profile 的 package.json 里 dsh.profile.bundles 列出 context-monitor-and-control 时
 # 本层自动挂载（`dsh plugin --profile desktop add <本目录>` 会做这件事）；loader
 # 从 profile 的 node_modules 解析 `name`。
 #
@@ -13,5 +13,5 @@
 # cordis.patch.yml 里对 preset-standard 做整段 config 覆盖（patch 是整段替换、
 # 不做深合并）。
 - insert:
-    - id: context-guard
-      name: dsh-context-guard
+    - id: context-monitor-and-control
+      name: context-monitor-and-control

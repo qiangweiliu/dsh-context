@@ -260,14 +260,14 @@ React 走平台共享模块表：`require("react")`（不打包 React）。这�
 
 ## 6. 骨架交付（`C:\Users\40410\Desktop\context\plugin-skeleton\`）
 
-`dsh-context-guard` 0.1.0，零依赖 ESM，节点半边 + 浏览器半边完整：
+`context-monitor-and-control` 0.2.0，零依赖 ESM，节点半边 + 浏览器半边完整：
 
 ```
 plugin-skeleton/
 ├─ package.json                 # type/module/exports/main/engines + dsh.bundle.patch + dsh.client + files
 ├─ index.js                     # Cordis 插件：name/inject/Config(手写 Standard Schema)/apply
-├─ dsh.bundle.patch.yml         # - insert: id context-guard, name dsh-context-guard
-├─ client.js                    # __ModuleLoader__.load({id:'dsh-context-guard', factory}) + settings.section 面板
+├─ dsh.bundle.patch.yml         # - insert: id context-monitor-and-control, name context-monitor-and-control
+├─ client.js                    # __ModuleLoader__.load({id:'context-monitor-and-control', factory}) + settings.section 面板
 ├─ icon.svg                     # 原创占位图标（≤256KiB）
 ├─ locale/en.json, locale/zh.json  # meta.title / meta.description
 └─ test/
@@ -282,7 +282,7 @@ plugin-skeleton/
 
 - **`index.js` 不 import 任何 npm 包**：本地目录安装是 `link:`，插件真实路径在 profile 之外（或插件目录），裸导入解析不到宿主依赖；只用 `ctx.*` 服务最稳。
 - `inject = ["commands", "tokenMeter"]`；`/ctx` 命令用 `ctx.tokenMeter.measure(agent.session)` 取用量，按 `contextWindowTokens`/`warnAt`/`errorAt` 输出状态；`/ctx <n>` 用 `WeakMap` 临时覆盖本会话预算。
-- `ctx.inject(["webServer"], sub => sub.webServer.register({ kind: "exact", path: "/api/context-guard/status", handler }))`：无 Web server 的 profile 也能挂载；面板只读该 JSON。
+- `ctx.inject(["webServer"], sub => sub.webServer.register({ kind: "exact", path: "/api/context-monitor-and-control/status", handler }))`：无 Web server 的 profile 也能挂载；面板只读该 JSON。
 - 配置校验是手写同步 Standard Schema（`Config["~standard"].validate`），因此**不需要 zod**。
 - 卸载靠 `ctx.effect` / `register` 返回的 disposer，`smoke.mjs` 验证了卸载后命令注销。
 
@@ -293,7 +293,7 @@ plugin-skeleton/
 ### 7.1 Desktop 插件管理（`plugin_manager` 工具）
 
 ```json
-{ "action": "install_bundle", "target": "C:\\path\\to\\dsh-context-guard" }
+{ "action": "install_bundle", "target": "C:\\path\\to\\context-monitor-and-control" }
 ```
 
 `dsh-plugin-manager` 的工具 `plugin_manager` 支持 `list_plugins` / `list_bundles` / `set_plugin` / `set_bundle` / `install_bundle` / `remove_bundle` / `list_version_exemptions` / `set_version_exemption`（`lib/types/tools.js` L78）；`install_bundle` 的 target 是安装 spec（本地目录/包名/git/tarball），需要 `danger-full-access` 权限；失败返回 `nextStep`。
@@ -302,9 +302,9 @@ plugin-skeleton/
 
 ```powershell
 $dsh = "C:\Users\40410\AppData\Local\Programs\DeepSeek Harness\resources\runtime\cli\bin\dsh.cmd"
-& $dsh plugin --profile desktop add "C:\path\to\dsh-context-guard"
+& $dsh plugin --profile desktop add "C:\path\to\context-monitor-and-control"
 # 卸载
-& $dsh plugin --profile desktop remove dsh-context-guard
+& $dsh plugin --profile desktop remove context-monitor-and-control
 # 确认 bundle 层
 & $dsh --profile desktop --dump-config
 ```
@@ -318,18 +318,18 @@ $dsh = "C:\Users\40410\AppData\Local\Programs\DeepSeek Harness\resources\runtime
 
 ✅ 隔离实测（DSH_HOME 指向临时目录，profile 名 `smoke`，**已删除安装产物**）：
 
-- `add` 成功输出 `+ dsh-context-guard 0.1.0 <- ..\..\..\..`；
-- profile `package.json` 出现 `"dependencies": { "dsh-context-guard": "link:C:/Users/40410/Desktop/context/plugin-skeleton" }`，`dsh.profile.bundles` 末尾追加 `"dsh-context-guard"`；
+- `add` 成功输出 `+ context-monitor-and-control 0.2.0 <- ..\..\..\..`；
+- profile `package.json` 出现 `"dependencies": { "context-monitor-and-control": "link:C:/Users/40410/Desktop/context/plugin-skeleton" }`，`dsh.profile.bundles` 末尾追加 `"context-monitor-and-control"`；
 - `--dump-config` 末尾：
   ```
-  # == dsh-context-guard
-  - id: context-guard
-    name: dsh-context-guard
+  # == context-monitor-and-control
+  - id: context-monitor-and-control
+    name: context-monitor-and-control
   ```
-- 从 profile `package.json` 锚点 `require.resolve('dsh-context-guard')` → `...\profiles\smoke\node_modules\dsh-context-guard\index.js`，`import` 得到 `{ Config, apply, inject, name }`、`name: context-guard`、`inject: ["commands","tokenMeter"]`；
+- 从 profile `package.json` 锚点 `require.resolve('context-monitor-and-control')` → `...\profiles\smoke\node_modules\context-monitor-and-control\index.js`，`import` 得到 `{ Config, apply, inject, name }`、`name: context-monitor-and-control`、`inject: ["commands","tokenMeter"]`；
 - `remove` 后 `dsh.profile.bundles` 回落到 `["@deepseek-ai/dsh-base"]`（CLI 自动同步 manifest）。
 
-> ⚠️ 安装实验的 profile 不要放在插件目录内部（`<插件>/test/dsh-home` 这种）：profile `node_modules` link 回插件目录、插件目录里又包含 profile → 自我引用无限嵌套（pnpm 的 `.ignored/dsh-context-guard/test/dsh-home/...` 会越套越深）。本次实验产生过该污染，已用 `cmd /c rmdir /s /q` 清理（不跟随 junction/链接）。
+> ⚠️ 安装实验的 profile 不要放在插件目录内部（`<插件>/test/dsh-home` 这种）：profile `node_modules` link 回插件目录、插件目录里又包含 profile → 自我引用无限嵌套（pnpm 的 `.ignored/context-monitor-and-control/test/dsh-home/...` 会越套越深）。本次实验产生过该污染，已用 `cmd /c rmdir /s /q` 清理（不跟随 junction/链接）。
 
 ### 7.3 验证清单（离线优先）
 
@@ -338,10 +338,10 @@ node test/static.mjs          # 26/26
 node --check index.js; node --check client.js
 node test/prepare-deps.mjs    # 可选，解出 cordis 到 test/deps
 node test/smoke.mjs           # 39/39
-& $dsh --profile desktop --dump-config   # 看 `# == dsh-context-guard`
+& $dsh --profile desktop --dump-config   # 看 `# == context-monitor-and-control`
 ```
 
-重启 Desktop 后：发 `/ctx` 看输出；设置 → 上下文 看面板；`GET /api/context-guard/status` 看 JSON。
+重启 Desktop 后：发 `/ctx` 看输出；设置 → 上下文 看面板；`GET /api/context-monitor-and-control/status` 看 JSON。
 
 ### 7.4 Web 形态的硬限制（方案必须写清楚）
 

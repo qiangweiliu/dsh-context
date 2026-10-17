@@ -1,10 +1,10 @@
-# dsh-context-guard
+# context-monitor-and-control
 
 DSH（DeepSeek Harness）的**上下文长度管理**最小插件骨架：一条 `/ctx` 命令读出当前会话的 token 用量与预算，外加一个只读的设置面板；不修改会话、不自动压缩，适合作为"做一个 DSH 插件"的起点。
 
 - `/ctx` —— 显示 `总用量 / 预算 / 百分比 / 状态`；`/ctx 200000` 临时改本会话预算。
 - 设置 → 上下文 —— 显示配置的预算、阈值和最近的 `/ctx` 测量值。
-- `GET /api/context-guard/status` —— 面板用的只读 JSON 接口（无 Web server 的 profile 自动跳过）。
+- `GET /api/context-monitor-and-control/status` —— 面板用的只读 JSON 接口（无 Web server 的 profile 自动跳过）。
 
 ## 文件
 
@@ -12,7 +12,7 @@ DSH（DeepSeek Harness）的**上下文长度管理**最小插件骨架：一条
 | --- | --- |
 | `index.js` | Cordis 插件（node 侧）：`name` / `inject` / `Config`（手写 Standard Schema）/ `apply(ctx, config)`，注册 `/ctx` 命令与状态路由 |
 | `client.js` | 浏览器半侧：`window.__ModuleLoader__.load({ id, factory })` 形态，`apply(ctx)` 注册 `settings.section` 面板 |
-| `dsh.bundle.patch.yml` | bundle 层：往 profile 的 boot graph `insert` 一行 `id: context-guard` |
+| `dsh.bundle.patch.yml` | bundle 层：往 profile 的 boot graph `insert` 一行 `id: context-monitor-and-control` |
 | `locale/{en,zh}.json` | 插件市场/插件管理页显示的 `meta.title` / `meta.description` |
 | `icon.svg` | 插件图标（`exports["./icon"]` 暴露） |
 | `test/static.mjs` | 纯离线静态检查（26 项，不需要 DSH） |
@@ -31,10 +31,10 @@ DSH（DeepSeek Harness）的**上下文长度管理**最小插件骨架：一条
 在会话里让 agent 调用 `plugin_manager` 工具：
 
 ```json
-{ "action": "install_bundle", "target": "C:\\path\\to\\dsh-context-guard" }
+{ "action": "install_bundle", "target": "C:\\path\\to\\context-monitor-and-control" }
 ```
 
-`install_bundle` 的 `target` 可以是本地目录、包名、git 或 tarball；本地目录会被记录成 `link:` 依赖。该工具需要 `danger-full-access` 权限。装好后 profile 的 `dsh.profile.bundles` 末尾会追加 `dsh-context-guard`（"新装组合包默认启用"），因此**同名 id 的配置优先级可能变化**。
+`install_bundle` 的 `target` 可以是本地目录、包名、git 或 tarball；本地目录会被记录成 `link:` 依赖。该工具需要 `danger-full-access` 权限。装好后 profile 的 `dsh.profile.bundles` 末尾会追加 `context-monitor-and-control`（"新装组合包默认启用"），因此**同名 id 的配置优先级可能变化**。
 
 ### 方式 B：命令行
 
@@ -42,7 +42,7 @@ DSH（DeepSeek Harness）的**上下文长度管理**最小插件骨架：一条
 
 ```powershell
 $dsh = "C:\Users\40410\AppData\Local\Programs\DeepSeek Harness\resources\runtime\cli\bin\dsh.cmd"
-& $dsh plugin --profile desktop add "C:\path\to\dsh-context-guard"
+& $dsh plugin --profile desktop add "C:\path\to\context-monitor-and-control"
 ```
 
 底层是 `pnpm add`（本地目录 → `link:`）+ 校验本包的 `dsh.bundle.patch` + 把包名追加进 `package.json` 的 `dsh.profile.bundles`。pnpm 退出码非 0 或超时会回滚 `package.json` 与 `pnpm-lock.yaml`。
@@ -51,7 +51,7 @@ $dsh = "C:\Users\40410\AppData\Local\Programs\DeepSeek Harness\resources\runtime
 
 ### 方式 C：手工（不推荐）
 
-等价于管理器做的事：在 profile 目录 `pnpm add link:<插件目录>`，再手动把 `dsh-context-guard` 追加到 profile `package.json` 的 `dsh.profile.bundles`。漏掉任何一步插件都不会成为 profile 层（`dsh.bundle.patch` 解析失败时只作为普通依赖安装，管理器会打印 `declares no dsh.bundle` 警告并跳过）。
+等价于管理器做的事：在 profile 目录 `pnpm add link:<插件目录>`，再手动把 `context-monitor-and-control` 追加到 profile `package.json` 的 `dsh.profile.bundles`。漏掉任何一步插件都不会成为 profile 层（`dsh.bundle.patch` 解析失败时只作为普通依赖安装，管理器会打印 `declares no dsh.bundle` 警告并跳过）。
 
 ## 验证
 
@@ -67,19 +67,19 @@ $dsh = "C:\Users\40410\AppData\Local\Programs\DeepSeek Harness\resources\runtime
 2. **确认 bundle 层生效**：
 
    ```powershell
-   & $dsh --profile desktop --dump-config | Select-String -Pattern 'dsh-context-guard' -Context 2
+   & $dsh --profile desktop --dump-config | Select-String -Pattern 'context-monitor-and-control' -Context 2
    # 期望看到：
-   # # == dsh-context-guard
-   # - id: context-guard
-   #   name: dsh-context-guard
+   # # == context-monitor-and-control
+   # - id: context-monitor-and-control
+   #   name: context-monitor-and-control
    ```
 
-3. **重启 Desktop** 后在会话里发 `/ctx`（命令直接在 UI 命令面执行，不产生模型消息），再打开 设置 → 上下文 看面板；面板拉的接口是 `GET /api/context-guard/status`。
+3. **重启 Desktop** 后在会话里发 `/ctx`（命令直接在 UI 命令面执行，不产生模型消息），再打开 设置 → 上下文 看面板；面板拉的接口是 `GET /api/context-monitor-and-control/status`。
 
 4. **调参**：在 profile 的 `cordis.patch.yml` 里按 id 覆盖（patch 是**整段替换**，不做深合并）：
 
    ```yaml
-   - id: context-guard
+   - id: context-monitor-and-control
      config:
        contextWindowTokens: 200000
        warnAt: 0.7
@@ -89,8 +89,8 @@ $dsh = "C:\Users\40410\AppData\Local\Programs\DeepSeek Harness\resources\runtime
 ## 卸载
 
 ```powershell
-& $dsh plugin --profile desktop remove dsh-context-guard
-# 或 plugin_manager: { "action": "remove_bundle", "target": "dsh-context-guard" }
+& $dsh plugin --profile desktop remove context-monitor-and-control
+# 或 plugin_manager: { "action": "remove_bundle", "target": "context-monitor-and-control" }
 ```
 
 会同步从 `dsh.profile.bundles` 里移除（管理器负责），重启 Desktop 后命令/面板/路由消失。

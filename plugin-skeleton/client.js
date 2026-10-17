@@ -1,5 +1,5 @@
 /**
- * dsh-context-guard — 浏览器半侧（最小设置面板）
+ * context-monitor-and-control — 浏览器半侧（最小设置面板）
  *
  * 形态与宿主官方插件一致：bundle 只注册 factory，真正的模块体（词典注册、
  * slot 注册、React 组件）都在 factory 闭包里，首次被物化时才执行。
@@ -11,7 +11,7 @@
  * 本模块，读取 exports.inject 等服务依赖，再调用 apply(ctx)。
  */
 window.__ModuleLoader__.load({
-  id: 'dsh-context-guard',
+  id: 'context-monitor-and-control',
   factory: (require) => {
     var module = { exports: {} }
     var exports = module.exports
@@ -21,9 +21,9 @@ window.__ModuleLoader__.load({
     const react = require('react')
 
     // 词典命名空间；与 node 半侧无关，只影响面板上的文案。
-    const NS = 'contextGuard'
+    const NS = 'contextMonitorAndControl'
     // node 半侧 index.js 里的 webServer 路由（同路径，改一处要同步另一处）。
-    const STATUS_PATH = '/api/context-guard/status'
+    const STATUS_PATH = '/api/context-monitor-and-control/status'
 
     const en = {
       nav: 'Context',
@@ -155,7 +155,7 @@ window.__ModuleLoader__.load({
     }
 
     /** 设置面板本体：挂载即拉一次状态，失败可重试。 */
-    function ContextGuardPanel(props) {
+    function ContextMonitorPanel(props) {
       const t = props.t
       const [state, setState] = react.useState({ phase: 'loading' })
 
@@ -226,7 +226,7 @@ window.__ModuleLoader__.load({
      * @param {unknown} ctx - 浏览器 cordis 上下文（已注入 slots/locale）
      */
     function apply(ctx) {
-      ctx.effect(() => ctx.locale.register(NS, { en, zh }), 'dsh-context-guard: dictionaries')
+      ctx.effect(() => ctx.locale.register(NS, { en, zh }), 'context-monitor-and-control: dictionaries')
       const t = ctx.locale.bind(NS)
       // settings.section 是官方设置外壳声明的列表 slot；注册后设置导航里多一页。
       ctx.effect(
@@ -235,15 +235,15 @@ window.__ModuleLoader__.load({
             ctx.slots.register(
               {
                 name: 'settings.section',
-                id: 'context-guard',
+                id: 'context-monitor-and-control',
                 order: 40,
                 label: () => t('nav'),
                 locale: NS,
               },
-              ContextGuardPanel,
+              ContextMonitorPanel,
             ),
           ),
-        'dsh-context-guard: settings section',
+        'context-monitor-and-control: settings section',
       )
     }
 

@@ -134,6 +134,38 @@ ctx 整页底部新增「工具与提示词」卡，展示**当前会话**这次
 > 会话级开关依赖 **`ctx-mon-and-con/control` 已挂进 agent preset**（见上一节）；没挂时开关能存，
 > 但不会应用到请求。
 
+## 标准安装与更新（DSH 官方方式）
+
+包已带标准清单：`dsh.manifestVersion: 1`、`dsh.bundle.patch`、`dsh.client.platform: "web"`，可直接用官方 CLI 安装/更新。
+
+```bash
+# 安装（GitHub，和市场条目同一 spec）
+dsh plugin --profile web add "github:qiangweiliu/dsh-context#path:/plugin-skeleton"
+
+# 更新（官方命令）
+dsh plugin --profile web update ctx-mon-and-con
+# 若 GitHub 依赖需要重新解析到最新 commit，重复一次 add 即可（幂等覆盖）
+dsh plugin --profile web add "github:qiangweiliu/dsh-context#path:/plugin-skeleton"
+```
+
+npm 渠道已就绪但**尚未发布**（registry 上 `ctx-mon-and-con` 名字可用；发布需要 npm 登录）：
+
+```bash
+npm login
+npm publish --access public
+dsh plugin --profile web add ctx-mon-and-con
+```
+
+已实测（WSL 临时 profile，验证后删除）：
+
+| 渠道 | 命令 | 结果 |
+|---|---|---|
+| GitHub spec | `dsh plugin add github:qiangweiliu/dsh-context#path:/plugin-skeleton` | ✅ 装上 0.12.2，profile 依赖切换为 github spec，`--dump-config` 可见行 |
+| 官方 update | `dsh plugin update ctx-mon-and-con` | ✅ exit 0（无新 commit 时 "Already up to date"） |
+| npm pack | `npm pack` | ✅ 产物含 index/control/client/state/locale/icon/bundle patch |
+| npm tarball 安装 | `dsh plugin add ./ctx-mon-and-con-0.12.2.tgz` | ✅ 等价于发布后的 registry 安装 |
+
+> 标准安装只挂**宿主行**；控制半侧（自动压缩）仍需按上文手动把 `ctx-mon-and-con/control` 挂进 agent preset。
 ## 重启后哪些状态保留
 
 | 状态 | 存储位置 | 关闭 DSH 再启动 |

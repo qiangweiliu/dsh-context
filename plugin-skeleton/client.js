@@ -534,8 +534,45 @@ window.__ModuleLoader__.load({
       return [state, load]
     }
 
+    // ── 用量活动事件：会话内容变化（流式输出/发消息/切换会话）时通知刷新，2s 节流 ──
+    const usageListeners = new Set()
+    let usageTimer = null
+    let usageLast = 0
+    const USAGE_THROTTLE_MS = 2000
+    function emitUsageActivity() {
+      for (const listener of usageListeners) {
+        try {
+          listener()
+        } catch {}
+      }
+    }
+    function notifyUsageActivity() {
+      const now = Date.now()
+      const wait = Math.max(0, USAGE_THROTTLE_MS - (now - usageLast))
+      if (wait === 0) {
+        usageLast = now
+        emitUsageActivity()
+        return
+      }
+      if (usageTimer !== null) return
+      usageTimer = setTimeout(() => {
+        usageTimer = null
+        usageLast = Date.now()
+        emitUsageActivity()
+      }, wait)
+    }
+    function subscribeUsageActivity(listener) {
+      usageListeners.add(listener)
+      return () => usageListeners.delete(listener)
+    }
+    function useUsageActivity() {
+      const [tick, setTick] = react.useState(0)
+      react.useEffect(() => subscribeUsageActivity(() => setTick((value) => value + 1)), [])
+      return tick
+    }
+
     /** 打开页面时同步一次 /live；重新可见/窗口聚焦或点刷新时再同步，不做定时轮询。 */
-    function useLive(path) {
+    function useLive(path, refreshKey) {
       const [state, setState] = react.useState({ data: null, at: null })
       const reload = react.useCallback(() => {
         fetch(path, { headers: { accept: 'application/json' } })
@@ -556,7 +593,7 @@ window.__ModuleLoader__.load({
           document.removeEventListener('visibilitychange', onVisible)
           window.removeEventListener('focus', onVisible)
         }
-      }, [reload])
+      }, [reload, refreshKey])
       return [state, reload]
     }
 
@@ -569,6 +606,7 @@ window.__ModuleLoader__.load({
       const [open, setOpen] = react.useState(false)
       const [hovered, setHovered] = react.useState(false)
       const rootRef = react.useRef(null)
+      const usageTick = useUsageActivity()
 
       const fetchLive = react.useCallback(() => {
         if (!sessionId) return
@@ -601,6 +639,11 @@ window.__ModuleLoader__.load({
       react.useEffect(() => {
         if (open) fetchLive()
       }, [open, fetchLive])
+
+      // 会话内容变化（节流后）自动刷新触发器。
+      react.useEffect(() => {
+        if (usageTick > 0) fetchLive()
+      }, [usageTick, fetchLive])
 
       react.useEffect(() => {
         if (!open) return undefined
@@ -1240,10 +1283,11 @@ window.__ModuleLoader__.load({
       const t = props.t
       const [state, load] = useStatus(STATUS_PATH)
       const activeSession = useCurrentSession()
+      const usageTick = useUsageActivity()
       const livePath = activeSession ? `${STATUS_PATH}/live?sessionId=${encodeURIComponent(activeSession)}` : `${STATUS_PATH}/live`
       const inventoryPath = activeSession ? `${STATUS_PATH}/inventory?sessionId=${encodeURIComponent(activeSession)}` : `${STATUS_PATH}/inventory`
-      const [liveState, reloadLive] = useLive(livePath)
-      const [invState, reloadInv] = useLive(inventoryPath)
+      const [liveState, reloadLive] = useLive(livePath, usageTick)
+      const [invState, reloadInv] = useLive(inventoryPath, usageTick)
       const live = liveState.data
       const data = state.phase === 'ready' ? state.data || {} : null
       const budget = data ? data.budget || {} : {}
@@ -1270,7 +1314,7 @@ window.__ModuleLoader__.load({
         children.push(h(InventoryCard, { key: 'inventory', t, data: invState.data, reload: reloadInv, sessionId: activeSession }))
         children.push(h('button', { key: 'refresh', type: 'button', style: styles.button, onClick: () => { load(); reloadLive(); reloadInv() } }, t('refresh')))
       }
-      return h('div', { style: styles.root }, children)
+      return h('div', { style: styles.root, 'data-ctx-panel': '1' }, children)
     }
 
     function CtxPage(props) {
@@ -1307,6 +1351,22 @@ window.__ModuleLoader__.load({
     /** @param {unknown} ctx - 浏览器 cordis 上下文（slots / locale） */
     function apply(ctx) {
       ctx.effect(() => ctx.locale.register(NS, { en, zh }), 'ctx-mon-and-con: dictionaries')
+
+      // 事件驱动刷新：监听会话区域的 DOM 变化（流式输出、消息更新、切换会话），2s 节流。
+      // 忽略本插件自己的 UI（dock/面板），避免自触发循环。
+      ctx.effect(() => {
+        if (typeof MutationObserver !== 'function' || !document.body) return () => {}
+        const observer = new MutationObserver((records) => {
+          for (const record of records) {
+            const target = record.target.nodeType === 1 ? record.target : record.target.parentElement
+            if (target && typeof target.closest === 'function' && (target.closest('[data-ctx-dock]') || target.closest('[data-ctx-panel]'))) continue
+            notifyUsageActivity()
+            return
+          }
+        })
+        observer.observe(document.body, { subtree: true, childList: true, characterData: true })
+        return () => observer.disconnect()
+      }, 'ctx-mon-and-con: usage activity observer')
       if (typeof ctx.inject === 'function') ctx.inject(['sessions'], (sub) => {
         sessionService = sub?.sessions ?? null
         if (typeof sub.effect === 'function') sub.effect(() => () => { sessionService = null }, 'ctx-mon-and-con: sessions presence')

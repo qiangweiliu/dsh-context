@@ -183,6 +183,9 @@ check('main 页组件是函数', typeof bySlot('main').component === 'function',
 const panelEntry = bySlot('sidebar.panellist').definition ?? {}
 check('client 注册 sidebar.panellist', panelEntry.name === 'sidebar.panellist' && panelEntry.id === 'ctx', JSON.stringify(panelEntry))
 check('sidebar.panellist 标题是 ctx', panelEntry.label?.() === 'ctx', panelEntry.label?.())
+const dockEntry = bySlot('conversation.composer.dock').definition ?? {}
+check('client 注册 composer dock 指示器', dockEntry.name === 'conversation.composer.dock' && dockEntry.id === 'ctx-usage', JSON.stringify(dockEntry))
+check('dock 指示器组件是函数', typeof bySlot('conversation.composer.dock').component === 'function', typeof bySlot('conversation.composer.dock').component)
 check('sidebar.panellist 图标组件是函数', typeof bySlot('sidebar.panellist').component === 'function', typeof bySlot('sidebar.panellist').component)
 
 const failed = checks.filter((entry) => !entry.ok)

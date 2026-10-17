@@ -36,6 +36,32 @@ ctx —— 上下文长度控制
 > 只刷新页面不会重新扫描新装的插件。`Ctrl+C` 停掉 `dsh --profile web` 再启动即可。
 > 也可以用 `scripts/ui-probe.mjs` / `scripts/ui-probe-ctx.mjs` 无头验证（见仓库根 README）。
 
+## 输入框下方的 ctx 指示器（与 DSH 内置 HUD 的关系）
+
+注册了 `conversation.composer.dock`，在输入框下方、DSH 自带的占用条旁边多一行：
+
+```
+ctx 预算 128,000 · 9,258 (7.2%)
+```
+
+- 这行**按插件预算算百分比**（9,258 / 128,000 = 7.2%）。
+- DSH 自带那块 `上下文已用 4% ~9.3K / 262K` **保持原样**：它显示的是模型真实窗口（262K）与官方
+  tokenMeter 投影，插件没有覆盖它。两者口径不同是刻意的——插件不应该篡改宿主 HUD。
+- 指示器只在**已选中会话的 composer** 上渲染；空白首页（Hero）没有会话，不显示。
+- 点侧栏 `ctx` 图标可打开整页面板看明细。
+
+## 一键启用自动压缩（让压缩也按插件预算）
+
+面板的控制区带一个按钮：
+
+- **启用自动压缩（写入 agent preset）** —— 把 `ctx-mon-and-con/control` 行写进 `preset-standard`
+  的 compaction 组（走宿主 `ctx.configEditor`，写进 profile 的 patch 层），重挂后
+  `control.active=true`，轮末超预算即压缩。
+- **停用自动压缩（移除 preset 行）** —— 把该行移除。
+
+写入的是 **preset-standard 的整段 config 快照**，这是 DSH 的既定行为；DSH 升级 preset 后
+需要按新默认重新点一次或手工同步。默认 `mode: idle`：轮末检查、超预算就压。
+
 ## 三条功能
 
 | # | 功能 | 怎么用 |
@@ -112,7 +138,7 @@ powershell -NoProfile -ExecutionPolicy Bypass -File scripts/verify-uninstall.ps1
 | `dsh.bundle.patch.yml` | bundle 层：往 profile 的 boot graph `insert` 一行 `id: ctx-mon-and-con` |
 | `locale/{en,zh}.json` | 插件市场/插件管理页显示的 `meta.title` / `meta.description` |
 | `icon.svg` | 插件图标（`exports["./icon"]` 暴露） |
-| `test/static.mjs` | 纯离线静态检查（38 项，不需要 DSH） |
+| `test/static.mjs` | 纯离线静态检查（40 项，不需要 DSH） |
 | `test/smoke.mjs` | 用真实 Cordis 的集成冒烟测试（43 项，需先 `node test/prepare-deps.mjs`） |
 | `test/control.mjs` | 控制半侧的离线测试（33 项：预算来源、idle/pre-step/notify、重试、cooldown、命令、状态回写、卸载） |
 | `test/prepare-deps.mjs` | 从 app.asar 离线解出 cordis/cosmokit 到 `test/deps/`（交付不带第三方副本） |
@@ -167,7 +193,7 @@ bash /mnt/c/<repo>/scripts/wsl-uninstall.sh web    # 卸载并核对残留
 1. **离线自检**（不启动 DSH）：
 
    ```powershell
-   node test/static.mjs        # 38/38：导出形状、Config 校验、exports 解析、locale、client mock、control 形状
+   node test/static.mjs        # 40/40：导出形状、Config 校验、exports 解析、locale、client mock、control 形状
    node --check index.js; node --check control.js; node --check client.js
    node test/prepare-deps.mjs  # 可选：从 app.asar 解出 cordis，第一次需要
    node test/smoke.mjs         # 43/43：真实 Cordis 里加载、/ctx 与 reset、状态路由、卸载清理

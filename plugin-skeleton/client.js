@@ -73,6 +73,14 @@ window.__ModuleLoader__.load({
       defaultBudget: 'Default budget (tokens)',
       warnLabel: 'Warn ratio',
       errorLabel: 'Error ratio',
+      dockBudget: 'ctx budget',
+      controlEnable: 'Enable auto-compaction (writes the agent preset)',
+      controlDisable: 'Disable auto-compaction (removes the preset row)',
+      controlPresetHint: 'Writes one row into preset-standard; the preset config becomes a profile override.',
+      controlBusy: 'Applying…',
+      controlWriteFailed: 'Could not update the agent preset',
+      controlEnabled: 'Auto-compaction is now enforced with this budget.',
+      controlDisabled: 'Auto-compaction row removed from the agent preset.',
     }
 
     const zh = {
@@ -118,6 +126,14 @@ window.__ModuleLoader__.load({
       defaultBudget: '默认预算（tokens）',
       warnLabel: '警告比例',
       errorLabel: '超限比例',
+      dockBudget: 'ctx 预算',
+      controlEnable: '启用自动压缩（写入 agent preset）',
+      controlDisable: '停用自动压缩（移除 preset 行）',
+      controlPresetHint: '会往 preset-standard 里加一行；preset 配置会变成 profile 覆盖层。',
+      controlBusy: '正在应用…',
+      controlWriteFailed: '更新 agent preset 失败',
+      controlEnabled: '自动压缩已启用，按当前预算执行。',
+      controlDisabled: '已从 agent preset 移除自动压缩行。',
     }
 
     /** 必需服务（浏览器 cordis 的 fiber inject）。 */
@@ -322,6 +338,134 @@ window.__ModuleLoader__.load({
       )
     }
 
+    /** 控制半侧状态 + 一键把控制行写进 agent preset / 移除。 */
+    function ControlSection(props) {
+      const t = props.t
+      const control = props.control || {}
+      const [state, setState] = react.useState({ kind: 'idle' })
+
+      const toggle = (enable) => {
+        setState({ kind: 'saving', enable })
+        fetch(`${STATUS_PATH}/config/preset`, {
+          method: 'POST',
+          headers: { 'content-type': 'application/json' },
+          body: JSON.stringify({ enable }),
+        })
+          .then(async (response) => {
+            const payload = await response.json().catch(() => ({}))
+            if (response.status !== 202 || !payload.ok) throw new Error(payload.error || `HTTP ${response.status}`)
+            const deadline = Date.now() + 10000
+            for (;;) {
+              await new Promise((resolve) => setTimeout(resolve, 500))
+              try {
+                const status = await (await fetch(STATUS_PATH)).json()
+                if (status && status.control && status.control.active === enable) return true
+              } catch {}
+              if (Date.now() > deadline) return false
+            }
+          })
+          .then((applied) => {
+            setState({ kind: 'idle' })
+            if (!applied) {
+              setState({ kind: 'error', message: t('controlWriteFailed') })
+              return
+            }
+            setState({ kind: 'notice', message: enable ? t('controlEnabled') : t('controlDisabled') })
+            if (typeof props.onToggled === 'function') props.onToggled()
+          })
+          .catch((failure) => setState({ kind: 'error', message: `${t('controlWriteFailed')}: ${String((failure && failure.message) || failure)}` }))
+      }
+
+      const children = [
+        h('p', { key: 'text', style: styles.text }, `${t('control')}: ${control.active ? t('controlReady') : t('controlMissing')}`),
+      ]
+      if (control.active && control.lastCompaction) {
+        children.push(
+          h(
+            'p',
+            { key: 'last', style: styles.text },
+            `${t('controlLast')}: ${formatTokens(control.lastCompaction.before)} → ${formatTokens(control.lastCompaction.after)} ${t('tokens')} · ${formatTime(control.lastCompactionAt)}`,
+          ),
+        )
+      }
+      if (control.presetMountable) {
+        children.push(h('p', { key: 'hint', style: styles.tag }, t('controlPresetHint')))
+        const enable = !control.active
+        children.push(
+          h(
+            'button',
+            {
+              key: 'toggle',
+              type: 'button',
+              style: styles.button,
+              disabled: state.kind === 'saving',
+              onClick: () => toggle(enable),
+            },
+            state.kind === 'saving' ? t('controlBusy') : enable ? t('controlEnable') : t('controlDisable'),
+          ),
+        )
+      }
+      if (state.kind === 'error') children.push(h('p', { key: 'error', style: styles.error }, state.message))
+      if (state.kind === 'notice') children.push(h('p', { key: 'notice', style: styles.text }, state.message))
+      return h('div', { style: { display: 'flex', flexDirection: 'column', gap: '8px' } }, children)
+    }
+
+    /** 输入框下方的常驻小指示器：插件预算 + 当前会话实时占用。 */
+    function CtxDock(props) {
+      const t = props.t
+      const sessionId = props.sessionId || (props.runtime && props.runtime.sessionId) || undefined
+      const [data, setData] = react.useState(null)
+
+      react.useEffect(() => {
+        if (!sessionId) return undefined
+        let cancelled = false
+        let timer
+        const tick = () => {
+          fetch(`${STATUS_PATH}/live?sessionId=${encodeURIComponent(String(sessionId))}`, { headers: { accept: 'application/json' } })
+            .then((response) => (response.ok ? response.json() : null))
+            .then((payload) => {
+              if (!cancelled && payload && payload.ok) setData(payload)
+            })
+            .catch(() => {})
+            .finally(() => {
+              if (!cancelled) timer = setTimeout(tick, 3000)
+            })
+        }
+        tick()
+        return () => {
+          cancelled = true
+          clearTimeout(timer)
+        }
+      }, [sessionId])
+
+      const budget = data && typeof data.budget === 'number' ? data.budget : null
+      const used = data && typeof data.used === 'number' ? data.used : null
+      const ratio = data && typeof data.ratio === 'number' ? data.ratio : null
+      const color = ratio === null ? 'var(--dsw-alias-label-tertiary)' : ratio >= 0.9 ? 'var(--dsw-alias-state-error-primary)' : ratio >= 0.75 ? 'var(--dsw-alias-state-warning-primary)' : 'var(--dsw-alias-label-tertiary)'
+      const parts = [`ctx ${t('budget')}`]
+      if (budget !== null) parts.push(formatTokens(budget))
+      if (used !== null) parts.push(`· ${formatTokens(used)} (${ratio === null ? '—' : formatPercent(ratio)})`)
+      return h(
+        'div',
+        {
+          'data-ctx-dock': '1',
+          style: {
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            gap: '6px',
+            fontSize: '11.5px',
+            lineHeight: '16px',
+            color,
+            padding: '2px 0',
+            fontVariantNumeric: 'tabular-nums',
+          },
+          title: used !== null && budget !== null ? `${formatTokens(used)} / ${formatTokens(budget)} tokens` : undefined,
+        },
+        h('span', null, parts.join(' ')),
+      )
+    }
+
     /** 共享面板：设置分区与整页都用它。 */
     function CtxPanel(props) {
       const t = props.t
@@ -356,18 +500,7 @@ window.__ModuleLoader__.load({
           ),
         )
         const control = data.control || {}
-        children.push(
-          h('p', { key: 'control', style: styles.text }, `${t('control')}: ${control.active ? t('controlReady') : t('controlMissing')}`),
-        )
-        if (control.active && control.lastCompaction) {
-          children.push(
-            h(
-              'p',
-              { key: 'control-last', style: styles.text },
-              `${t('controlLast')}: ${formatTokens(control.lastCompaction.before)} → ${formatTokens(control.lastCompaction.after)} ${t('tokens')} · ${formatTime(control.lastCompactionAt)}`,
-            ),
-          )
-        }
+        children.push(h(ControlSection, { key: 'control', t, control, onToggled: load }))
         const measurements = Array.isArray(data.measurements) ? data.measurements : []
         children.push(h('h3', { key: 'recent-title', style: styles.cardTitle }, t('recent')))
         if (measurements.length === 0) {
@@ -437,6 +570,11 @@ window.__ModuleLoader__.load({
           { name: 'sidebar.panellist', id: PANEL_ID, order: 20, locale: NS, label: () => t('panel') },
           CtxIcon,
         ),
+      )
+
+      // 3) 输入框下方常驻指示器：插件预算 + 当前会话实时占用
+      ctx.slots.inject('conversation.composer.dock', () =>
+        ctx.slots.register({ name: 'conversation.composer.dock', id: 'ctx-usage', order: 10, locale: NS, inject: face }, CtxDock),
       )
     }
 

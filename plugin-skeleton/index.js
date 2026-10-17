@@ -30,7 +30,7 @@ import {
 export const inject = ['commands', 'tokenMeter']
 
 /** 与 package.json 的 version 保持一致（只用于状态接口的自述）。 */
-const PLUGIN_VERSION = '0.5.0'
+const PLUGIN_VERSION = '0.6.0'
 
 /** 浏览器半侧 client.js 拉的只读状态接口；两处路径必须一致。 */
 const STATUS_PATH = '/api/ctx-mon-and-con/status'
@@ -239,10 +239,131 @@ export function apply(ctx, config) {
       lastCompaction: controlState.last,
       compactionVisible: visible,
       presetRow: 'ctx-mon-and-con/control',
+      ...presetMountState(),
       hint: controlState.active
         ? 'control row is mounted and enforcing the budget'
         : 'mount ctx-mon-and-con/control inside the agent preset (Settings → Agent preset → compaction group)',
     }
+  }
+
+  // 会话查找与预设挂载：给「实时占用」指示器与「启用自动压缩」按钮用。
+  let sessions = null
+  ctx.inject(['sessions'], (sub) => {
+    sessions = sub?.sessions ?? null
+    if (typeof sub.effect === 'function') sub.effect(() => () => { sessions = null }, 'ctx-mon-and-con: sessions presence')
+  })
+
+  const requestUrl = (request) => new URL(request.url ?? '/', 'http://localhost')
+
+  /** GET 实时占用：按 sessionId 找到 Session，用 tokenMeter 现场测量。 */
+  const liveHandler = (request, response) => {
+    const send = (code, payload) => {
+      response.statusCode = code
+      response.setHeader('content-type', 'application/json; charset=utf-8')
+      response.setHeader('cache-control', 'no-store')
+      response.end(JSON.stringify(payload))
+    }
+    if (request.method !== 'GET') {
+      response.setHeader('allow', 'GET')
+      return send(405, { ok: false, error: 'method not allowed' })
+    }
+    const sessionId = requestUrl(request).searchParams.get('sessionId') ?? ''
+    const session = sessions && typeof sessions.get === 'function' ? sessions.get(sessionId) : undefined
+    if (!session) return send(404, { ok: false, error: 'unknown session' })
+    let used = null
+    try {
+      const measurement = ctx.tokenMeter.measure(session)
+      used = typeof measurement?.totalTokens === 'number' ? measurement.totalTokens : null
+    } catch {}
+    const budget = budgetFor(sessionId, config.contextWindowTokens)
+    return send(200, {
+      ok: true,
+      sessionId,
+      used,
+      budget,
+      ratio: typeof used === 'number' && budget > 0 ? used / budget : null,
+    })
+  }
+
+  /** 找到 agent preset 行；只有存在 preset-standard 的组合才能一键挂控制行。 */
+  const findPresetEntry = () => {
+    const editor = configEditor
+    if (!editor || typeof editor.entries !== 'function') return null
+    return editor.entries().find((entry) => entry?.options?.id === 'preset-standard') ?? null
+  }
+
+  const CONTROL_ROW_ID = 'ctx-mon-and-con-control'
+  const CONTROL_ROW = Object.freeze({ id: CONTROL_ROW_ID, name: 'ctx-mon-and-con/control', config: { mode: 'idle' } })
+
+  /** 读取 preset 里压缩组是否已经挂了我们的控制行。 */
+  const presetMountState = () => {
+    const entry = findPresetEntry()
+    if (!entry) return { presetMountable: false, presetMounted: false }
+    const plugins = Array.isArray(entry.options?.config?.plugins) ? entry.options.config.plugins : []
+    const group = plugins.find((row) => row && row.id === 'compaction' && Array.isArray(row.config))
+    return {
+      presetMountable: true,
+      presetMounted: Boolean(group && group.config.some((row) => row && row.id === CONTROL_ROW_ID)),
+    }
+  }
+
+  /** 只复制路径上的对象/数组，保留 !!js 解析出来的函数与其他行原样。 */
+  const mutatePreset = (current, enable) => {
+    const base = current && typeof current === 'object' ? current : {}
+    const plugins = Array.isArray(base.plugins) ? base.plugins.slice() : []
+    let index = plugins.findIndex((row) => row && row.id === 'compaction')
+    if (index < 0) {
+      if (!enable) return { ...base, plugins }
+      plugins.push({
+        id: 'compaction',
+        name: 'cordis:group',
+        group: true,
+        isolate: { compaction: true, toolResultPruner: true },
+        config: [],
+      })
+      index = plugins.length - 1
+    }
+    const group = plugins[index] && typeof plugins[index] === 'object' ? plugins[index] : {}
+    const children = Array.isArray(group.config) ? group.config.filter((row) => !(row && row.id === CONTROL_ROW_ID)) : []
+    if (enable) children.push(CONTROL_ROW)
+    plugins[index] = { ...group, config: children }
+    return { ...base, plugins }
+  }
+
+  /** POST /config/preset {enable:boolean}：把控制行写进 preset-standard 或移除。 */
+  const presetHandler = (request, response) => {
+    const send = (code, payload) => {
+      response.statusCode = code
+      response.setHeader('content-type', 'application/json; charset=utf-8')
+      response.end(JSON.stringify(payload))
+    }
+    if (request.method !== 'POST') {
+      response.setHeader('allow', 'POST')
+      return send(405, { ok: false, error: 'method not allowed' })
+    }
+    const editor = configEditor
+    const entry = findPresetEntry()
+    if (!editor || typeof editor.edit !== 'function' || !entry) {
+      return send(501, { ok: false, error: 'agent preset is not editable in this profile' })
+    }
+    const chunks = []
+    request.on('data', (chunk) => chunks.push(chunk))
+    request.on('end', () => {
+      let input
+      try {
+        input = JSON.parse(Buffer.concat(chunks).toString('utf8'))
+      } catch {
+        return send(400, { ok: false, error: 'invalid body' })
+      }
+      if (typeof input?.enable !== 'boolean') return send(400, { ok: false, error: 'enable must be a boolean' })
+      send(202, { ok: true, accepted: { enable: input.enable } })
+      void editor
+        .edit(entry, (current) => mutatePreset(current, input.enable))
+        .catch((error) => {
+          const logger = ctx.logger
+          if (typeof logger?.warn === 'function') logger.warn(`ctx-mon-and-con: preset write failed: ${error instanceof Error ? error.message : String(error)}`)
+        })
+    })
   }
 
   // 浏览器半侧（client.js）通过这个只读接口取预算与最近测量值。
@@ -368,12 +489,13 @@ export function apply(ctx, config) {
     const server = sub?.webServer
     if (!server || typeof server.register !== 'function') return
     const register = () => {
-      const offStatus = server.register({ kind: 'exact', path: STATUS_PATH, handler: statusHandler })
-      const offConfig = server.register({ kind: 'exact', path: `${STATUS_PATH}/config`, handler: configHandler })
-      return () => {
-        offConfig()
-        offStatus()
-      }
+      const offs = [
+        server.register({ kind: 'exact', path: STATUS_PATH, handler: statusHandler }),
+        server.register({ kind: 'exact', path: `${STATUS_PATH}/config`, handler: configHandler }),
+        server.register({ kind: 'exact', path: `${STATUS_PATH}/live`, handler: liveHandler }),
+        server.register({ kind: 'exact', path: `${STATUS_PATH}/config/preset`, handler: presetHandler }),
+      ]
+      return () => offs.forEach((off) => off())
     }
     if (typeof sub.effect === 'function') sub.effect(register, 'ctx-mon-and-con: routes')
     else register()

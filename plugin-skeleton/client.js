@@ -87,7 +87,8 @@ window.__ModuleLoader__.load({
       confirmDisable: 'Disable on next request?',
       confirm: 'Confirm',
       cancel: 'Cancel',
-      restoreAll: 'Restore all (session)',
+      restoreAll: 'Restore all',
+      restoreConfirm: 'Clears session toggles, global prompt edits and global tool disables. Continue?',
       tokensShort: 'tok',
       copy: 'Copy',
       copied: 'Copied',
@@ -168,7 +169,8 @@ window.__ModuleLoader__.load({
       confirmDisable: '确认从下一次请求移除？',
       confirm: '确认',
       cancel: '取消',
-      restoreAll: '恢复全部（会话）',
+      restoreAll: '恢复全部',
+      restoreConfirm: '将清除：会话开关、全局提示词覆盖、全局工具禁用。确认？',
       tokensShort: 'tok',
       copy: '复制',
       copied: '已复制',
@@ -671,6 +673,7 @@ window.__ModuleLoader__.load({
       const [editDraft, setEditDraft] = react.useState(null)
       const [promptSave, setPromptSave] = react.useState(null)
       const [promptBusy, setPromptBusy] = react.useState(false)
+      const [restorePending, setRestorePending] = react.useState(false)
       const [localEdits, setLocalEdits] = react.useState({})
 
       const post = (body) => {
@@ -708,11 +711,14 @@ window.__ModuleLoader__.load({
         fetch(`${STATUS_PATH}/inventory/reset`, {
           method: 'POST',
           headers: { 'content-type': 'application/json' },
-          body: JSON.stringify({ layer: 'session' }),
+          body: JSON.stringify({ layer: 'all' }),
         })
           .then((response) => response.json().catch(() => ({})))
-          .then(() => setTimeout(() => props.reload && props.reload(), 500))
-          .catch(() => {})
+          .then(() => {
+            setRestorePending(false)
+            setTimeout(() => props.reload && props.reload(), 1800)
+          })
+          .catch(() => setRestorePending(false))
       }
 
       const copy = (key, text) => {
@@ -950,8 +956,15 @@ window.__ModuleLoader__.load({
                 open.prompts ? h('ul', { style: styles.inventoryList }, sections.map(promptRow)) : null,
               ),
               h('p', { style: styles.text }, t('inventoryRisk')),
-              h('button', { type: 'button', style: styles.button, onClick: restore }, t('restoreAll')),
-              h('button', { type: 'button', style: styles.button, 'data-ctx-prompt-reset-all': '1', onClick: () => postPrompt('/reset', {}), disabled: promptBusy }, t('restoreAllPrompts')),
+              restorePending
+                ? h(
+                    'div',
+                    { style: { display: 'flex', gap: '6px', alignItems: 'center', flexWrap: 'wrap' } },
+                    h('span', { style: styles.cardSub }, t('restoreConfirm')),
+                    h('button', { type: 'button', style: styles.button, 'data-ctx-restore-confirm': '1', onClick: restore }, t('confirm')),
+                    h('button', { type: 'button', style: styles.button, onClick: () => setRestorePending(false) }, t('cancel')),
+                  )
+                : h('button', { type: 'button', style: styles.button, 'data-ctx-restore-all': '1', onClick: () => setRestorePending(true) }, t('restoreAll')),
             )
           : null,
         h('button', { key: 'reload', type: 'button', style: styles.button, onClick: props.reload }, t('refresh')),

@@ -39,7 +39,7 @@ import {
 export const inject = ['commands', 'tokenMeter']
 
 /** 与 package.json 的 version 保持一致（只用于状态接口的自述）。 */
-const PLUGIN_VERSION = '0.10.0'
+const PLUGIN_VERSION = '0.10.1'
 
 /** 浏览器半侧 client.js 拉的只读状态接口；两处路径必须一致。 */
 const STATUS_PATH = '/api/ctx-mon-and-con/status'
@@ -755,11 +755,26 @@ export function apply(ctx, config) {
       } catch {
         return send(400, { ok: false, error: 'invalid body' })
       }
-      if (input?.layer !== 'session') return send(400, { ok: false, error: 'only session layer can be reset' })
-      const session = latestSession()
-      if (!session) return send(409, { ok: false, error: 'no session yet' })
-      clearSessionToggles(session.id)
-      return send(202, { ok: true, layer: 'session' })
+      const layer = input?.layer
+      if (!['session', 'global', 'all'].includes(layer)) return send(400, { ok: false, error: 'layer must be session, global or all' })
+      if (layer === 'session' || layer === 'all') {
+        const session = latestSession()
+        if (!session) return send(409, { ok: false, error: 'no session yet' })
+        clearSessionToggles(session.id)
+      }
+      if (layer === 'global' || layer === 'all') {
+        const editor = configEditor
+        const entry = editor && typeof editor.entries === 'function' ? editor.entries().find((candidate) => candidate?.options?.id === 'ctx-mon-and-con') : undefined
+        if (!editor || typeof editor.edit !== 'function' || !entry) return send(501, { ok: false, error: 'config editor unavailable in this profile' })
+        send(202, { ok: true, layer })
+        void editor
+          .edit(entry, (value) => ({ ...(value ?? {}), disabledTools: [], promptOverrides: {} }))
+          .catch((error) => {
+            promptWrite = { at: new Date().toISOString(), error: error instanceof Error ? error.message : String(error) }
+          })
+        return
+      }
+      return send(202, { ok: true, layer })
     })
   }
 

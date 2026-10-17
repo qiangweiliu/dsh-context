@@ -74,9 +74,17 @@ check(
 )
 const controlValidate = control.Config['~standard'].validate
 const controlDefault = controlValidate({})
-check('control 默认配置带默认值', !controlDefault.issues && controlDefault.value?.mode === 'idle' && controlDefault.value?.maxContextTokens === 100000, JSON.stringify(controlDefault))
+check(
+  'control 默认配置带默认值',
+  !controlDefault.issues && controlDefault.value?.mode === 'idle' && controlDefault.value?.maxContextTokens === 0 && controlDefault.value?.maxAttempts === 2,
+  JSON.stringify(controlDefault),
+)
 const controlBadMode = controlValidate({ mode: 'nope' })
 check('control 非法 mode 被拒绝', Array.isArray(controlBadMode.issues) && controlBadMode.issues.some((issue) => issue.path?.join('.') === 'mode'), JSON.stringify(controlBadMode.issues))
+const controlBadBudget = controlValidate({ maxContextTokens: -1 })
+check('control 负预算被拒绝', Array.isArray(controlBadBudget.issues) && controlBadBudget.issues.some((issue) => issue.path?.join('.') === 'maxContextTokens'), JSON.stringify(controlBadBudget.issues))
+const controlBadAttempts = controlValidate({ maxAttempts: 0 })
+check('control maxAttempts 越界被拒绝', Array.isArray(controlBadAttempts.issues) && controlBadAttempts.issues.some((issue) => issue.path?.join('.') === 'maxAttempts'), JSON.stringify(controlBadAttempts.issues))
 const controlBadKey = controlValidate({ nope: 1 })
 check('control 未知配置键被拒绝', Array.isArray(controlBadKey.issues) && controlBadKey.issues.length > 0, JSON.stringify(controlBadKey.issues))
 

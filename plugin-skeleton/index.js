@@ -15,11 +15,22 @@
 
 export const name = 'ctx-mon-and-con'
 
+/** 与 control.js 共享的进程内状态（同一包内相对 import，不涉及 npm 依赖）。 */
+import {
+  budgetFor,
+  control as controlState,
+  getSessionBudget,
+  listSessionBudgets,
+  setDefaultBudget,
+  setSessionBudget,
+  clearSessionBudget,
+} from './state.js'
+
 /** 依赖的真实服务名（见 @deepseek-ai/dsh-commands / @deepseek-ai/dsh-token-meter）。 */
 export const inject = ['commands', 'tokenMeter']
 
 /** 与 package.json 的 version 保持一致（只用于状态接口的自述）。 */
-const PLUGIN_VERSION = '0.3.0'
+const PLUGIN_VERSION = '0.4.0'
 
 /** 浏览器半侧 client.js 拉的只读状态接口；两处路径必须一致。 */
 const STATUS_PATH = '/api/ctx-mon-and-con/status'
@@ -106,7 +117,7 @@ function renderUsage(measurement, budget, config) {
     `- 测量基线 baseline：${measurement.baseline?.kind ?? 'unknown'} ${formatTokens(measurement.baseline?.tokens ?? used)}`,
   ]
   if (Array.isArray(measurement.nodes)) lines.push(`- 计费节点 nodes：${measurement.nodes.length} 个`)
-  lines.push('提示：/ctx <contextWindowTokens> 可临时改本会话的预算。')
+  lines.push('提示：/ctx <tokens> 临时改本会话预算，/ctx reset 恢复默认；控制半侧挂进 preset 后到点自动压缩。')
   return lines.join('\n')
 }
 
@@ -116,17 +127,19 @@ function renderUsage(measurement, budget, config) {
  * @param config 经 Config 校验后的配置
  */
 export function apply(ctx, config) {
-  // 每个 agent（≈ 每个会话）的临时预算覆盖；用 WeakMap，插件卸载即失效。
-  const overrides = new WeakMap()
+  // 全局默认预算写进共享状态：控制半侧（control.js）在没有会话覆盖时用它。
+  setDefaultBudget(config.contextWindowTokens)
   const inFlight = new Set()
   // 浏览器状态接口的数据源：按 session id 保留最近 MAX_MEASUREMENTS 条。
   const measurements = new Map()
 
-  const budgetOf = (agent) => overrides.get(agent)?.contextWindowTokens ?? config.contextWindowTokens
+  const sessionIdOf = (agent) => agent?.session?.id ?? agent?.sessionId
+  const budgetOf = (agent) => budgetFor(sessionIdOf(agent), config.contextWindowTokens)
 
   /** 把一次测量压进内存表，供浏览器设置面板读取。 */
   const recordMeasurement = (agent, measurement, budget) => {
-    const sessionId = agent?.session?.id ?? agent?.sessionId ?? 'unknown'
+    const sessionId = sessionIdOf(agent) ?? 'unknown'
+    const override = getSessionBudget(sessionId)
     const ratio = budget > 0 ? measurement.totalTokens / budget : 0
     const status = ratio >= config.errorAt ? 'error' : ratio >= config.warnAt ? 'warn' : 'ok'
     measurements.delete(sessionId)
@@ -135,6 +148,7 @@ export function apply(ctx, config) {
       totalTokens: measurement.totalTokens,
       surfaceTokens: measurement.surfaceTokens,
       budget,
+      override: typeof override === 'number' ? override : null,
       ratio,
       status,
       at: new Date().toISOString(),
@@ -148,17 +162,30 @@ export function apply(ctx, config) {
     if (signal?.aborted) return { kind: 'error', text: '已取消。' }
     // invocation.rawInput 是命令名之后的原始文本（/compact 也这样判断参数）。
     const argument = (rawInput ?? '').trim()
+    const sessionId = sessionIdOf(agent)
     let budget = budgetOf(agent)
+    let prefix = ''
     if (argument.length > 0) {
-      if (!/^\d+$/.test(argument)) {
-        return { kind: 'error', text: '用法：/ctx [contextWindowTokens]（例如 /ctx 200000）' }
+      if (argument === 'reset' || argument === 'clear') {
+        const cleared = typeof sessionId === 'string' ? clearSessionBudget(sessionId) : false
+        budget = budgetOf(agent)
+        prefix = cleared
+          ? `已清除本会话的临时预算，回到默认 ${formatTokens(budget)} tokens。\n`
+          : `本会话没有临时预算，当前使用默认 ${formatTokens(budget)} tokens。\n`
+      } else {
+        if (!/^\d+$/.test(argument)) {
+          return { kind: 'error', text: '用法：/ctx [tokens|reset]（例如 /ctx 200000 或 /ctx reset）' }
+        }
+        const next = Number(argument)
+        if (!Number.isSafeInteger(next) || next <= 0) {
+          return { kind: 'error', text: '预算必须是正整数 token 数。' }
+        }
+        if (typeof sessionId !== 'string' || !setSessionBudget(sessionId, next)) {
+          return { kind: 'error', text: '当前会话没有可用的 id，无法设置预算。' }
+        }
+        budget = next
+        prefix = `已把本会话预算改为 ${formatTokens(budget)} tokens（会话级覆盖；/ctx reset 可清除）。\n`
       }
-      const next = Number(argument)
-      if (!Number.isSafeInteger(next) || next <= 0) {
-        return { kind: 'error', text: '预算必须是正整数 token 数。' }
-      }
-      overrides.set(agent, { contextWindowTokens: next })
-      budget = next
     }
     // agent.session 是会话对象；ctx.tokenMeter.measure(session) 返回
     // { totalTokens, surfaceTokens, nodes, baseline, surfaceDeltaTokens, logRevision }（深度只读）。
@@ -170,7 +197,6 @@ export function apply(ctx, config) {
     } catch (error) {
       return { kind: 'error', text: `测量失败：${error instanceof Error ? error.message : String(error)}` }
     }
-    const prefix = argument.length > 0 ? `已把本会话预算改为 ${formatTokens(budget)} tokens。\n` : ''
     recordMeasurement(agent, measurement, budget)
     return { kind: 'success', text: prefix + renderUsage(measurement, budget, config) }
   }
@@ -183,7 +209,7 @@ export function apply(ctx, config) {
     yield ctx.commands.register({
       name: 'ctx',
       description: 'Show this session context token usage',
-      input: { hint: '[contextWindowTokens]' },
+      input: { hint: '[tokens|reset]' },
       handler: (invocation) => {
         const result = handler(invocation)
         if (result instanceof Promise) {
@@ -196,10 +222,10 @@ export function apply(ctx, config) {
     })
   }, 'ctx-mon-and-con: /ctx command')
 
-  // 控制半侧（control.js）挂在 agent preset 的 compaction 组里。宿主平面在 Web
-  // 形态下看不到该服务（dsh-web-app 把宿主 compression 行 disable 了），所以用
-  // 它判断「控制是否已生效」，并在面板里给出提示。
-  const controlState = () => {
+  // 控制半侧（control.js）挂在 agent preset 的 compaction 组里。它是否已生效不靠
+  // 猜：control.js 激活时把状态写进 ./state.js，这里直接读；再顺带探测本 realm
+  // 有没有 compaction 服务，作为「本组合能否控制」的辅证。
+  const controlSnapshot = () => {
     let visible = false
     try {
       visible = typeof ctx.get === 'function' ? Boolean(ctx.get('compaction')) : false
@@ -207,10 +233,14 @@ export function apply(ctx, config) {
       visible = false
     }
     return {
+      active: controlState.active,
+      mode: controlState.mode,
+      lastCompactionAt: controlState.at,
+      lastCompaction: controlState.last,
       compactionVisible: visible,
       presetRow: 'ctx-mon-and-con/control',
-      hint: visible
-        ? 'control row is mounted in this realm'
+      hint: controlState.active
+        ? 'control row is mounted and enforcing the budget'
         : 'mount ctx-mon-and-con/control inside the agent preset (Settings → Agent preset → compaction group)',
     }
   }
@@ -228,8 +258,14 @@ export function apply(ctx, config) {
     const body = JSON.stringify({
       plugin: 'ctx-mon-and-con',
       version: PLUGIN_VERSION,
-      budget: { tokens: config.contextWindowTokens, warnAt: config.warnAt, errorAt: config.errorAt },
-      control: controlState(),
+      budget: {
+        tokens: config.contextWindowTokens,
+        warnAt: config.warnAt,
+        errorAt: config.errorAt,
+        source: 'default',
+      },
+      sessionBudgets: listSessionBudgets(),
+      control: controlSnapshot(),
       measurements: [...measurements.values()].reverse(),
     })
     response.statusCode = 200

@@ -349,17 +349,18 @@ window.__ModuleLoader__.load({
 | 文件 | 作用 |
 |---|---|
 | `index.js` | Cordis 插件（宿主侧）：`name` / `inject = ['commands','tokenMeter']` / 手写 Standard Schema 的 `Config` / `apply(ctx, config)`；注册 `/ctx` 命令 + `GET /api/ctx-mon-and-con/status` 只读路由 |
-| `control.js` | Cordis 插件（preset 侧，`ctx-mon-and-con/control`）：预算控制 —— `mode: idle` 在轮末调 `compactNow()`、`mode: pre-step` 在 step 边界调 `compactIfNeeded()`、`notify` 只记录；另注册 `/ctx-compact` |
-| `client.js` | `window.__ModuleLoader__.load({ id, factory })`，`apply(ctx)` 里 `ctx.slots.inject('settings.section', …)` 注册面板（含控制是否生效的提示） |
+| `control.js` | Cordis 插件（preset 侧，`ctx-mon-and-con/control`）：预算控制 —— `mode: idle` 在轮末调 `compactNow()` 并重试到低于预算、`mode: pre-step` 在 step 边界调 `compactIfNeeded()`、`notify` 只记录；另注册 `/ctx-compact` |
+| `state.js` | 两个半侧共享的进程内状态（默认预算 / 会话级覆盖 / 控制状态），同包相对 import，不涉及 npm 依赖 |
+| `client.js` | `window.__ModuleLoader__.load({ id, factory })`，`apply(ctx)` 里 `ctx.slots.inject('settings.section', …)` 注册面板（含控制是否生效与最近一次压缩） |
 | `dsh.bundle.patch.yml` | `- insert: [- id: ctx-mon-and-con, name: ctx-mon-and-con]` |
 | `package.json` | `dsh.bundle.patch` + `dsh.client` + `exports`（含 `./control`）+ `files` |
 | `locale/{en,zh}.json`、`icon.svg` | 插件管理与设置页的展示元数据 |
-| `test/static.mjs` | 30 项纯离线静态检查（导出形状、Config 拒绝非法/未知键、exports、locale、client mock、control 形状） |
-| `test/smoke.mjs` | 39 项真实 Cordis 集成冒烟（加载、命令注册与输出、路由 200/405、卸载清理） |
-| `test/control.mjs` | 21 项控制半侧测试（idle 超预算压缩、未超预算不动、cooldown、notify、pre-step 调用 `compactIfNeeded` 并继续 waterfall、压缩失败不打断轮次、`/ctx-compact` 成功/失败、卸载清理、`mode: off`） |
+| `test/static.mjs` | 32 项纯离线静态检查（导出形状、Config 拒绝非法/未知键、exports、locale、client mock、control 形状） |
+| `test/smoke.mjs` | 43 项真实 Cordis 集成冒烟（加载、`/ctx` 与 `/ctx reset`、命令输出、路由 200/405、卸载清理） |
+| `test/control.mjs` | 33 项控制半侧测试（预算来源三级优先、idle 压缩与重试、cooldown、notify、pre-step 调 `compactIfNeeded` 并继续 waterfall、失败不打断、`/ctx-compact` 成功/失败、状态回写、卸载清理、`mode: off`） |
 | `test/dump-config-smoke.txt` | 隔离 profile 的 `--dump-config` 实证：`# == ctx-mon-and-con` 后跟着插入行 |
 
-实测结果：`node test/static.mjs` **30/30**、`node test/smoke.mjs` **39/39**、`node test/control.mjs` **21/21**、
+实测结果：`node test/static.mjs` **32/32**、`node test/smoke.mjs` **43/43**、`node test/control.mjs` **33/33**、
 `node --check` 通过、`--dump-config` 里能看到 `- id: ctx-mon-and-con / name: ctx-mon-and-con`（说明 bundle 组合层真的生效）。
 
 它刻意**不 import 任何 npm 包**。宿主半侧只读测量；控制半侧只在 preset 内挂载后生效，

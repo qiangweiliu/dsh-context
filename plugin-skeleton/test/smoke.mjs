@@ -104,7 +104,7 @@ await fiber
 // ── 2. 命令注册 ───────────────────────────────────────────────────────────
 const definition = commands.definitions.get('ctx')
 check('/ctx registered', Boolean(definition), [...commands.definitions.keys()].join(','))
-check('/ctx has input hint', definition?.input?.hint === '[contextWindowTokens]', definition?.input?.hint)
+check('/ctx has input hint', definition?.input?.hint === '[tokens|reset]', definition?.input?.hint)
 
 const agent = { session: { id: 'smoke-session' } }
 const invoke = async (rawInput = '') => {
@@ -128,6 +128,11 @@ check('/ctx 超过 errorAt 标记超限', over.text?.includes('105.9%') && over.
 
 const bad = await invoke('abc')
 check('/ctx 非法参数返回 error', bad.kind === 'error' && bad.text?.includes('/ctx'), bad.text)
+
+const reset = await invoke('reset')
+check('/ctx reset 清除会话覆盖', reset.kind === 'success' && reset.text?.includes('128,000'), reset.text)
+const resetAgain = await invoke('reset')
+check('/ctx reset 无覆盖时说明使用默认', resetAgain.kind === 'success' && resetAgain.text?.includes('没有临时预算'), resetAgain.text)
 
 const cancelled = await definition.handler({ commandId: 'c', agent, rawInput: '', signal: AbortSignal.abort() })
 check('/ctx 已取消信号返回 error', cancelled.kind === 'error', cancelled.text)
@@ -153,6 +158,8 @@ const statusPayload = statusResponse.body ? JSON.parse(statusResponse.body) : {}
 check('状态路由 200 + JSON', statusResponse.statusCode === 200 && String(statusResponse.headers['content-type']).includes('application/json'), statusResponse.statusCode)
 check('状态含预算', statusPayload.budget?.tokens === 128000, JSON.stringify(statusPayload.budget))
 check('状态含最近测量', statusPayload.measurements?.[0]?.id === 'smoke-session', JSON.stringify(statusPayload.measurements))
+check('状态含会话预算列表（reset 后为空）', Array.isArray(statusPayload.sessionBudgets) && statusPayload.sessionBudgets.length === 0, JSON.stringify(statusPayload.sessionBudgets))
+check('状态含控制状态（未挂控制行 = 未激活）', statusPayload.control?.active === false, JSON.stringify(statusPayload.control))
 const methodResponse = makeResponse()
 statusRoute?.handler({ method: 'POST' }, methodResponse)
 check('状态路由非 GET 返回 405', methodResponse.statusCode === 405, methodResponse.statusCode)

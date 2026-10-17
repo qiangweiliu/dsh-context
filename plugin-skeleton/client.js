@@ -49,8 +49,9 @@ window.__ModuleLoader__.load({
       statusWarn: 'warning',
       statusError: 'over budget',
       control: 'Control',
-      controlReady: 'Control row is mounted in the agent preset.',
+      controlReady: 'Control row is mounted in the agent preset; the budget is enforced automatically.',
       controlMissing: 'Not active yet — mount ctx-mon-and-con/control inside the agent preset (Settings → Agent preset → compaction group).',
+      controlLast: 'Last compaction',
     }
 
     const zh = {
@@ -78,6 +79,7 @@ window.__ModuleLoader__.load({
       control: '控制',
       controlReady: '控制行已挂在 agent preset 内，超预算会自动压缩。',
       controlMissing: '尚未生效 —— 需要把 ctx-mon-and-con/control 加到 agent preset 的 compaction 组里（设置 → Agent preset → compaction group）。',
+      controlLast: '最近一次压缩',
     }
 
     /** 必需服务（浏览器 cordis 的 fiber inject）。 */
@@ -219,9 +221,18 @@ window.__ModuleLoader__.load({
           h(
             'p',
             { key: 'control', style: styles.text },
-            `${t('control')}: ${control.compactionVisible ? t('controlReady') : t('controlMissing')}`,
+            `${t('control')}: ${control.active ? t('controlReady') : t('controlMissing')}`,
           ),
         )
+        if (control.active && control.lastCompaction) {
+          children.push(
+            h(
+              'p',
+              { key: 'control-last', style: styles.text },
+              `${t('controlLast')}: ${formatTokens(control.lastCompaction.before)} → ${formatTokens(control.lastCompaction.after)} ${t('tokens')} · ${formatTime(control.lastCompactionAt)}`,
+            ),
+          )
+        }
         const measurements = Array.isArray(data.measurements) ? data.measurements : []
         children.push(h('p', { key: 'recent-title', style: styles.text }, t('recent')))
         if (measurements.length === 0) {

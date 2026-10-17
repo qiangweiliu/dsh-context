@@ -10,34 +10,49 @@
  * 挂载方式（设置 → Agent preset，往 compaction 组里加一行）：
  *   - id: ctx-mon-and-con-control
  *     name: 'ctx-mon-and-con/control'
- *     config: { maxContextTokens: 100000, mode: idle }
+ *     config: { mode: idle }
+ *
+ * 预算从哪来（三级）：
+ *   1. 会话级临时覆盖：宿主半侧 `/ctx <tokens>` 写入（同包 ./state.js 共享）
+ *   2. 全局默认：宿主半侧 Config.contextWindowTokens
+ *   3. 本行 Config.maxContextTokens（0 = 跟随前两级；宿主没装时才用它）
  *
  * 控制语义（v1，只走官方 seam，不 import 任何包）：
- *   - mode: 'idle'     每轮结束（agent/status === 'idle'）检查用量，超过
- *                      maxContextTokens 就调用 `compaction.compactNow()` 强制压缩。
- *   - mode: 'pre-step' 每个 step 边界调用 `compaction.compactIfNeeded(agent,
- *                      'pressure', signal)`，把触发时机交给本插件（配合把
- *                      `compaction-basic.auto` 关掉使用）。
+ *   - mode: 'idle'     每轮结束（agent/status === 'idle'）检查用量，超过预算就调用
+ *                      `compaction.compactNow()` 强制压缩；压完仍超会重试（maxAttempts）。
+ *   - mode: 'pre-step' 每个 step 边界调用 `compaction.compactIfNeeded(agent, 'pressure',
+ *                      signal)`，把触发时机交给本插件（配合把 `compaction-basic.auto` 关掉）。
  *   - mode: 'notify'   只测量并写日志，不动作。
  *   - mode: 'off'      完全禁用。
  * 另注册 `/ctx-compact` 手动强制压缩一次（同样要求 agent 空闲）。
  *
- * 全部依赖都从 ctx 上取，零 import：宿主包在 app.asar 里，第三方插件无法裸
- * import `@deepseek-ai/*`（会 ERR_MODULE_NOT_FOUND）。
+ * 压缩目标按「降到预算以下即可」实现：复用引擎自己的选区逻辑（compactNow），
+ * 不自己算范围、不写 surfaceOp、不碰影子价。
  */
+
+import {
+  budgetFor,
+  recordCompaction,
+  setControlActive,
+} from './state.js'
 
 export const name = 'ctx-mon-and-con-control'
 
 /** 硬依赖：没有测量服务就没有控制依据。 */
 export const inject = ['tokenMeter']
 
+/** 宿主没装、本行也没配时的兜底预算。 */
+const FALLBACK_BUDGET = 100000
+
 const DEFAULT_CONFIG = {
-  /** 超过这个 token 数就压缩。 */
-  maxContextTokens: 100000,
+  /** 触发预算；0 = 跟随宿主默认与会话覆盖。 */
+  maxContextTokens: 0,
   /** 触发时机：off / notify / idle / pre-step。 */
   mode: 'idle',
   /** 两次自动压缩之间的最小间隔，防止同一轮里反复触发。 */
   cooldownMs: 60000,
+  /** 一次触发里最多连续压缩几次（压完仍超预算时重试）。 */
+  maxAttempts: 2,
 }
 
 const MODES = ['off', 'notify', 'idle', 'pre-step']
@@ -71,11 +86,14 @@ function validateConfig(input) {
   for (const key of Object.keys(raw)) {
     if (!CONFIG_KEYS.includes(key)) issues.push({ message: 'unknown config key', path: [key] })
   }
-  if (!Number.isInteger(config.maxContextTokens) || config.maxContextTokens <= 0) {
-    issues.push({ message: 'expected a positive integer', path: ['maxContextTokens'] })
+  if (!Number.isInteger(config.maxContextTokens) || config.maxContextTokens < 0) {
+    issues.push({ message: 'expected a non-negative integer (0 = follow host default)', path: ['maxContextTokens'] })
   }
   if (!Number.isInteger(config.cooldownMs) || config.cooldownMs < 0) {
     issues.push({ message: 'expected a non-negative integer', path: ['cooldownMs'] })
+  }
+  if (!Number.isInteger(config.maxAttempts) || config.maxAttempts < 1 || config.maxAttempts > 10) {
+    issues.push({ message: 'expected an integer between 1 and 10', path: ['maxAttempts'] })
   }
   if (issues.length > 0) return { issues }
   return { value: Object.freeze(config) }
@@ -118,19 +136,22 @@ export function apply(ctx, config) {
   /** 每个 agent 上次自动压缩的时间（WeakMap：agent 释放即回收）。 */
   const lastRun = new WeakMap()
 
-  /** @returns {object | null} 超预算时的测量快照。 */
-  const overBudget = (agent) => {
+  const sessionIdOf = (agent) => agent?.session?.id ?? agent?.sessionId
+
+  /** 某会话的实际预算：会话覆盖 > 宿主默认 > 本行配置 > 兜底。 */
+  const budgetOf = (agent) => budgetFor(sessionIdOf(agent), config.maxContextTokens || FALLBACK_BUDGET)
+
+  /** 测量；任何异常都返回 null，绝不打断轮次。 */
+  const measure = (agent) => {
     const session = agent?.session
     if (!session) return null
-    let measurement
     try {
-      measurement = ctx.tokenMeter.measure(session)
+      const measurement = ctx.tokenMeter.measure(session)
+      return typeof measurement?.totalTokens === 'number' ? measurement : null
     } catch (error) {
       log('warn', `measure failed: ${error instanceof Error ? error.message : String(error)}`)
       return null
     }
-    if (typeof measurement?.totalTokens !== 'number') return null
-    return measurement.totalTokens > config.maxContextTokens ? measurement : null
   }
 
   const throttle = (agent) => {
@@ -147,14 +168,38 @@ export function apply(ctx, config) {
     const compaction = sub?.compaction
     if (!compaction) return
 
-    const compactIdle = async (agent) => {
-      const signal = new AbortController().signal
-      const before = overBudget(agent)
-      if (!before) return null
-      log('info', `over budget at idle: ${formatTokens(before.totalTokens)} > ${formatTokens(config.maxContextTokens)}`)
-      const result = await compaction.compactNow(agent, signal)
-      log('info', `idle compaction: ${describeResult(result)}`)
-      return result
+    setControlActive(true, config.mode)
+    sub.effect(
+      () => () => setControlActive(false),
+      'ctx-mon-and-con-control: activation state',
+    )
+
+    /**
+     * 反复压缩直到低于预算或压不动（「降到设置值以下即可」的实现）。
+     * @returns {Promise<{ before: number, after: number | null, rounds: number, result: unknown }>}
+     */
+    const enforce = async (agent, trigger) => {
+      const budget = budgetOf(agent)
+      const first = measure(agent)
+      const before = first ? first.totalTokens : 0
+      if (!first || before <= budget) return { before, after: before, rounds: 0, result: null }
+      log('info', `${trigger}: over budget ${formatTokens(before)} > ${formatTokens(budget)}`)
+      let after = before
+      let result = null
+      let rounds = 0
+      for (let attempt = 1; attempt <= config.maxAttempts; attempt += 1) {
+        const signal = new AbortController().signal
+        result = await compaction.compactNow(agent, signal)
+        rounds += 1
+        const current = measure(agent)
+        after = current ? current.totalTokens : after
+        if (!result) break
+        if (after <= budget) break
+      }
+      recordCompaction(sessionIdOf(agent), before, after, result?.shadowedTokenCount)
+      log('info', `${trigger}: ${formatTokens(before)} → ${formatTokens(after)} in ${rounds} round(s) (budget ${formatTokens(budget)})`)
+      if (after > budget) log('warn', `${trigger}: still above budget after ${rounds} round(s); nothing else safely compactable`)
+      return { before, after, rounds, result }
     }
 
     if (config.mode === 'idle' || config.mode === 'notify') {
@@ -162,15 +207,16 @@ export function apply(ctx, config) {
         () =>
           ctx.on('agent/status', ({ agent, status }) => {
             if (status !== 'idle') return
-            const measurement = overBudget(agent)
-            if (!measurement) return
+            const measurement = measure(agent)
+            const budget = budgetOf(agent)
+            if (!measurement || measurement.totalTokens <= budget) return
             if (config.mode === 'notify') {
-              log('warn', `over budget (notify only): ${formatTokens(measurement.totalTokens)} > ${formatTokens(config.maxContextTokens)}`)
+              log('warn', `over budget (notify only): ${formatTokens(measurement.totalTokens)} > ${formatTokens(budget)}`)
               return
             }
             if (!throttle(agent)) return
             // 事件回调必须同步返回：压缩异步进行，失败只记日志，绝不影响轮次。
-            void compactIdle(agent).catch((error) => {
+            void enforce(agent, 'idle').catch((error) => {
               log('warn', `idle compaction failed: ${error instanceof Error ? error.message : String(error)}`)
             })
           }),
@@ -184,12 +230,16 @@ export function apply(ctx, config) {
           ctx.on('agent/pre-step', async ({ agent, signal }, next) => {
             try {
               if (signal?.aborted) return next()
-              const measurement = overBudget(agent)
-              if (!measurement) return next()
+              const measurement = measure(agent)
+              const budget = budgetOf(agent)
+              if (!measurement || measurement.totalTokens <= budget) return next()
               if (!throttle(agent)) return next()
-              log('info', `over budget at step: ${formatTokens(measurement.totalTokens)} > ${formatTokens(config.maxContextTokens)}`)
-              // 复用 compaction-basic 的阈值/选区/事务，只由我们决定触发时机。
+              log('info', `over budget at step: ${formatTokens(measurement.totalTokens)} > ${formatTokens(budget)}`)
+              // 复用引擎的阈值/选区/事务，只由我们决定触发时机。
+              const before = measurement.totalTokens
               const result = await compaction.compactIfNeeded(agent, 'pressure', signal)
+              const current = measure(agent)
+              recordCompaction(sessionIdOf(agent), before, current ? current.totalTokens : before, result?.shadowedTokenCount)
               log('info', `step compaction: ${describeResult(result)}`)
             } catch (error) {
               if (!signal?.aborted) log('warn', `step compaction failed: ${error instanceof Error ? error.message : String(error)}`)
@@ -200,7 +250,7 @@ export function apply(ctx, config) {
       )
     }
 
-    // 手动入口：/ctx-compact —— 复制了 `/compact` 的语义，但只走一次 idle 压缩。
+    // 手动入口：/ctx-compact —— 立刻对该会话做一次 idle 压缩。
     ctx.inject(['commands'], (commandSub) => {
       const commands = commandSub?.commands
       if (!commands?.register) return
@@ -214,20 +264,17 @@ export function apply(ctx, config) {
               if (!agent?.session) return { kind: 'error', text: '当前没有可用会话，无法压缩。' }
               if (signal?.aborted) return { kind: 'error', text: '已取消。' }
               try {
-                const measurement = ctx.tokenMeter.measure(agent.session)
-                const result = await compaction.compactNow(agent, signal ?? new AbortController().signal)
-                const after = (() => {
-                  try {
-                    return ctx.tokenMeter.measure(agent.session)
-                  } catch {
-                    return null
-                  }
-                })()
-                const lines = [
-                  `压缩完成：${formatTokens(measurement.totalTokens)} → ${after ? formatTokens(after.totalTokens) : '?'} tokens`,
-                  `- ${describeResult(result)}`,
-                ]
-                return { kind: 'success', text: lines.join('\n') }
+                const { before, after, result, rounds } = await enforce(agent, 'manual')
+                if (rounds === 0) {
+                  return { kind: 'success', text: `未超过预算（${formatTokens(before)} ≤ ${formatTokens(budgetOf(agent))}），无需压缩。` }
+                }
+                return {
+                  kind: 'success',
+                  text: [
+                    `压缩完成：${formatTokens(before)} → ${typeof after === 'number' ? formatTokens(after) : '?'} tokens（${rounds} 轮，预算 ${formatTokens(budgetOf(agent))}）`,
+                    `- ${describeResult(result)}`,
+                  ].join('\n'),
+                }
               } catch (error) {
                 const message = error instanceof Error ? error.message : String(error)
                 return { kind: 'error', text: `压缩失败：${message}（需要 agent 空闲，且会话里有可安全压缩的范围）` }

@@ -3,30 +3,41 @@
 DSH（DeepSeek Harness）的**上下文长度管理**插件，分两个平面：
 
 - **宿主半侧（`index.js`，装完即有）**：`/ctx` 读出当前会话的 token 用量与预算，只读的设置面板 + `GET /api/ctx-mon-and-con/status`；**不修改会话**。
-- **控制半侧（`control.js`，需要挂进 agent preset）**：按 `maxContextTokens` 预算自动压缩，或手动 `/ctx-compact`；走官方 `ctx.compaction` seam，不自己造压缩。
+- **控制半侧（`control.js`，需要挂进 agent preset）**：到达预算就自动压缩，或手动 `/ctx-compact`；走官方 `ctx.compaction` seam，不自己造压缩。
+
+## 三条功能
+
+| # | 功能 | 怎么用 |
+| --- | --- | --- |
+| 1 | 监控当前会话上下文长度 | 会话里发 `/ctx`；设置 → 上下文面板；`GET /api/ctx-mon-and-con/status` |
+| 2 | 设置上下文长度（预算） | `/ctx <tokens>` 设**当前会话**的临时预算、`/ctx reset` 恢复默认；全局默认在插件 `Config.contextWindowTokens`（profile patch 或 preset 里改） |
+| 3 | 到达预算时主动压缩 | 控制半侧 `mode: idle`（默认）在轮末自动压缩；需要 step 内触发用 `pre-step`；也可 `/ctx-compact` 手动压 |
+
+**预算三级取值**（控制半侧每次触发时实时计算，改完立即生效）：会话级覆盖（`/ctx <tokens>`）→ 宿主默认（`Config.contextWindowTokens`）→ 控制行自己的 `maxContextTokens`。
 
 ## 控制半侧做什么
 
 | `mode` | 行为 |
 | --- | --- |
-| `idle`（默认） | 每轮结束（`agent/status === 'idle'`）测量，超过 `maxContextTokens` 就调用 `ctx.compaction.compactNow()` 强制压缩一次 |
+| `idle`（默认） | 每轮结束（`agent/status === 'idle'`）测量，超过预算就调用 `ctx.compaction.compactNow()` 强制压缩；压完仍超会按 `maxAttempts` 重试，直到降到预算以下或无可安全压缩的范围 |
 | `pre-step` | 每个 step 边界调用 `ctx.compaction.compactIfNeeded(agent, 'pressure', signal)`，由本插件决定触发时机（适合把 `compaction-basic.auto` 关掉后接管） |
 | `notify` | 只测量并写日志，不动作 |
 | `off` | 完全不启用 |
 
-另外注册 `/ctx-compact`：立刻对该会话执行一次 idle 压缩（同样要求 agent 空闲）。
+压缩目标是「**降到预算以下即可**」：复用引擎自己的选区逻辑，不自己算范围、不写 `surfaceOp`、不碰影子价。另外注册 `/ctx-compact`：立刻对该会话做一次 idle 压缩（同样要求 agent 空闲）。
 
 ```yaml
 # 设置 → Agent preset（或在 profile patch 的 preset 配置里）加一行：
 - id: ctx-mon-and-con-control
   name: 'ctx-mon-and-con/control'
   config:
-    maxContextTokens: 100000
-    mode: idle
-    cooldownMs: 60000
+    mode: idle          # off | notify | idle | pre-step
+    cooldownMs: 60000   # 两次自动压缩最小间隔
+    maxAttempts: 2      # 压完仍超预算时最多连续压几次
+    # maxContextTokens: 100000  # 0（默认）= 跟随宿主默认与会话覆盖
 ```
 
-**为什么必须挂在 preset 里**：Web 形态下 `dsh-web-app` 把宿主平面的 `compaction-basic` / `command-compact` / `tool-result-pruner` 全部置为 `disabled`，真正运行的 `compaction` 服务在 `preset-standard` 的 `cordis:group`（`isolate: { compaction: true }`）内。宿主上下文 `ctx.get('compaction')` 拿不到它 —— 面板里的「控制」一行会直接显示当前是否已生效。
+**为什么必须挂在 preset 里**：Web 形态下 `dsh-web-app` 把宿主平面的 `compaction-basic` / `command-compact` / `tool-result-pruner` 全部置为 `disabled`，真正运行的 `compaction` 服务在 `preset-standard` 的 `cordis:group`（`isolate: { compaction: true }`）内。宿主上下文 `ctx.get('compaction')` 拿不到它 —— 面板里的「控制」一行会直接显示当前是否已生效（状态经 `state.js` 在两个半侧之间共享）。
 
 ## 文件
 
@@ -34,13 +45,14 @@ DSH（DeepSeek Harness）的**上下文长度管理**插件，分两个平面：
 | --- | --- |
 | `index.js` | Cordis 插件（宿主侧）：`name` / `inject` / `Config`（手写 Standard Schema）/ `apply(ctx, config)`，注册 `/ctx` 命令与状态路由 |
 | `control.js` | Cordis 插件（preset 侧）：预算控制 + `/ctx-compact`，零 import，只用 `ctx.compaction` 服务 |
+| `state.js` | 两个半侧共享的进程内状态（默认预算 / 会话覆盖 / 控制状态）；只是同包相对 import |
 | `client.js` | 浏览器半侧：`window.__ModuleLoader__.load({ id, factory })` 形态，`apply(ctx)` 注册 `settings.section` 面板 |
 | `dsh.bundle.patch.yml` | bundle 层：往 profile 的 boot graph `insert` 一行 `id: ctx-mon-and-con` |
 | `locale/{en,zh}.json` | 插件市场/插件管理页显示的 `meta.title` / `meta.description` |
 | `icon.svg` | 插件图标（`exports["./icon"]` 暴露） |
-| `test/static.mjs` | 纯离线静态检查（30 项，不需要 DSH） |
-| `test/smoke.mjs` | 用真实 Cordis 的集成冒烟测试（39 项，需先 `node test/prepare-deps.mjs`） |
-| `test/control.mjs` | 控制半侧的离线测试（21 项：idle/pre-step/notify/cooldown/命令/卸载） |
+| `test/static.mjs` | 纯离线静态检查（32 项，不需要 DSH） |
+| `test/smoke.mjs` | 用真实 Cordis 的集成冒烟测试（43 项，需先 `node test/prepare-deps.mjs`） |
+| `test/control.mjs` | 控制半侧的离线测试（33 项：预算来源、idle/pre-step/notify、重试、cooldown、命令、状态回写、卸载） |
 | `test/prepare-deps.mjs` | 从 app.asar 离线解出 cordis/cosmokit 到 `test/deps/`（交付不带第三方副本） |
 | `test/dump-config-smoke.txt` | 隔离 profile 里 `--dump-config` 的实际输出证据 |
 
@@ -82,11 +94,11 @@ $dsh = "C:\Users\40410\AppData\Local\Programs\DeepSeek Harness\resources\runtime
 1. **离线自检**（不启动 DSH）：
 
    ```powershell
-   node test/static.mjs        # 30/30：导出形状、Config 校验、exports 解析、locale、client mock
+   node test/static.mjs        # 32/32：导出形状、Config 校验、exports 解析、locale、client mock、control 形状
    node --check index.js; node --check control.js; node --check client.js
    node test/prepare-deps.mjs  # 可选：从 app.asar 解出 cordis，第一次需要
-   node test/smoke.mjs         # 39/39：真实 Cordis 里加载、注册命令/路由、卸载清理
-   node test/control.mjs       # 21/21：控制半侧的 idle/pre-step/notify/cooldown/命令/卸载
+   node test/smoke.mjs         # 43/43：真实 Cordis 里加载、/ctx 与 reset、状态路由、卸载清理
+   node test/control.mjs       # 33/33：预算来源、idle/pre-step/notify、重试、cooldown、命令、状态回写、卸载
    ```
 
 2. **确认 bundle 层生效**：
@@ -101,7 +113,7 @@ $dsh = "C:\Users\40410\AppData\Local\Programs\DeepSeek Harness\resources\runtime
 
 3. **重启 Desktop** 后在会话里发 `/ctx`（命令直接在 UI 命令面执行，不产生模型消息），再打开 设置 → 上下文 看面板；面板拉的接口是 `GET /api/ctx-mon-and-con/status`。
 
-4. **调参**：在 profile 的 `cordis.patch.yml` 里按 id 覆盖（patch 是**整段替换**，不做深合并）：
+4. **调参**：全局默认在 profile 的 `cordis.patch.yml` 里按 id 覆盖（patch 是**整段替换**，不做深合并）；临时只想改当前会话就发 `/ctx <tokens>`，用完 `/ctx reset`：
 
    ```yaml
    - id: ctx-mon-and-con

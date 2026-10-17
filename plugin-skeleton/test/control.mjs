@@ -3,12 +3,13 @@
  *
  * 用真实 Cordis + 三个 mock 服务顶替宿主：
  *   - tokenMeter : 按 `meter.tokens` 返回测量快照
- *   - compaction : 记录 compactNow / compactIfNeeded 调用，可注入失败
+ *   - compaction : 记录 compactNow / compactIfNeeded 调用，可注入失败，
+ *                  并可把 tokenMeter 的数值"压小"来模拟压缩生效
  *   - commands   : register() 返回 disposer
  *
- * 覆盖：插件形状 / 配置校验 / idle 超预算压缩 / 未超预算不动 / cooldown 节流 /
- * notify 只记录 / pre-step 触发 compactIfNeeded / /ctx-compact 命令成功与失败 /
- * 卸载后监听器与命令都被移除。
+ * 覆盖：插件形状 / 配置校验 / 预算来源（会话覆盖 > 宿主默认 > 本行配置）/
+ * idle 压缩 / 重试到低于预算 / cooldown / notify / pre-step / 失败不打断轮次 /
+ * /ctx-compact 成功与失败 / 状态回写 / 卸载清理 / mode off。
  *
  * 运行：node test/control.mjs（前提：先 node test/prepare-deps.mjs）
  */
@@ -24,6 +25,7 @@ if (!existsSync(fileURLToPath(cordisEntry))) {
 
 const { Context, Service } = await import(cordisEntry.href)
 const controlPlugin = await import(new URL('../control.js', import.meta.url).href)
+const state = await import(new URL('../state.js', import.meta.url).href)
 
 const checks = []
 function check(name, condition, detail) {
@@ -38,10 +40,8 @@ class MockTokenMeter extends Service {
   constructor(ctx) {
     super(ctx, 'tokenMeter')
     this.tokens = 0
-    this.calls = 0
   }
   measure(session) {
-    this.calls += 1
     if (!session || typeof session !== 'object') throw new Error('measure() expects a session object')
     return Object.freeze({
       logRevision: 1,
@@ -59,11 +59,15 @@ class MockCompaction extends Service {
     super(ctx, 'compaction')
     this.calls = []
     this.fail = null
+    /** 由 mount() 注入：compactNow 生效后把它的 tokens 改成 shrinkTo（模拟压缩变小）。 */
+    this.meter = null
+    this.shrinkTo = null
     this.result = Object.freeze({ shadowedSeqs: [1, 2], shadowedRange: { start: 1, end: 2 }, shadowedTokenCount: 5000 })
   }
   async compactNow(agent, signal) {
     this.calls.push({ kind: 'compactNow', agent, signal })
     if (this.fail) throw this.fail
+    if (this.shrinkTo !== null && this.meter) this.meter.tokens = this.shrinkTo
     return this.result
   }
   async compactIfNeeded(agent, trigger, signal) {
@@ -85,14 +89,25 @@ class MockCommands extends Service {
   }
 }
 
+/** 每个用例前清空共享状态，避免用例之间互相污染。 */
+function resetState() {
+  state.setDefaultBudget(undefined)
+  for (const entry of state.listSessionBudgets()) state.clearSessionBudget(entry.sessionId)
+  state.setControlActive(false)
+  state.control.last = null
+  state.control.at = null
+}
+
 /** 搭一个根上下文 + mock 服务。 */
 async function mount(config) {
+  resetState()
   const root = new Context()
   await root.plugin(MockTokenMeter)
   await root.plugin(MockCompaction)
   await root.plugin(MockCommands)
   const meter = root.get('tokenMeter')
   const compaction = root.get('compaction')
+  compaction.meter = meter
   const commands = root.get('commands')
   const fiber = root.plugin(controlPlugin, config)
   await fiber
@@ -106,33 +121,84 @@ check('exports inject', controlPlugin.inject?.join(',') === 'tokenMeter', JSON.s
 check('exports Config standard schema', typeof controlPlugin.Config?.['~standard']?.validate === 'function')
 check('exports apply function', typeof controlPlugin.apply === 'function')
 
-// ── 2. idle 模式：超预算压缩一次；未超预算不动 ────────────────────────────
+// ── 2. idle 模式：超预算压缩一次并回写状态 ────────────────────────────────
 {
-  const { root, fiber, meter, compaction, agent } = await mount({ maxContextTokens: 100000, mode: 'idle', cooldownMs: 0 })
+  const { root, fiber, meter, compaction, agent } = await mount({ mode: 'idle', cooldownMs: 0, maxAttempts: 2 })
+  check('激活后 control.active = true', state.control.active === true && state.control.mode === 'idle', JSON.stringify(state.control))
+
   meter.tokens = 40000
   root.emit('agent/status', { agent, status: 'idle' })
   await tick()
   check('idle 未超预算不压缩', compaction.calls.length === 0, compaction.calls.length)
 
   meter.tokens = 180000
+  compaction.shrinkTo = 50000
   root.emit('agent/status', { agent, status: 'idle' })
   await tick()
   check('idle 超预算调用 compactNow', compaction.calls.length === 1 && compaction.calls[0].kind === 'compactNow', JSON.stringify(compaction.calls.map((c) => c.kind)))
+  check('超预算时按预算触发（默认 0 = 跟随/兜底）', state.control.last?.before === 180000 && state.control.last?.after === 50000, JSON.stringify(state.control.last))
 
   meter.tokens = 180000
+  compaction.calls.length = 0
   root.emit('agent/status', { agent, status: 'running' })
   await tick()
-  check('非 idle 状态不压缩', compaction.calls.length === 1, compaction.calls.length)
+  check('非 idle 状态不压缩', compaction.calls.length === 0, compaction.calls.length)
+  await fiber.dispose()
+  check('卸载后 control.active = false', state.control.active === false, String(state.control.active))
+  await root.fiber.dispose()
+}
+
+// ── 3. 预算来源：会话覆盖 > 宿主默认 > 本行配置 ────────────────────────────
+{
+  const { root, fiber, meter, compaction, agent } = await mount({ mode: 'idle', cooldownMs: 0, maxContextTokens: 200000 })
+  compaction.shrinkTo = 10000
+
+  meter.tokens = 150000
+  root.emit('agent/status', { agent, status: 'idle' })
+  await tick()
+  check('本行 maxContextTokens 生效（150k < 200k 不压）', compaction.calls.length === 0, compaction.calls.length)
+
+  state.setDefaultBudget(120000)
+  root.emit('agent/status', { agent, status: 'idle' })
+  await tick()
+  check('宿主默认预算覆盖本行配置（150k > 120k 触发）', compaction.calls.length === 1, compaction.calls.length)
+
+  compaction.calls.length = 0
+  meter.tokens = 150000
+  state.setSessionBudget('control-session', 300000)
+  root.emit('agent/status', { agent, status: 'idle' })
+  await tick()
+  check('会话级覆盖优先（300k 生效，不压）', compaction.calls.length === 0, compaction.calls.length)
+
+  state.setSessionBudget('control-session', 50000)
+  root.emit('agent/status', { agent, status: 'idle' })
+  await tick()
+  check('会话级覆盖调低后触发（150k > 50k）', compaction.calls.length === 1, compaction.calls.length)
   await fiber.dispose()
   await root.fiber.dispose()
 }
 
-// ── 3. cooldown 节流 ──────────────────────────────────────────────────────
+// ── 4. 压完仍超预算：按 maxAttempts 重试 ──────────────────────────────────
 {
-  const { root, fiber, meter, compaction, agent } = await mount({ maxContextTokens: 100000, mode: 'idle', cooldownMs: 60000 })
+  const { root, fiber, meter, compaction, agent } = await mount({ mode: 'idle', cooldownMs: 0, maxContextTokens: 100000, maxAttempts: 2 })
+  compaction.shrinkTo = 120000 // 压了但仍在预算之上
   meter.tokens = 180000
   root.emit('agent/status', { agent, status: 'idle' })
   await tick()
+  check('压完仍超预算时重试 maxAttempts 次', compaction.calls.length === 2, compaction.calls.length)
+  check('重试后状态记录最终用量', state.control.last?.after === 120000, JSON.stringify(state.control.last))
+  await fiber.dispose()
+  await root.fiber.dispose()
+}
+
+// ── 5. cooldown 节流 ──────────────────────────────────────────────────────
+{
+  const { root, fiber, meter, compaction, agent } = await mount({ mode: 'idle', cooldownMs: 60000, maxContextTokens: 100000 })
+  compaction.shrinkTo = 50000
+  meter.tokens = 180000
+  root.emit('agent/status', { agent, status: 'idle' })
+  await tick()
+  meter.tokens = 180000
   root.emit('agent/status', { agent, status: 'idle' })
   await tick()
   check('cooldown 内只压缩一次', compaction.calls.length === 1, compaction.calls.length)
@@ -140,9 +206,9 @@ check('exports apply function', typeof controlPlugin.apply === 'function')
   await root.fiber.dispose()
 }
 
-// ── 4. notify 模式只记录，不压缩 ──────────────────────────────────────────
+// ── 6. notify 模式只记录，不压缩 ──────────────────────────────────────────
 {
-  const { root, fiber, meter, compaction, agent } = await mount({ maxContextTokens: 100000, mode: 'notify', cooldownMs: 0 })
+  const { root, fiber, meter, compaction, agent } = await mount({ mode: 'notify', cooldownMs: 0, maxContextTokens: 100000 })
   meter.tokens = 180000
   root.emit('agent/status', { agent, status: 'idle' })
   await tick()
@@ -151,14 +217,15 @@ check('exports apply function', typeof controlPlugin.apply === 'function')
   await root.fiber.dispose()
 }
 
-// ── 5. pre-step 模式：走 compactIfNeeded，且不吞掉 waterfall ───────────────
+// ── 7. pre-step 模式：走 compactIfNeeded，且不吞掉 waterfall ───────────────
 {
-  const { root, fiber, meter, compaction, agent } = await mount({ maxContextTokens: 100000, mode: 'pre-step', cooldownMs: 0 })
+  const { root, fiber, meter, compaction, agent } = await mount({ mode: 'pre-step', cooldownMs: 0, maxContextTokens: 100000 })
   meter.tokens = 180000
   const signal = new AbortController().signal
   const returned = await root.waterfall('agent/pre-step', { agent, signal }, () => 'inner-reached')
   check('pre-step 调用 compactIfNeeded(pressure)', compaction.calls.length === 1 && compaction.calls[0].kind === 'compactIfNeeded' && compaction.calls[0].trigger === 'pressure', JSON.stringify(compaction.calls.map((c) => `${c.kind}:${c.trigger}`)))
   check('pre-step 继续 waterfall 链', returned === 'inner-reached', String(returned))
+  check('pre-step 也回写最近压缩状态', state.control.last?.before === 180000, JSON.stringify(state.control.last))
 
   meter.tokens = 5000
   const returned2 = await root.waterfall('agent/pre-step', { agent, signal }, () => 'inner-reached')
@@ -167,9 +234,9 @@ check('exports apply function', typeof controlPlugin.apply === 'function')
   await root.fiber.dispose()
 }
 
-// ── 6. 压缩失败不影响轮次（pre-step 吞掉异常）─────────────────────────────
+// ── 8. 压缩失败不影响轮次 ─────────────────────────────────────────────────
 {
-  const { root, fiber, meter, compaction, agent } = await mount({ maxContextTokens: 100000, mode: 'pre-step', cooldownMs: 0 })
+  const { root, fiber, meter, compaction, agent } = await mount({ mode: 'pre-step', cooldownMs: 0, maxContextTokens: 100000 })
   meter.tokens = 180000
   compaction.fail = new Error('summary is not smaller than the shadowed content')
   const returned = await root.waterfall('agent/pre-step', { agent, signal: undefined }, () => 'inner-reached')
@@ -178,16 +245,21 @@ check('exports apply function', typeof controlPlugin.apply === 'function')
   await root.fiber.dispose()
 }
 
-// ── 7. /ctx-compact 命令 ──────────────────────────────────────────────────
+// ── 9. /ctx-compact 命令 ──────────────────────────────────────────────────
 {
-  const { root, fiber, meter, compaction, commands, agent } = await mount({ maxContextTokens: 100000, mode: 'idle', cooldownMs: 0 })
+  const { root, fiber, meter, compaction, commands, agent } = await mount({ mode: 'idle', cooldownMs: 0, maxContextTokens: 100000 })
   const definition = commands.definitions.get('ctx-compact')
   check('/ctx-compact 注册', Boolean(definition), [...commands.definitions.keys()].join(','))
+  compaction.shrinkTo = 50000
   meter.tokens = 150000
   const outcome = await definition.handler({ agent, signal: new AbortController().signal })
-  check('/ctx-compact 成功输出前后用量', outcome.kind === 'success' && outcome.text.includes('150,000') && outcome.text.includes('5,000'), outcome.text)
+  check('/ctx-compact 成功输出前后用量', outcome.kind === 'success' && outcome.text.includes('150,000') && outcome.text.includes('50,000'), outcome.text)
   check('/ctx-compact 调用了 compactNow', compaction.calls.some((c) => c.kind === 'compactNow'), JSON.stringify(compaction.calls.map((c) => c.kind)))
 
+  const idle = await definition.handler({ agent, signal: new AbortController().signal })
+  check('/ctx-compact 未超预算时提示无需压缩', idle.kind === 'success' && /无需压缩/.test(idle.text), idle.text)
+
+  meter.tokens = 150000
   compaction.fail = new Error('manual compaction requires an idle agent')
   const failed = await definition.handler({ agent, signal: new AbortController().signal })
   check('/ctx-compact 失败返回 error', failed.kind === 'error' && failed.text.includes('压缩失败'), failed.text)
@@ -195,9 +267,9 @@ check('exports apply function', typeof controlPlugin.apply === 'function')
   await root.fiber.dispose()
 }
 
-// ── 8. 卸载：监听器与命令都被移除 ─────────────────────────────────────────
+// ── 10. 卸载：监听器与命令都被移除 ────────────────────────────────────────
 {
-  const { root, fiber, meter, compaction, commands, agent } = await mount({ maxContextTokens: 100000, mode: 'idle', cooldownMs: 0 })
+  const { root, fiber, meter, compaction, commands, agent } = await mount({ mode: 'idle', cooldownMs: 0, maxContextTokens: 100000 })
   meter.tokens = 180000
   await fiber.dispose()
   root.emit('agent/status', { agent, status: 'idle' })
@@ -207,14 +279,15 @@ check('exports apply function', typeof controlPlugin.apply === 'function')
   await root.fiber.dispose()
 }
 
-// ── 9. mode: 'off' 时不注册任何行为 ───────────────────────────────────────
+// ── 11. mode: 'off' 时不激活 ──────────────────────────────────────────────
 {
-  const { root, fiber, meter, compaction, commands, agent } = await mount({ maxContextTokens: 100000, mode: 'off' })
+  const { root, fiber, meter, compaction, commands, agent } = await mount({ mode: 'off', maxContextTokens: 100000 })
   meter.tokens = 180000
   root.emit('agent/status', { agent, status: 'idle' })
   await tick()
   check("mode 'off' 不压缩", compaction.calls.length === 0, compaction.calls.length)
   check("mode 'off' 不注册命令", !commands.definitions.has('ctx-compact'), [...commands.definitions.keys()].join(','))
+  check("mode 'off' 不标记为激活", state.control.active === false, String(state.control.active))
   await fiber.dispose()
   await root.fiber.dispose()
 }

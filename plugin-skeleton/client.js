@@ -648,7 +648,7 @@ window.__ModuleLoader__.load({
       const disabledSessionTools = Array.isArray(data.disabledSessionTools) ? data.disabledSessionTools : []
       const disabledSessionPrompts = Array.isArray(data.disabledSessionPrompts) ? data.disabledSessionPrompts : []
       const disabledGlobalTools = Array.isArray(data.disabledTools) ? data.disabledTools : []
-      const [open, setOpen] = react.useState({ tools: true, prompts: true })
+      const [open, setOpen] = react.useState({ tools: false, prompts: false })
       const [expanded, setExpanded] = react.useState({})
       const [copied, setCopied] = react.useState(null)
       const [pending, setPending] = react.useState(null)

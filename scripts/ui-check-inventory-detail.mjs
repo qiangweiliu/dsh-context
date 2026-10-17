@@ -51,6 +51,9 @@ const result = await evaluate(`(async () => {
   btn.click()
   await new Promise((r) => setTimeout(r, 2500))
   const sections = Array.from(document.querySelectorAll('[data-ctx-section]')).map((el) => el.getAttribute('data-ctx-section'))
+  const collapsedExpands = document.querySelectorAll('[data-ctx-expand]').length
+  document.querySelector('[data-ctx-section="tools"]').click()
+  await new Promise((r) => setTimeout(r, 400))
   const expands = Array.from(document.querySelectorAll('[data-ctx-expand]')).map((el) => el.getAttribute('data-ctx-expand'))
   const collapsedCount = document.querySelectorAll('[data-ctx-detail]').length
   // 展开第一个工具
@@ -63,7 +66,10 @@ const result = await evaluate(`(async () => {
     toolDetail = (document.querySelector('[data-ctx-detail="' + firstTool + '"]') || {}).textContent || null
     toolSchema = (document.querySelector('[data-ctx-schema="' + firstTool + '"]') || {}).textContent || null
   }
-  // 折叠「提示词 section」大分区
+  // 展开「提示词 section」大分区，再收起，验证折叠
+  document.querySelector('[data-ctx-section="prompts"]').click()
+  await new Promise((r) => setTimeout(r, 300))
+  const promptsVisibleAfterExpand = Boolean(document.querySelector('[data-ctx-expand^="prompt:"]'))
   document.querySelector('[data-ctx-section="prompts"]').click()
   await new Promise((r) => setTimeout(r, 300))
   const promptsVisibleAfterCollapse = Boolean(document.querySelector('[data-ctx-expand^="prompt:"]'))
@@ -82,12 +88,14 @@ const result = await evaluate(`(async () => {
   return {
     ok: true,
     sections,
+    collapsedExpands,
     expandsCount: expands.length,
     collapsedCount,
     firstTool,
     toolDetailLength: toolDetail ? toolDetail.length : 0,
     toolSchemaLength: toolSchema ? toolSchema.length : 0,
     toolSchemaHead: toolSchema ? toolSchema.slice(0, 120) : null,
+    promptsVisibleAfterExpand,
     promptsVisibleAfterCollapse,
     promptKey,
     promptTextLength: promptText ? promptText.length : 0,

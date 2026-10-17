@@ -5,6 +5,22 @@ DSH（DeepSeek Harness）的**上下文长度管理**插件，分两个平面：
 - **宿主半侧（`index.js`，装完即有）**：`/ctx` 读出当前会话的 token 用量与预算，只读的设置面板 + `GET /api/ctx-mon-and-con/status`；**不修改会话**。
 - **控制半侧（`control.js`，需要挂进 agent preset）**：到达预算就自动压缩，或手动 `/ctx-compact`；走官方 `ctx.compaction` seam，不自己造压缩。
 
+## 设置面板在哪
+
+装好后**重启 dsh 进程**（不是刷新页面），打开「设置」→ 左侧最后几项里会有 **「上下文长度」**（英文界面 `Context length`）：
+
+```
+上下文长度
+当前预算        128,000 tokens
+警告阈值        75.0%
+超限阈值        90.0%
+控制: 尚未生效 —— 需要把 ctx-mon-and-con/control 加到 agent preset…
+最近的 /ctx 测量   （执行过 /ctx 后这里出现数据）
+刷新
+```
+
+> **看不到这个分区？** 99% 是没重启进程：客户端模块清单在 dsh 启动时注入页面，只刷新页面不会重新扫描新装的插件。`Ctrl+C` 停掉 `dsh --profile web` 再启动即可。也可以用 `scripts/ui-probe.mjs` 无头验证（见仓库根 README）。
+
 ## 三条功能
 
 | # | 功能 | 怎么用 |

@@ -25,6 +25,7 @@ DSH 已经内置了完整的上下文管理底座——计量（`ctx.tokenMeter`
 | [`docs/market-submission.md`](docs/market-submission.md) | 为什么在插件市场里搜不到、收录规则逐条核对、已实测的安装命令，以及还差的三步 |
 | [`submission/`](submission) | 可直接复制进收录 PR 的条目文件 `qiangweiliu__dsh-context--plugin-skeleton.yml` |
 | [`scripts/verify-uninstall.ps1`](scripts/verify-uninstall.ps1) | 实测「安装 → 生效 → 卸载 → 无残留」：快照对比、残留分类、`-Clean` 清理通用残留 |
+| [`scripts/ui-probe.mjs`](scripts/ui-probe.mjs) | 无头浏览器（Windows Edge + CDP）实测 UI：打开设置、点开「上下文长度」、执行 `/ctx`，抓控制台错误 |
 | [`scripts/wsl-install.sh`](scripts/wsl-install.sh) · [`scripts/wsl-uninstall.sh`](scripts/wsl-uninstall.sh) | 在 WSL 的 DSH profile 里安装/卸载并核对残留（含运行时探针说明） |
 
 ## 快速开始
@@ -43,7 +44,8 @@ DSH 已经内置了完整的上下文管理底座——计量（`ctx.tokenMeter`
 
 - 发 `/ctx` —— 显示当前会话的 `总用量 / 预算 / 百分比 / 状态`
 - 发 `/ctx 200000` —— 把**本会话**的预算临时改成 200000 tokens；`/ctx reset` 恢复默认
-- 打开 设置 → 上下文 —— 查看配置预算、阈值、最近的测量值，以及控制半侧是否已生效
+- 打开 设置 → **上下文长度** —— 预算、阈值、最近的 `/ctx` 测量值，以及控制半侧是否已生效
+  （装完必须**重启 dsh 进程**；只刷新页面不会加载新插件）
 
 到达预算后自动压缩需要把控制半侧挂进 agent preset（否则插件只做监控）：
 

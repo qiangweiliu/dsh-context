@@ -26,7 +26,7 @@ window.__ModuleLoader__.load({
     const STATUS_PATH = '/api/ctx-mon-and-con/status'
 
     const en = {
-      nav: 'Context',
+      nav: 'Context length',
       title: 'Context length',
       description:
         'Reads the measurement recorded by the /ctx command. Run /ctx in a conversation to record the current usage.',
@@ -55,7 +55,7 @@ window.__ModuleLoader__.load({
     }
 
     const zh = {
-      nav: '上下文',
+      nav: '上下文长度',
       title: '上下文长度',
       description: '读取 /ctx 命令记录下来的测量值；在会话里执行一次 /ctx 就会有数据。',
       budget: '当前预算',

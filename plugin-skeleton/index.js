@@ -1,5 +1,5 @@
 /**
- * context-monitor-and-control — DSH 上下文长度管理插件（node 侧最小可用骨架）
+ * ctx-mon-and-con — DSH 上下文长度管理插件（node 侧最小可用骨架）
  *
  * 插件形态（Cordis 对象插件 / ESM 命名空间对象）：
  *   - name   : 插件在诊断与日志中的名字（Cordis 读取 module namespace 的 `name` 导出）
@@ -13,16 +13,16 @@
  * 裸导入，插件目录自己的 node_modules 往往不存在宿主依赖；只用 ctx 上的服务最稳。
  */
 
-export const name = 'context-monitor-and-control'
+export const name = 'ctx-mon-and-con'
 
 /** 依赖的真实服务名（见 @deepseek-ai/dsh-commands / @deepseek-ai/dsh-token-meter）。 */
 export const inject = ['commands', 'tokenMeter']
 
 /** 与 package.json 的 version 保持一致（只用于状态接口的自述）。 */
-const PLUGIN_VERSION = '0.2.0'
+const PLUGIN_VERSION = '0.3.0'
 
 /** 浏览器半侧 client.js 拉的只读状态接口；两处路径必须一致。 */
-const STATUS_PATH = '/api/context-monitor-and-control/status'
+const STATUS_PATH = '/api/ctx-mon-and-con/status'
 
 /** 内存里最多保留多少条会话测量（进程内，重启即清空）。 */
 const MAX_MEASUREMENTS = 10
@@ -80,7 +80,7 @@ function validateConfig(input) {
 export const Config = Object.freeze({
   '~standard': Object.freeze({
     version: 1,
-    vendor: 'context-monitor-and-control',
+    vendor: 'ctx-mon-and-con',
     validate: validateConfig,
   }),
 })
@@ -194,7 +194,7 @@ export function apply(ctx, config) {
         return result
       },
     })
-  }, 'context-monitor-and-control: /ctx command')
+  }, 'ctx-mon-and-con: /ctx command')
 
   // 浏览器半侧（client.js）通过这个只读接口取预算与最近测量值。
   // 用 ctx.inject(['webServer']) 而不是写进 export const inject：
@@ -207,7 +207,7 @@ export function apply(ctx, config) {
       return
     }
     const body = JSON.stringify({
-      plugin: 'context-monitor-and-control',
+      plugin: 'ctx-mon-and-con',
       version: PLUGIN_VERSION,
       budget: { tokens: config.contextWindowTokens, warnAt: config.warnAt, errorAt: config.errorAt },
       measurements: [...measurements.values()].reverse(),
@@ -222,7 +222,7 @@ export function apply(ctx, config) {
     const server = sub?.webServer
     if (!server || typeof server.register !== 'function') return
     const register = () => server.register({ kind: 'exact', path: STATUS_PATH, handler: statusHandler })
-    if (typeof sub.effect === 'function') sub.effect(register, 'context-monitor-and-control: status route')
+    if (typeof sub.effect === 'function') sub.effect(register, 'ctx-mon-and-con: status route')
     else register()
   })
 

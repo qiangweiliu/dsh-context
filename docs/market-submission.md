@@ -21,7 +21,7 @@ https://awesome-dsh-plugin.com/plugins.json
 | 检查项 | 结果 |
 | --- | --- |
 | 目录里有没有 `qiangweiliu` | 没有。`plugins.json` 共 5065 条，owner 过滤为空 |
-| 有没有同名/同包名条目 | 没有 `context-monitor-and-control`；但有相近的 `context-guardian`（包名 `dsh-context-guardian`，session 类） |
+| 有没有同名/同包名条目 | 没有 `ctx-mon-and-con`；但有相近的 `context-guardian`（包名 `dsh-context-guardian`，session 类） |
 | 是否发布过 npm | 没有，所以也没有「npm → 仓库」的自动关联 |
 | 是否有 GitHub Release tarball | 没有 |
 | 从源码能不能装 | **能，已实测**（见 §3） |
@@ -35,14 +35,14 @@ $env:DSH_HOME = "$env:TEMP\dsh-mkt-test"
 dsh plugin --profile mkt-add add "github:qiangweiliu/dsh-context#path:/plugin-skeleton"
 ```
 
-结果：pnpm 成功解析并安装 `context-monitor-and-control@0.2.0`，包内 `index.js`、`client.js`、
+结果：pnpm 成功解析并安装 `ctx-mon-and-con@0.3.0`，包内 `index.js`、`client.js`、
 `dsh.bundle.patch.yml`、`locale/*` 齐全；随后 `dsh --profile mkt-add --dump-config`
 输出里出现
 
 ```
-# == context-monitor-and-control
-- id: context-monitor-and-control
-  name: context-monitor-and-control
+# == ctx-mon-and-con
+- id: ctx-mon-and-con
+  name: ctx-mon-and-con
 ```
 
 说明 bundle 补丁在安装后的 profile 里确实生效 —— 也就是「可安装」这一关已经过了。
@@ -89,12 +89,11 @@ Invoke-RestMethod -Method Put -Headers @{ Authorization = "Bearer $env:GH_TOKEN"
 
 ### 4.3 可选，但强烈建议
 
-- ~~改包名~~：**已完成**。原名 `dsh-context-guard` 与已收录的 `context-guardian`（`dsh-context-guardian`）
-  只差三个字母，评审和用户都容易混；现名 `context-monitor-and-control` 是完整描述，与目录里任何条目都不同名。
-  改名涉及 `package.json` 的 `name`、`dsh.bundle.patch.yml` 的 `id`/`name`、`index.js` 的 `export const name`、
-  状态路由 `/api/context-monitor-and-control/status`、`client.js` 的模块 id 与 locale 命名空间、
-  `settings.section` 的 id —— 四处 id 必须互相一致，测试里都有断言。
-- **加 LICENSE 文件**：`package.json` 写了 `license: MIT` 但没有 LICENSE 正文。
+- ~~改包名~~：**已完成，定稿 `ctx-mon-and-con`（0.3.0）**。曾用名 `dsh-context-guard` /
+  `context-monitor-and-control`，前者与已收录的 `context-guardian`（`dsh-context-guardian`）只差三个字母容易混，
+  后者太长；现名与目录里任何条目都不同名。改名必须同时改这些标识，测试里都有断言：
+  `package.json` 的 `name`、`dsh.bundle.patch.yml` 的 `id`/`name`、`index.js` 的 `export const name`、
+  状态路由 `/api/ctx-mon-and-con/status`、`client.js` 的模块 id 与 locale 命名空间、`settings.section` 的 id。
 - **发布 npm**：收录不看 npm，但有了 npm 包市场会显示下载量、安装也免掉源码构建步骤；
   发布时 `repository` 字段必须指回本仓库，否则不会被关联。
 - **截图**：在 `plugin-skeleton/` 下放 `screenshots.json` 列 1–8 张图，市场详情页会展示。

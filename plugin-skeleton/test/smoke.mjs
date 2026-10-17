@@ -10,7 +10,7 @@
  *   1. 插件是合法 Cordis 插件（name/inject/Config/apply 被识别）
  *   2. Config 走 Standard Schema 同步校验，非法配置被拒绝
  *   3. /ctx 注册成功、输出格式正确、参数覆盖预算生效、非法参数返回 error
- *   4. 浏览器状态路由 /api/context-monitor-and-control/status 注册、返回 JSON、非 GET 405
+ *   4. 浏览器状态路由 /api/ctx-mon-and-con/status 注册、返回 JSON、非 GET 405
  *   5. 卸载插件后命令注销（disposer 生效）
  *   6. 包资源（client/icon/locale）能被 exports 解析，dsh.client 声明合法
  *   7. client.js 在 mock 的 __ModuleLoader__/cordis 上下文里能 apply 并注册 settings.section
@@ -86,7 +86,7 @@ class MockWebServer extends Service {
 
 
 // ── 1. 合法插件形状 ───────────────────────────────────────────────────────
-check('exports name', plugin.name === 'context-monitor-and-control', plugin.name)
+check('exports name', plugin.name === 'ctx-mon-and-con', plugin.name)
 check('exports inject', Array.isArray(plugin.inject) && plugin.inject.join(',') === 'commands,tokenMeter', JSON.stringify(plugin.inject))
 check('exports Config standard schema', typeof plugin.Config?.['~standard']?.validate === 'function')
 check('exports apply function', typeof plugin.apply === 'function')
@@ -134,8 +134,8 @@ check('/ctx 已取消信号返回 error', cancelled.kind === 'error', cancelled.
 
 // ── 3b. 浏览器状态路由（client.js 的数据源）────────────────────────────────
 await new Promise((resolve) => setTimeout(resolve, 0))
-const statusRoute = webServer.routes.get('/api/context-monitor-and-control/status')
-check('注册状态路由 /api/context-monitor-and-control/status', statusRoute?.kind === 'exact', statusRoute?.path)
+const statusRoute = webServer.routes.get('/api/ctx-mon-and-con/status')
+check('注册状态路由 /api/ctx-mon-and-con/status', statusRoute?.kind === 'exact', statusRoute?.path)
 const makeResponse = () => ({
   statusCode: 0,
   headers: {},
@@ -183,7 +183,7 @@ await root.fiber.dispose()
 // 宿主（dsh-app-boot 的 readPluginMeta）用 Node ESM 解析器按 exports 取
 // `<包名>/locale/<lang>.json` 与 `<包名>/icon`，所以这里用同一套解析验证。
 const require = createRequire(new URL('../package.json', import.meta.url))
-for (const specifier of ['context-monitor-and-control/client', 'context-monitor-and-control/icon', 'context-monitor-and-control/locale/en.json', 'context-monitor-and-control/locale/zh.json']) {
+for (const specifier of ['ctx-mon-and-con/client', 'ctx-mon-and-con/icon', 'ctx-mon-and-con/locale/en.json', 'ctx-mon-and-con/locale/zh.json']) {
   let resolved
   try {
     resolved = require.resolve(specifier)
@@ -280,11 +280,11 @@ const client = (() => {
   return { moduleExports, registration, effects, slotInjects, slotRegistrations, dictionaries }
 })()
 check('client exports inject = ["slots","locale"]', client.moduleExports.inject?.join(',') === 'slots,locale', JSON.stringify(client.moduleExports.inject))
-check('client 注册词典', Object.keys(client.dictionaries).join(',') === 'contextMonitorAndControl', Object.keys(client.dictionaries).join(','))
+check('client 注册词典', Object.keys(client.dictionaries).join(',') === 'ctxMonAndCon', Object.keys(client.dictionaries).join(','))
 client.slotInjects[0]?.callback()
 const section = client.slotRegistrations[0]?.definition ?? {}
 check('client 注册 settings.section', section.name === 'settings.section', JSON.stringify(section))
-check('settings.section id/order/locale', section.id === 'context-monitor-and-control' && typeof section.order === 'number' && section.locale === 'contextMonitorAndControl', JSON.stringify(section))
+check('settings.section id/order/locale', section.id === 'ctx-mon-and-con' && typeof section.order === 'number' && section.locale === 'ctxMonAndCon', JSON.stringify(section))
 check('settings.section label 走中文词典', section.label?.() === '上下文', section.label?.())
 check('settings.section 组件是函数', typeof client.slotRegistrations[0]?.component === 'function', typeof client.slotRegistrations[0]?.component)
 

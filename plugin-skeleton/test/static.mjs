@@ -40,7 +40,7 @@ check('warnAt >= errorAt 被拒绝', Array.isArray(inverted.issues) && inverted.
 
 // ── 3. 包资源解析（宿主 readPluginMeta / client-modules 都走 ESM 解析器）──
 const require = createRequire(new URL('../package.json', import.meta.url))
-for (const specifier of ['context-monitor-and-control/client', 'context-monitor-and-control/icon', 'context-monitor-and-control/locale/en.json', 'context-monitor-and-control/locale/zh.json']) {
+for (const specifier of ['ctx-mon-and-con/client', 'ctx-mon-and-con/icon', 'ctx-mon-and-con/locale/en.json', 'ctx-mon-and-con/locale/zh.json']) {
   let resolved
   try {
     resolved = require.resolve(specifier)
@@ -67,7 +67,7 @@ check('dsh.client 声明合法', manifest.dsh?.client?.platform === 'web' && typ
 check('dsh.bundle.patch 指向存在的文件', existsSync(new URL(`../${manifest.dsh?.bundle?.patch ?? 'missing'}`, import.meta.url)))
 const patch = readFileSync(new URL('../dsh.bundle.patch.yml', import.meta.url), 'utf8')
 check('bundle patch 含 insert 层', /^- insert:/m.test(patch))
-check('bundle patch 插入 id/name', /- id: context-monitor-and-control\s*\n\s*name: context-monitor-and-control/.test(patch))
+check('bundle patch 插入 id/name', /- id: ctx-mon-and-con\s*\n\s*name: ctx-mon-and-con/.test(patch))
 const icon = readFileSync(new URL('../icon.svg', import.meta.url), 'utf8')
 check('icon.svg 是 SVG 且体积极小', icon.trimStart().startsWith('<svg') && Buffer.byteLength(icon) <= 256 * 1024, `${Buffer.byteLength(icon)}B`)
 
@@ -138,7 +138,7 @@ check('client exports inject = ["slots","locale"]', client.moduleExports.inject?
 client.slotInjects[0]?.callback()
 const section = client.slotRegistrations[0]?.definition ?? {}
 check('client 注册 settings.section', section.name === 'settings.section', JSON.stringify(section))
-check('settings.section id/order/locale', section.id === 'context-monitor-and-control' && typeof section.order === 'number' && section.locale === 'contextMonitorAndControl', JSON.stringify(section))
+check('settings.section id/order/locale', section.id === 'ctx-mon-and-con' && typeof section.order === 'number' && section.locale === 'ctxMonAndCon', JSON.stringify(section))
 check('settings.section label 走中文词典', section.label?.() === '上下文', section.label?.())
 check('settings.section 组件是函数', typeof client.slotRegistrations[0]?.component === 'function', typeof client.slotRegistrations[0]?.component)
 

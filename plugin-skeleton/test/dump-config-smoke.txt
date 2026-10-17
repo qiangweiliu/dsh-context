@@ -1,10 +1,7 @@
-# 证据：隔离 profile 里安装本插件后 `dsh --profile smoke-add --dump-config` 的裁剪输出
-# profile: %TEMP%\dsh-smoke-rename\profiles\smoke-add（一次性，已删除）
-# 安装命令: dsh plugin --profile smoke-add add <repo>\plugin-skeleton
-# 生成日期: 2026-10-17，随包名改名 context-monitor-and-control 重生成
-- id: llm-deepseek-account
-  name: '@deepseek-ai/dsh-llm-deepseek-account'
-# == context-monitor-and-control
-- id: context-monitor-and-control
-  name: context-monitor-and-control
-
+# 证据：隔离 profile 里安装本插件后 `dsh --profile smoke-ctx --dump-config` 的裁剪输出
+# profile: %TEMP%\dsh-smoke-ctx\profiles\smoke-ctx（一次性，已删除）
+# 安装命令: dsh plugin --profile smoke-ctx add <repo>\plugin-skeleton
+# 生成日期: 2026-10-17，随包名定稿 ctx-mon-and-con 0.3.0 重生成
+# == ctx-mon-and-con
+- id: ctx-mon-and-con
+  name: ctx-mon-and-con

@@ -131,7 +131,7 @@ function describeResult(result) {
  * @param config 经 Config 校验后的配置
  */
 export function apply(ctx, config) {
-  if (config.mode === 'off') return
+  // mode: 'off' 只停用压缩动作；工具/提示词清单与开关仍要生效。
 
   const log = (level, message) => {
     const logger = ctx.logger
@@ -256,7 +256,7 @@ export function apply(ctx, config) {
     const compaction = sub?.compaction
     if (!compaction) return
 
-    setControlActive(true, config.mode)
+    setControlActive(config.mode !== 'off', config.mode)
     sub.effect(
       () => () => setControlActive(false),
       'ctx-mon-and-con-control: activation state',
@@ -338,8 +338,8 @@ export function apply(ctx, config) {
       )
     }
 
-    // 手动入口：/ctx-compact —— 立刻对该会话做一次 idle 压缩。
-    ctx.inject(['commands'], (commandSub) => {
+    // 手动入口：/ctx-compact —— 立刻对该会话做一次 idle 压缩（mode: off 时不注册）。
+    if (config.mode !== 'off') ctx.inject(['commands'], (commandSub) => {
       const commands = commandSub?.commands
       if (!commands?.register) return
       commandSub.effect(

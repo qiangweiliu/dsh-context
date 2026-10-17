@@ -16,7 +16,7 @@
 export const name = 'ctx-mon-and-con'
 
 /** 与 control.js 共享的进程内状态（同一包内相对 import，不涉及 npm 依赖）。 */
-import { existsSync, realpathSync, statSync } from 'node:fs'
+import { existsSync, readFileSync, readdirSync, realpathSync, statSync } from 'node:fs'
 import { dirname, join } from 'node:path'
 
 import {
@@ -27,7 +27,6 @@ import {
   getInventory,
   getSessionDisabledPrompts,
   getSessionDisabledTools,
-  getSyncDebug,
   setSessionPromptEnabled,
   setSessionToolEnabled,
   control as controlState,
@@ -42,7 +41,7 @@ import {
 export const inject = ['commands', 'tokenMeter']
 
 /** 与 package.json 的 version 保持一致（只用于状态接口的自述）。 */
-const PLUGIN_VERSION = '0.11.0'
+const PLUGIN_VERSION = '0.11.1'
 
 /** 浏览器半侧 client.js 拉的只读状态接口；两处路径必须一致。 */
 const STATUS_PATH = '/api/ctx-mon-and-con/status'
@@ -207,6 +206,74 @@ const sourceFileFor = (packageName) => {
   return existsSync(file) ? file : null
 }
 
+let toolSourceIndex = null
+const TOOL_INDEX_MAX_FILES = 700
+const TOOL_INDEX_MAX_BYTES = 2 * 1024 * 1024
+
+/** 扫描各包 lib 下的注册代码，建立 tool name -> 真实文件索引（一次，缓存）。 */
+const ensureToolIndex = () => {
+  if (toolSourceIndex !== null) return toolSourceIndex
+  toolSourceIndex = new Map()
+  const root = packagesRoot()
+  if (!root || !existsSync(root)) return toolSourceIndex
+  let scanned = 0
+  const walk = (dir, depth) => {
+    if (scanned >= TOOL_INDEX_MAX_FILES || depth > 2) return
+    let entries
+    try {
+      entries = readdirSync(dir, { withFileTypes: true })
+    } catch {
+      return
+    }
+    for (const entry of entries) {
+      if (scanned >= TOOL_INDEX_MAX_FILES) return
+      const full = join(dir, entry.name)
+      if (entry.isDirectory()) {
+        if (entry.name === 'node_modules' || entry.name === 'client') continue
+        walk(full, depth + 1)
+        continue
+      }
+      if (!entry.isFile() || !entry.name.endsWith('.js')) continue
+      if (entry.name.includes('client')) continue
+      let stat
+      try {
+        stat = statSync(full)
+      } catch {
+        continue
+      }
+      if (!stat.isFile() || stat.size > TOOL_INDEX_MAX_BYTES) continue
+      scanned += 1
+      let text
+      try {
+        text = readFileSync(full, 'utf8')
+      } catch {
+        continue
+      }
+      for (const match of text.matchAll(/\bname\s*:\s*['"]([A-Za-z0-9_-]+)['"]/g)) {
+        if (!toolSourceIndex.has(match[1])) toolSourceIndex.set(match[1], full)
+      }
+    }
+  }
+  let packages = []
+  try {
+    packages = readdirSync(root, { withFileTypes: true }).filter((entry) => entry.isDirectory()).map((entry) => entry.name)
+  } catch {}
+  for (const pkg of packages) {
+    if (scanned >= TOOL_INDEX_MAX_FILES) break
+    walk(join(root, pkg, 'lib'), 0)
+  }
+  return toolSourceIndex
+}
+
+const toolSourceFile = (name) => {
+  try {
+    const found = ensureToolIndex().get(name)
+    if (found) return found
+  } catch {}
+  const pkg = SOURCE_HINTS.tool(name)
+  return pkg ? sourceFileFor(pkg) : null
+}
+
 const sourcesFor = (inventory) => {
   const sections = {}
   const tools = {}
@@ -214,7 +281,7 @@ const sourcesFor = (inventory) => {
     sections[section.name] = sourceFileFor(SOURCE_HINTS.section(section.name))
   }
   for (const tool of inventory && Array.isArray(inventory.tools) ? inventory.tools : []) {
-    tools[tool.name] = sourceFileFor(SOURCE_HINTS.tool(tool.name))
+    tools[tool.name] = toolSourceFile(tool.name)
   }
   return { sections, tools }
 }
@@ -739,7 +806,8 @@ export function apply(ctx, config) {
       response.setHeader('allow', 'GET')
       return send(405, { ok: false, error: 'method not allowed' })
     }
-    const session = latestSession()
+    const requested = requestUrl(request).searchParams.get('sessionId') ?? ''
+    const session = requested && sessions && typeof sessions.get === 'function' ? sessions.get(requested) : latestSession()
     const sessionId = session?.id
     return send(200, {
       ok: true,
@@ -752,10 +820,7 @@ export function apply(ctx, config) {
       disabledSessionPrompts: sessionId ? getSessionDisabledPrompts(sessionId) : [],
       disabledTools: Array.isArray(config.disabledTools) ? config.disabledTools : [],
       promptOverrides: config.promptOverrides || {},
-      promptWrite,
       applied: sessionId ? getAppliedTools(sessionId) : null,
-      debug: sessionId ? getSyncDebug(sessionId) : null,
-      configWrite,
     })
   }
 

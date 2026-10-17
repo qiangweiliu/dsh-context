@@ -192,6 +192,35 @@ window.__ModuleLoader__.load({
       userTokens: '本轮用户对话',
     }
 
+    let sessionService = null
+
+    /** 当前 mainView 保留的会话 id；拿不到时返回 null。 */
+    function currentSessionId() {
+      const sessions = sessionService
+      if (!sessions) return null
+      try {
+        const state = sessions.list.getSnapshot()
+        for (const id of state.ids ?? []) {
+          try {
+            const info = sessions.retainInfo(id).getSnapshot()
+            if (((info && info.retainedBy) || {}).mainView > 0) return id
+          } catch {}
+        }
+      } catch {}
+      return null
+    }
+
+    /** 订阅会话列表，返回当前选中会话 id（变化时重渲染）。 */
+    function useCurrentSession() {
+      const [id, setId] = react.useState(() => currentSessionId())
+      react.useEffect(() => {
+        if (!sessionService) return undefined
+        const stop = sessionService.list.subscribe(() => setId(currentSessionId()))
+        return () => stop()
+      }, [])
+      return id
+    }
+
     const inject = ['slots', 'locale']
 
     const h = react.createElement
@@ -518,7 +547,8 @@ window.__ModuleLoader__.load({
     // ── 输入框下方指示器：与内置 ContextMeter 同排版，点击弹出小明细 ────────
     function CtxDock(props) {
       const t = props.t
-      const sessionId = props.sessionId || (props.runtime && props.runtime.sessionId) || undefined
+      const selectedSession = useCurrentSession()
+      const sessionId = props.sessionId || (props.runtime && props.runtime.sessionId) || selectedSession || undefined
       const [data, setData] = react.useState(null)
       const [open, setOpen] = react.useState(false)
       const [hovered, setHovered] = react.useState(false)
@@ -1138,8 +1168,11 @@ window.__ModuleLoader__.load({
     function CtxPanel(props) {
       const t = props.t
       const [state, load] = useStatus(STATUS_PATH)
-      const [liveState, reloadLive] = useLive(`${STATUS_PATH}/live`)
-      const [invState, reloadInv] = useLive(`${STATUS_PATH}/inventory`)
+      const activeSession = useCurrentSession()
+      const livePath = activeSession ? `${STATUS_PATH}/live?sessionId=${encodeURIComponent(activeSession)}` : `${STATUS_PATH}/live`
+      const inventoryPath = activeSession ? `${STATUS_PATH}/inventory?sessionId=${encodeURIComponent(activeSession)}` : `${STATUS_PATH}/inventory`
+      const [liveState, reloadLive] = useLive(livePath)
+      const [invState, reloadInv] = useLive(inventoryPath)
       const live = liveState.data
       const data = state.phase === 'ready' ? state.data || {} : null
       const budget = data ? data.budget || {} : {}
@@ -1203,6 +1236,10 @@ window.__ModuleLoader__.load({
     /** @param {unknown} ctx - 浏览器 cordis 上下文（slots / locale） */
     function apply(ctx) {
       ctx.effect(() => ctx.locale.register(NS, { en, zh }), 'ctx-mon-and-con: dictionaries')
+      if (typeof ctx.inject === 'function') ctx.inject(['sessions'], (sub) => {
+        sessionService = sub?.sessions ?? null
+        if (typeof sub.effect === 'function') sub.effect(() => () => { sessionService = null }, 'ctx-mon-and-con: sessions presence')
+      })
       const t = ctx.locale.bind(NS)
       const face = () => ({ t })
 

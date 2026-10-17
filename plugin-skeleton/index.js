@@ -30,7 +30,7 @@ import {
 export const inject = ['commands', 'tokenMeter']
 
 /** 与 package.json 的 version 保持一致（只用于状态接口的自述）。 */
-const PLUGIN_VERSION = '0.8.0'
+const PLUGIN_VERSION = '0.8.1'
 
 /** 浏览器半侧 client.js 拉的只读状态接口；两处路径必须一致。 */
 const STATUS_PATH = '/api/ctx-mon-and-con/status'
@@ -338,9 +338,22 @@ export function apply(ctx, config) {
       response.setHeader('allow', 'GET')
       return send(405, { ok: false, error: 'method not allowed' })
     }
-    const sessionId = requestUrl(request).searchParams.get('sessionId') ?? ''
-    const session = sessions && typeof sessions.get === 'function' ? sessions.get(sessionId) : undefined
-    if (!session) return send(404, { ok: false, error: 'unknown session' })
+    const requested = requestUrl(request).searchParams.get('sessionId') ?? ''
+    let sessionId = requested
+    let session
+    if (sessions && typeof sessions.get === 'function') {
+      if (requested) {
+        session = sessions.get(requested)
+      } else if (typeof sessions.list === 'function') {
+        const all = sessions.list()
+        const latest = Array.isArray(all) && all.length > 0 ? all[all.length - 1] : undefined
+        if (latest) {
+          session = latest
+          sessionId = latest.id
+        }
+      }
+    }
+    if (!session) return send(404, { ok: false, error: requested ? 'unknown session' : 'no session yet' })
     let used = null
     try {
       const measurement = ctx.tokenMeter.measure(session)

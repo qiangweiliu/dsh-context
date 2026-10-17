@@ -76,6 +76,7 @@ window.__ModuleLoader__.load({
       warnLabel: 'Warn ratio',
       errorLabel: 'Error ratio',
       meterAria: 'ctx budget',
+      live: 'live',
       promptTokens: 'Prompt',
       toolTokens: 'Tools',
       historyTokens: 'History',
@@ -134,6 +135,7 @@ window.__ModuleLoader__.load({
       warnLabel: '警告比例',
       errorLabel: '超限比例',
       meterAria: 'ctx 预算',
+      live: '实时',
       promptTokens: '提示词',
       toolTokens: '工具定义',
       historyTokens: '上文',
@@ -395,6 +397,32 @@ window.__ModuleLoader__.load({
       return [state, load]
     }
 
+    /** 轮询 /live：跟随最近一个会话的实时用量与四桶构成，保证页面与 dock 同源。 */
+    function useLive(path) {
+      const [data, setData] = react.useState(null)
+      react.useEffect(() => {
+        let cancelled = false
+        let timer
+        const tick = () => {
+          fetch(path, { headers: { accept: 'application/json' } })
+            .then((response) => (response.ok ? response.json() : null))
+            .then((payload) => {
+              if (!cancelled && payload && payload.ok) setData(payload)
+            })
+            .catch(() => {})
+            .finally(() => {
+              if (!cancelled) timer = setTimeout(tick, 3000)
+            })
+        }
+        tick()
+        return () => {
+          cancelled = true
+          clearTimeout(timer)
+        }
+      }, [path])
+      return data
+    }
+
     // ── 输入框下方指示器：与内置 ContextMeter 同排版，点击弹出小明细 ────────
     function CtxDock(props) {
       const t = props.t
@@ -503,20 +531,26 @@ window.__ModuleLoader__.load({
     // ── 面板内部区块 ───────────────────────────────────────────────────────
     function OverviewCard(props) {
       const t = props.t
+      const live = props.live
       const budget = props.budget || {}
       const latest = props.latest
-      const used = latest && typeof latest.totalTokens === 'number' ? latest.totalTokens : null
-      const ratio = used !== null && budget.tokens > 0 ? used / budget.tokens : null
+      const liveUsed = live && typeof live.used === 'number' ? live.used : null
+      const liveBudget = live && typeof live.budget === 'number' ? live.budget : null
+      const used = liveUsed !== null ? liveUsed : latest && typeof latest.totalTokens === 'number' ? latest.totalTokens : null
+      const budgetTokens = liveBudget !== null ? liveBudget : budget.tokens
+      const ratio = used !== null && budgetTokens > 0 ? used / budgetTokens : null
       const color = ratioColor(ratio)
-      const categories = breakdownCategories(t, latest && latest.breakdown)
+      const breakdown = (live && live.breakdown) || (liveUsed === null && latest ? latest.breakdown : null)
+      const categories = breakdownCategories(t, breakdown)
+      const sub = live ? t('live') : latest ? formatTime(latest.at) : undefined
       return h(
         Card,
-        { title: t('budget'), sub: latest ? formatTime(latest.at) : undefined },
+        { title: t('budget'), sub },
         h(
           'div',
           { style: { display: 'flex', alignItems: 'baseline', gap: '8px' } },
           h('span', { style: { fontSize: '22px', fontWeight: 600, fontVariantNumeric: 'tabular-nums', color } }, ratio === null ? '—' : formatPercent(ratio)),
-          h('span', { style: { ...styles.cardSub, marginLeft: 0 } }, `${compactTokens(used)} / ${compactTokens(budget.tokens)} ${t('tokens')}`),
+          h('span', { style: { ...styles.cardSub, marginLeft: 0 } }, `${compactTokens(used)} / ${compactTokens(budgetTokens)} ${t('tokens')}`),
         ),
         h(SegmentedBar, { usedRatio: ratio ?? 0, categories }),
         categories.length > 0
@@ -696,6 +730,7 @@ window.__ModuleLoader__.load({
     function CtxPanel(props) {
       const t = props.t
       const [state, load] = useStatus(STATUS_PATH)
+      const live = useLive(`${STATUS_PATH}/live`)
       const data = state.phase === 'ready' ? state.data || {} : null
       const budget = data ? data.budget || {} : {}
       const control = data ? data.control || {} : {}
@@ -714,7 +749,7 @@ window.__ModuleLoader__.load({
         children.push(h('button', { key: 'retry', type: 'button', style: styles.button, onClick: load }, t('retry')))
       } else {
         // 概览卡占满一行；控制卡 + 全局配置卡并排两列。
-        children.push(h(OverviewCard, { key: 'overview', t, budget, latest, controlActive: Boolean(control.active) }))
+        children.push(h(OverviewCard, { key: 'overview', t, budget, latest, live, controlActive: Boolean(control.active) }))
         children.push(
           h('div', { key: 'cols', style: styles.cols }, h(ControlSection, { t, control, onToggled: load }), h(ConfigSection, { t, budget, editable: Boolean(data.configEditable), onSaved: load })),
         )

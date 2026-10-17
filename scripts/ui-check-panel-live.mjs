@@ -61,13 +61,16 @@ await sleep(12000)
 
 const snapshot = await evaluate(`(async () => {
   const norm = (s) => (s || '').replace(/\\s+/g, ' ').trim()
+  const readSegs = () => Array.from(document.querySelectorAll('[data-ctx-seg]')).map((el) => ({ key: el.getAttribute('data-ctx-seg'), bg: getComputedStyle(el).backgroundColor, inline: el.style.width, computed: Math.round(parseFloat(getComputedStyle(el).width) * 100) / 100 }))
   const btn = Array.from(document.querySelectorAll('button')).find((b) => norm(b.getAttribute('aria-label')) === 'ctx')
   if (!btn) return { ok: false, why: 'sidebar ctx not found' }
   btn.click()
-  await new Promise((r) => setTimeout(r, 2000))
-  const segs = Array.from(document.querySelectorAll('[data-ctx-seg]')).map((el) => ({ key: el.getAttribute('data-ctx-seg'), bg: getComputedStyle(el).backgroundColor, width: el.style.width }))
+  await new Promise((r) => setTimeout(r, 120))
+  const early = readSegs()
+  await new Promise((r) => setTimeout(r, 1100))
+  const segs = readSegs()
   const legend = Array.from(document.querySelectorAll('[data-ctx-legend]')).map((el) => norm(el.textContent))
-  return { ok: true, segs, legend, body: (document.body.innerText || '').slice(0, 1000) }
+  return { ok: true, early, segs, legend, body: (document.body.innerText || '').slice(0, 1000) }
 })()`)
 
 console.log(JSON.stringify({ ...snapshot, errors }, null, 2))

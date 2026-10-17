@@ -76,7 +76,7 @@ window.__ModuleLoader__.load({
       warnLabel: 'Warn ratio',
       errorLabel: 'Error ratio',
       meterAria: 'ctx budget',
-      live: 'live',
+      synced: 'synced',
       promptTokens: 'Prompt',
       toolTokens: 'Tools',
       historyTokens: 'History',
@@ -135,7 +135,7 @@ window.__ModuleLoader__.load({
       warnLabel: '警告比例',
       errorLabel: '超限比例',
       meterAria: 'ctx 预算',
-      live: '实时',
+      synced: '已同步',
       promptTokens: '提示词',
       toolTokens: '工具定义',
       historyTokens: '上文',
@@ -212,11 +212,18 @@ window.__ModuleLoader__.load({
       return rows.map((row) => ({ ...row, share: total > 0 ? row.tokens / total : 0 }))
     }
 
-    /** 分段预算条：外层长度=已用/预算，内部颜色=四桶占比。 */
+    /** 分段预算条：外层长度=已用/预算，内部颜色=四桶占比；首次渲染从 0 平滑增长。 */
     function SegmentedBar(props) {
       const usedRatio = Math.max(0, Math.min(1, Number(props.usedRatio) || 0))
       const categories = Array.isArray(props.categories) ? props.categories : []
       const filled = categories.filter((row) => row.tokens > 0)
+      const signature = `${usedRatio}|${filled.map((row) => `${row.key}:${row.tokens}`).join(',')}`
+      const [grown, setGrown] = react.useState(false)
+      react.useEffect(() => {
+        setGrown(false)
+        const frame = requestAnimationFrame(() => setGrown(true))
+        return () => cancelAnimationFrame(frame)
+      }, [signature])
       if (filled.length === 0) return h(MeterBar, { percent: usedRatio * 100, color: ratioColor(usedRatio) })
       return h(
         'div',
@@ -226,7 +233,12 @@ window.__ModuleLoader__.load({
             key: row.key,
             'data-ctx-seg': row.key,
             title: `${row.label} · ${compactTokens(row.tokens)} (${formatPercent(row.share)})`,
-            style: { ...styles.barSegment, width: `${(usedRatio * row.share * 100).toFixed(3)}%`, background: row.color },
+            style: {
+              ...styles.barSegment,
+              width: `${(grown ? usedRatio * row.share * 100 : 0).toFixed(3)}%`,
+              background: row.color,
+              transition: 'width .7s cubic-bezier(.22,.61,.36,1)',
+            },
           }),
         ),
       )
@@ -350,7 +362,24 @@ window.__ModuleLoader__.load({
 
     function MeterBar(props) {
       const percent = Math.max(0, Math.min(100, Number(props.percent) || 0))
-      return h('div', { style: styles.bar }, h('div', { style: { ...styles.barFill, width: `${percent}%`, background: props.color || 'var(--dsw-alias-brand-primary)' } }))
+      const [grown, setGrown] = react.useState(false)
+      react.useEffect(() => {
+        setGrown(false)
+        const frame = requestAnimationFrame(() => setGrown(true))
+        return () => cancelAnimationFrame(frame)
+      }, [percent])
+      return h(
+        'div',
+        { style: styles.bar },
+        h('div', {
+          style: {
+            ...styles.barFill,
+            width: `${grown ? percent : 0}%`,
+            background: props.color || 'var(--dsw-alias-brand-primary)',
+            transition: 'width .7s cubic-bezier(.22,.61,.36,1)',
+          },
+        }),
+      )
     }
 
     function StatChip(props) {
@@ -397,30 +426,30 @@ window.__ModuleLoader__.load({
       return [state, load]
     }
 
-    /** 轮询 /live：跟随最近一个会话的实时用量与四桶构成，保证页面与 dock 同源。 */
+    /** 打开页面时同步一次 /live；重新可见/窗口聚焦或点刷新时再同步，不做定时轮询。 */
     function useLive(path) {
-      const [data, setData] = react.useState(null)
-      react.useEffect(() => {
-        let cancelled = false
-        let timer
-        const tick = () => {
-          fetch(path, { headers: { accept: 'application/json' } })
-            .then((response) => (response.ok ? response.json() : null))
-            .then((payload) => {
-              if (!cancelled && payload && payload.ok) setData(payload)
-            })
-            .catch(() => {})
-            .finally(() => {
-              if (!cancelled) timer = setTimeout(tick, 3000)
-            })
-        }
-        tick()
-        return () => {
-          cancelled = true
-          clearTimeout(timer)
-        }
+      const [state, setState] = react.useState({ data: null, at: null })
+      const reload = react.useCallback(() => {
+        fetch(path, { headers: { accept: 'application/json' } })
+          .then((response) => (response.ok ? response.json() : null))
+          .then((payload) => {
+            if (payload && payload.ok) setState({ data: payload, at: new Date().toISOString() })
+          })
+          .catch(() => {})
       }, [path])
-      return data
+      react.useEffect(() => {
+        reload()
+        const onVisible = () => {
+          if (document.visibilityState === 'visible') reload()
+        }
+        document.addEventListener('visibilitychange', onVisible)
+        window.addEventListener('focus', onVisible)
+        return () => {
+          document.removeEventListener('visibilitychange', onVisible)
+          window.removeEventListener('focus', onVisible)
+        }
+      }, [reload])
+      return [state, reload]
     }
 
     // ── 输入框下方指示器：与内置 ContextMeter 同排版，点击弹出小明细 ────────
@@ -432,27 +461,25 @@ window.__ModuleLoader__.load({
       const [hovered, setHovered] = react.useState(false)
       const rootRef = react.useRef(null)
 
-      react.useEffect(() => {
-        if (!sessionId) return undefined
-        let cancelled = false
-        let timer
-        const tick = () => {
-          fetch(`${STATUS_PATH}/live?sessionId=${encodeURIComponent(String(sessionId))}`, { headers: { accept: 'application/json' } })
-            .then((response) => (response.ok ? response.json() : null))
-            .then((payload) => {
-              if (!cancelled && payload && payload.ok) setData(payload)
-            })
-            .catch(() => {})
-            .finally(() => {
-              if (!cancelled) timer = setTimeout(tick, 3000)
-            })
-        }
-        tick()
-        return () => {
-          cancelled = true
-          clearTimeout(timer)
-        }
+      const fetchLive = react.useCallback(() => {
+        if (!sessionId) return
+        fetch(`${STATUS_PATH}/live?sessionId=${encodeURIComponent(String(sessionId))}`, { headers: { accept: 'application/json' } })
+          .then((response) => (response.ok ? response.json() : null))
+          .then((payload) => {
+            if (payload && payload.ok) setData(payload)
+          })
+          .catch(() => {})
       }, [sessionId])
+
+      // 打开会话时同步一次触发器，不轮询。
+      react.useEffect(() => {
+        fetchLive()
+      }, [fetchLive])
+
+      // 点开浮层时再拉一次最新值。
+      react.useEffect(() => {
+        if (open) fetchLive()
+      }, [open, fetchLive])
 
       react.useEffect(() => {
         if (!open) return undefined
@@ -542,7 +569,7 @@ window.__ModuleLoader__.load({
       const color = ratioColor(ratio)
       const breakdown = (live && live.breakdown) || (liveUsed === null && latest ? latest.breakdown : null)
       const categories = breakdownCategories(t, breakdown)
-      const sub = live ? t('live') : latest ? formatTime(latest.at) : undefined
+      const sub = live ? `${t('synced')} ${formatTime(props.liveAt)}` : latest ? formatTime(latest.at) : undefined
       return h(
         Card,
         { title: t('budget'), sub },
@@ -730,7 +757,8 @@ window.__ModuleLoader__.load({
     function CtxPanel(props) {
       const t = props.t
       const [state, load] = useStatus(STATUS_PATH)
-      const live = useLive(`${STATUS_PATH}/live`)
+      const [liveState, reloadLive] = useLive(`${STATUS_PATH}/live`)
+      const live = liveState.data
       const data = state.phase === 'ready' ? state.data || {} : null
       const budget = data ? data.budget || {} : {}
       const control = data ? data.control || {} : {}
@@ -749,11 +777,11 @@ window.__ModuleLoader__.load({
         children.push(h('button', { key: 'retry', type: 'button', style: styles.button, onClick: load }, t('retry')))
       } else {
         // 概览卡占满一行；控制卡 + 全局配置卡并排两列。
-        children.push(h(OverviewCard, { key: 'overview', t, budget, latest, live, controlActive: Boolean(control.active) }))
+        children.push(h(OverviewCard, { key: 'overview', t, budget, latest, live, liveAt: liveState.at, controlActive: Boolean(control.active) }))
         children.push(
           h('div', { key: 'cols', style: styles.cols }, h(ControlSection, { t, control, onToggled: load }), h(ConfigSection, { t, budget, editable: Boolean(data.configEditable), onSaved: load })),
         )
-        children.push(h('button', { key: 'refresh', type: 'button', style: styles.button, onClick: load }, t('refresh')))
+        children.push(h('button', { key: 'refresh', type: 'button', style: styles.button, onClick: () => { load(); reloadLive() } }, t('refresh')))
       }
       return h('div', { style: styles.root }, children)
     }

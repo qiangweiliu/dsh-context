@@ -30,7 +30,7 @@ import {
 export const inject = ['commands', 'tokenMeter']
 
 /** 与 package.json 的 version 保持一致（只用于状态接口的自述）。 */
-const PLUGIN_VERSION = '0.8.1'
+const PLUGIN_VERSION = '0.8.2'
 
 /** 浏览器半侧 client.js 拉的只读状态接口；两处路径必须一致。 */
 const STATUS_PATH = '/api/ctx-mon-and-con/status'

@@ -13,18 +13,20 @@ DSH（DeepSeek Harness）的**上下文长度管理**插件，分两个平面：
 2. **设置 → 上下文长度** —— 设置弹窗里的分区
 3. `GET /api/ctx-mon-and-con/status` —— 面板的数据源
 
-面板内容：
+面板内容（两张并排卡片 + 两张可折叠卡）：
 
 ```
 ctx —— 上下文长度控制
-预算 128,000 tokens / 警告阈值 75.0% / 超限阈值 90.0%
-控制: 尚未生效 —— 需要把 ctx-mon-and-con/control 加到 agent preset…
-最近的 /ctx 测量   （执行过 /ctx 后这里出现数据）
-全局配置
-  默认预算（tokens） [ 128000 ]
-  警告比例           [ 0.75 ]
-  超限比例           [ 0.9 ]
-  [保存]
+┌ 预算 ──────────────┐ ┌ 用量趋势 ────────┐
+│ 6%   7.4K / 128K   │ │  ▁▂▄▆ 柱状 mini 图 │
+│ ▓▓▓▓░░░░░░░░░ 4px  │ │  7,379/128,000 6% │
+│ [警告阈值 75%]      │ │  0/128,000 0%     │
+│ [超限阈值 90%]      │ └───────────────────┘
+│ [控制 已启用]       │
+└────────────────────┘
+┌ 控制 ──────────────┐ ┌ 全局配置（可折叠）─┐
+│ 已启用 + 按钮        │ │ 默认预算/警告/超限  │
+└────────────────────┘ └───────────────────┘
 ```
 
 **全局配置是真写的**：保存后走宿主 `ctx.configEditor`，把值写进 profile 的
@@ -38,17 +40,33 @@ ctx —— 上下文长度控制
 
 ## 输入框下方的 ctx 指示器（与 DSH 内置 HUD 的关系）
 
-注册了 `conversation.composer.dock`，在输入框下方、DSH 自带的占用条旁边多一行：
+注册了 `conversation.composer.dock`，在输入框下方、DSH 自带占用条旁边多一个**同款触发器**：
 
 ```
-ctx 预算 128,000 · 9,258 (7.2%)
+◔ ctx 6%
 ```
 
-- 这行**按插件预算算百分比**（9,258 / 128,000 = 7.2%）。
-- DSH 自带那块 `上下文已用 4% ~9.3K / 262K` **保持原样**：它显示的是模型真实窗口（262K）与官方
-  tokenMeter 投影，插件没有覆盖它。两者口径不同是刻意的——插件不应该篡改宿主 HUD。
+- 视觉规格直接对齐内置 `ContextMeter.trigger`：`font-size: var(--dsh-content-font-size-secondary,13px)`、
+  `font-variant-numeric: tabular-nums`、`color: var(--dsw-alias-label-tertiary)`、`padding: 1px 8px`、
+  `border-radius: var(--dsw-radius-sm)`，hover 背景 `--dsw-alias-interactive-bg-hover`；左侧是 14×14 的
+  环形进度（轨道 `--dsw-alias-border-l3`）。
+- 点开是一个**与内置 HUD 同规格的浮层**（264px、`--dsw-radius-lg`、`--dsw-specific-menu`、
+  `--dsw-elevation-prominent`、12px/20px）：`预算 | 6% | ~7.4K / 128K` + 4px 进度条 +
+  实测用量 / 剩余 / 控制状态三行。
+- 百分比按**插件预算**算（7,379 / 128,000 ≈ 6%）。
+- DSH 自带那块 `上下文已用 3% ~9.3K / 262K` **保持原样**：它显示模型真实窗口（262K）与官方
+  tokenMeter 投影，插件没有覆盖它。两者口径不同是刻意的。
 - 指示器只在**已选中会话的 composer** 上渲染；空白首页（Hero）没有会话，不显示。
-- 点侧栏 `ctx` 图标可打开整页面板看明细。
+
+## 面板视觉
+
+整页与设置分区共用一套卡片式版面（参考 `dsh-context` 插件的信息密度，但全部用内联样式 +
+`--dsw-alias-*` token，不引入 CSS 文件/Tailwind）：
+
+- 卡片：`--dsw-alias-bg-layer-1` 背景 + `0.5px --dsw-alias-border-l1` 边框 + 12px 圆角
+- 概览卡：大号百分比 + 4px 预算条 + 阈值/控制 chip（`--dsw-alias-interactive-bg-hover` 胶囊）
+- 趋势卡：最近测量的柱状 mini 图 + 图例行（主题色随正常/警告/超限变化）
+- 控制卡 / 全局配置卡：可折叠（`›` 展开/收起），全局配置默认收起
 
 ## 一键启用自动压缩（让压缩也按插件预算）
 

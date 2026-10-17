@@ -89,17 +89,41 @@ if (focus) {
 
 const snapshot = await evaluate(`(() => {
   const dock = document.querySelector('[data-ctx-dock]')
+  const style = dock ? getComputedStyle(dock) : null
   return {
     newSession: ${JSON.stringify(newSession)},
     afterMessage: ${JSON.stringify(afterMessage)},
     dockPresent: Boolean(dock),
     dockText: dock ? (dock.textContent || '').trim() : null,
+    dockStyle: style ? {
+      fontSize: style.fontSize,
+      fontVariantNumeric: style.fontVariantNumeric,
+      color: style.color,
+      borderRadius: style.borderRadius,
+      padding: style.padding,
+      display: style.display,
+    } : null,
     dockRect: dock ? { w: Math.round(dock.getBoundingClientRect().width), h: Math.round(dock.getBoundingClientRect().height) } : null,
     heroVisible: (document.body.innerText || '').includes('探索未至之境'),
     body: (document.body.innerText || '').slice(0, 1200),
   }
 })()`)
-console.log(JSON.stringify({ ...snapshot, errors }, null, 2))
+
+// 点开 dock 的弹出明细
+const popover = await evaluate(`(async () => {
+  const dock = document.querySelector('[data-ctx-dock]')
+  if (!dock) return { ok: false, why: 'no dock' }
+  dock.click()
+  await new Promise((r) => setTimeout(r, 500))
+  const panel = document.querySelector('[role="dialog"]')
+  const style = panel ? getComputedStyle(panel) : null
+  return {
+    ok: Boolean(panel),
+    text: panel ? (panel.textContent || '').replace(/\\s+/g, ' ').trim() : null,
+    style: style ? { width: style.width, borderRadius: style.borderRadius, background: style.backgroundColor, fontSize: style.fontSize, padding: style.padding } : null,
+  }
+})()`)
+console.log(JSON.stringify({ ...snapshot, popover, errors }, null, 2))
 try { await send('Browser.close') } catch {}
 ws.close(); child.kill(); await sleep(300)
 try { rmSync(profile, { recursive: true, force: true }) } catch {}

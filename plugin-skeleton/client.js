@@ -1,16 +1,14 @@
 /**
  * ctx-mon-and-con — 浏览器半侧
  *
- * 同一个面板组件挂在三处：
- *   1. settings.section      —— 设置 → 「上下文长度」
- *   2. main (key = 'ctx')    —— 左侧导航的整页「ctx」
- *   3. sidebar.panellist     —— 左侧导航里的 ctx 图标
+ * 三个挂载点共用一套视觉：
+ *   1. conversation.composer.dock —— 输入框下方，与 DSH 内置 ContextMeter 同一排版
+ *   2. main (key = 'ctx')         —— 左侧导航整页
+ *   3. settings.section           —— 设置 → 上下文长度
  *
- * 面板内容：当前预算 / 警告与超限阈值 / 最近一次 /ctx 测量 / 控制半侧是否生效，
- * 以及一个可编辑的全局配置表单（通过宿主配置路由写回本插件在 profile 里的
- * 那一行 config，写回后宿主会按新配置重挂插件）。
- *
- * 零 npm 依赖：React 由宿主模块表提供，其余全部走 ctx 服务。
+ * 视觉参考：DSH 自带 ContextMeter 的 trigger/panel 尺寸与颜色 token；
+ * 面板卡片布局参考 dsh-context 插件（lc-card / lc-chip / lc-legend 的信息密度），
+ * 但全部用内联样式 + --dsw-alias-* token 实现，不引入 CSS 文件、不依赖 Tailwind。
  */
 window.__ModuleLoader__.load({
   id: 'ctx-mon-and-con',
@@ -21,23 +19,21 @@ window.__ModuleLoader__.load({
 
     const react = require('react')
 
-    /** 词典命名空间；与 node 半侧无关，只影响面板文案。 */
     const NS = 'ctxMonAndCon'
-    /** node 半侧 index.js 里的状态路由；改一处要同步另一处。 */
     const STATUS_PATH = '/api/ctx-mon-and-con/status'
-    /** 左侧导航的 panel id，同时是 main slot 的 key。 */
     const PANEL_ID = 'ctx'
-    /** 本插件在 profile 里的 loader 行 id，也就是配置命名空间。 */
     const CONFIG_NAMESPACE = 'ctx-mon-and-con'
 
     const en = {
       nav: 'Context length',
       panel: 'ctx',
+      ctxBrand: 'ctx',
       title: 'Context length',
       pageTitle: 'ctx — context length control',
       description: 'Monitors this session’s context usage and edits the plugin’s global budget.',
       budget: 'Budget',
       used: 'Measured',
+      remaining: 'Remaining',
       ratio: 'Used',
       status: 'Status',
       statusOk: 'ok',
@@ -46,6 +42,7 @@ window.__ModuleLoader__.load({
       warnAt: 'Warn at',
       errorAt: 'Error at',
       recent: 'Recent /ctx measurements',
+      chartTitle: 'Usage trend',
       none: 'No measurement yet. Run /ctx in a conversation.',
       loading: 'Loading…',
       refresh: 'Refresh',
@@ -53,15 +50,22 @@ window.__ModuleLoader__.load({
       error: 'Could not load status',
       hint: 'Tip: /ctx <tokens> temporarily overrides this session; /ctx reset restores the default.',
       tokens: 'tokens',
-      surface: 'surface',
       at: 'measured at',
       control: 'Control',
+      controlOn: 'enabled',
+      controlOff: 'not active',
       controlReady: 'Control row is mounted in the agent preset; the budget is enforced automatically.',
       controlMissing: 'Not active yet — mount ctx-mon-and-con/control inside the agent preset (Settings → Agent preset → compaction group).',
       controlLast: 'Last compaction',
+      controlEnable: 'Enable auto-compaction (writes the agent preset)',
+      controlDisable: 'Disable auto-compaction (removes the preset row)',
+      controlPresetHint: 'Writes one row into preset-standard; the preset config becomes a profile override.',
+      controlBusy: 'Applying…',
+      controlWriteFailed: 'Could not update the agent preset',
+      controlEnabled: 'Auto-compaction is now enforced with this budget.',
+      controlDisabled: 'Auto-compaction row removed from the agent preset.',
       configTitle: 'Global configuration',
       configHint: 'Writes to the profile’s config row; the plugin reloads with the new values.',
-      configLoading: 'Waiting for the Host configuration…',
       configUnavailable: 'This client cannot edit the Host configuration — values are read-only here.',
       save: 'Save',
       saving: 'Saving…',
@@ -73,24 +77,21 @@ window.__ModuleLoader__.load({
       defaultBudget: 'Default budget (tokens)',
       warnLabel: 'Warn ratio',
       errorLabel: 'Error ratio',
-      dockBudget: 'ctx budget',
-      controlEnable: 'Enable auto-compaction (writes the agent preset)',
-      controlDisable: 'Disable auto-compaction (removes the preset row)',
-      controlPresetHint: 'Writes one row into preset-standard; the preset config becomes a profile override.',
-      controlBusy: 'Applying…',
-      controlWriteFailed: 'Could not update the agent preset',
-      controlEnabled: 'Auto-compaction is now enforced with this budget.',
-      controlDisabled: 'Auto-compaction row removed from the agent preset.',
+      collapse: 'Collapse',
+      expand: 'Expand',
+      meterAria: 'ctx budget',
     }
 
     const zh = {
       nav: '上下文长度',
       panel: 'ctx',
+      ctxBrand: 'ctx',
       title: '上下文长度',
       pageTitle: 'ctx —— 上下文长度控制',
       description: '监控当前会话的上下文占用，并编辑插件的全局预算配置。',
       budget: '预算',
       used: '实测用量',
+      remaining: '剩余',
       ratio: '已用',
       status: '状态',
       statusOk: '正常',
@@ -99,6 +100,7 @@ window.__ModuleLoader__.load({
       warnAt: '警告阈值',
       errorAt: '超限阈值',
       recent: '最近的 /ctx 测量',
+      chartTitle: '用量趋势',
       none: '还没有测量值。在会话里执行 /ctx 即可。',
       loading: '加载中…',
       refresh: '刷新',
@@ -106,15 +108,22 @@ window.__ModuleLoader__.load({
       error: '读取状态失败',
       hint: '提示：/ctx <tokens> 临时覆盖本会话预算；/ctx reset 恢复默认。',
       tokens: 'tokens',
-      surface: '消息表面',
       at: '测量时间',
       control: '控制',
+      controlOn: '已启用',
+      controlOff: '未启用',
       controlReady: '控制行已挂在 agent preset 内，超预算会自动压缩。',
       controlMissing: '尚未生效 —— 需要把 ctx-mon-and-con/control 加到 agent preset 的 compaction 组里（设置 → Agent preset → compaction group）。',
       controlLast: '最近一次压缩',
+      controlEnable: '启用自动压缩（写入 agent preset）',
+      controlDisable: '停用自动压缩（移除 preset 行）',
+      controlPresetHint: '会往 preset-standard 里加一行；preset 配置会变成 profile 覆盖层。',
+      controlBusy: '正在应用…',
+      controlWriteFailed: '更新 agent preset 失败',
+      controlEnabled: '自动压缩已启用，按当前预算执行。',
+      controlDisabled: '已从 agent preset 移除自动压缩行。',
       configTitle: '全局配置',
       configHint: '写入 profile 里本插件的 config 行，保存后插件会按新配置重挂。',
-      configLoading: '正在等待宿主配置…',
       configUnavailable: '当前客户端不能编辑宿主配置，这里只读。',
       save: '保存',
       saving: '保存中…',
@@ -126,20 +135,27 @@ window.__ModuleLoader__.load({
       defaultBudget: '默认预算（tokens）',
       warnLabel: '警告比例',
       errorLabel: '超限比例',
-      dockBudget: 'ctx 预算',
-      controlEnable: '启用自动压缩（写入 agent preset）',
-      controlDisable: '停用自动压缩（移除 preset 行）',
-      controlPresetHint: '会往 preset-standard 里加一行；preset 配置会变成 profile 覆盖层。',
-      controlBusy: '正在应用…',
-      controlWriteFailed: '更新 agent preset 失败',
-      controlEnabled: '自动压缩已启用，按当前预算执行。',
-      controlDisabled: '已从 agent preset 移除自动压缩行。',
+      collapse: '收起',
+      expand: '展开',
+      meterAria: 'ctx 预算',
     }
 
-    /** 必需服务（浏览器 cordis 的 fiber inject）。 */
     const inject = ['slots', 'locale']
 
     const h = react.createElement
+
+    // ── 数字格式 ────────────────────────────────────────────────────────────
+    function compactTokens(value) {
+      const number = Number(value)
+      if (!Number.isFinite(number)) return '—'
+      if (number < 1000) return String(Math.round(number))
+      if (number < 1e6) {
+        const scaled = number / 1000
+        return `${scaled >= 100 ? Math.round(scaled) : Math.round(scaled * 10) / 10}K`
+      }
+      const scaled = number / 1e6
+      return `${scaled >= 100 ? Math.round(scaled) : Math.round(scaled * 10) / 10}M`
+    }
 
     function formatTokens(value) {
       const number = Number(value)
@@ -151,9 +167,9 @@ window.__ModuleLoader__.load({
       }
     }
 
-    function formatPercent(value) {
+    function formatPercent(value, digits = 1) {
       const number = Number(value)
-      return Number.isFinite(number) ? `${(number * 100).toFixed(1)}%` : '—'
+      return Number.isFinite(number) ? `${(number * 100).toFixed(digits)}%` : '—'
     }
 
     function formatTime(iso) {
@@ -162,26 +178,184 @@ window.__ModuleLoader__.load({
       return Number.isNaN(date.getTime()) ? iso : date.toLocaleTimeString()
     }
 
-    const styles = {
-      page: { height: '100%', minHeight: 0, overflow: 'auto', background: 'var(--dsw-alias-bg-base)', color: 'var(--dsw-alias-label-primary)' },
-      pageInner: { maxWidth: '960px', margin: '0 auto', padding: '28px clamp(20px, 4vw, 40px) 56px' },
-      root: { display: 'flex', flexDirection: 'column', gap: '14px', color: 'inherit' },
-      title: { margin: 0, fontSize: '20px', fontWeight: 500, lineHeight: '28px' },
-      subtitle: { margin: 0, fontSize: '13px', lineHeight: 1.6, color: 'var(--dsw-alias-label-tertiary)' },
-      card: { border: '0.5px solid var(--dsw-alias-border-l3)', borderRadius: '14px', padding: '14px 16px', display: 'flex', flexDirection: 'column', gap: '10px' },
-      row: { display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: '12px', fontSize: '13px' },
-      label: { color: 'var(--dsw-alias-label-secondary)' },
-      mono: { fontVariantNumeric: 'tabular-nums' },
-      text: { margin: 0, fontSize: '12.5px', lineHeight: 1.6, color: 'var(--dsw-alias-label-secondary)' },
-      error: { margin: 0, fontSize: '12.5px', lineHeight: 1.6, color: 'var(--dsw-alias-state-error-primary)' },
-      button: { alignSelf: 'flex-start', border: '0.5px solid var(--dsw-alias-border-l2)', background: 'transparent', color: 'inherit', borderRadius: '10px', padding: '5px 12px', fontSize: '12.5px', cursor: 'pointer' },
-      field: { display: 'flex', flexDirection: 'column', gap: '4px', fontSize: '12.5px' },
-      input: { width: '100%', boxSizing: 'border-box', border: '0.5px solid var(--dsw-alias-border-l2)', borderRadius: '10px', background: 'var(--dsw-alias-bg-base)', color: 'inherit', padding: '6px 10px', fontSize: '13px' },
-      cardTitle: { margin: 0, fontSize: '14px', fontWeight: 500 },
-      tag: { fontSize: '12px', color: 'var(--dsw-alias-label-tertiary)' },
+    function ratioColor(ratio) {
+      if (ratio === null || ratio === undefined) return 'var(--dsw-alias-label-tertiary)'
+      if (ratio >= 0.9) return 'var(--dsw-alias-state-error-primary)'
+      if (ratio >= 0.75) return 'var(--dsw-alias-state-warning-primary)'
+      return 'var(--dsw-alias-brand-primary)'
     }
 
-    /** 拉取宿主状态接口（用法与设置分区一致）。 */
+    // ── 内置 ContextMeter 的视觉规格（trigger / panel / bar / rows） ────────
+    const meter = {
+      root: { position: 'relative', flex: 'none', display: 'inline-flex' },
+      trigger: {
+        borderRadius: 'var(--dsw-radius-sm)',
+        color: 'var(--dsw-alias-label-tertiary)',
+        fontFamily: 'inherit',
+        fontSize: 'var(--dsh-content-font-size-secondary,13px)',
+        fontVariantNumeric: 'tabular-nums',
+        lineHeight: 'calc(20px + var(--dsh-content-font-delta-secondary,0px))',
+        whiteSpace: 'nowrap',
+        cursor: 'pointer',
+        background: 'transparent',
+        border: 'none',
+        flex: 'none',
+        alignItems: 'center',
+        gap: '6px',
+        padding: '1px 8px',
+        display: 'inline-flex',
+      },
+      triggerHover: { background: 'var(--dsw-alias-interactive-bg-hover)', color: 'var(--dsw-alias-label-secondary)' },
+      panel: {
+        position: 'absolute',
+        bottom: 'calc(100% + 8px)',
+        right: 0,
+        zIndex: 1100,
+        boxSizing: 'border-box',
+        borderRadius: 'var(--dsw-radius-lg)',
+        background: 'var(--dsw-specific-menu)',
+        width: 'min(264px, calc(100vw - 24px))',
+        backdropFilter: 'var(--dsw-menu-backdrop-filter)',
+        boxShadow: 'var(--dsw-elevation-prominent)',
+        color: 'var(--dsw-alias-label-secondary)',
+        cursor: 'default',
+        border: 0,
+        padding: '12px',
+        fontSize: '12px',
+        lineHeight: '20px',
+        textAlign: 'left',
+      },
+      header: { alignItems: 'center', gap: '6px', display: 'flex' },
+      headline: { color: 'var(--dsw-alias-label-tertiary)' },
+      percent: { color: 'var(--dsw-alias-label-primary)', fontWeight: 500 },
+      figures: { fontVariantNumeric: 'tabular-nums', color: 'var(--dsw-alias-label-primary)', marginLeft: 'auto', fontWeight: 500 },
+      bar: { background: 'var(--dsw-alias-interactive-bg-hover)', borderRadius: '999px', gap: '1px', height: '4px', margin: '10px 0 12px', display: 'flex', overflow: 'hidden' },
+      segment: { borderRadius: '1px', flex: 'none', minWidth: '2px', height: '100%' },
+      rows: { margin: '6px 0 0', padding: 0 },
+      row: { justifyContent: 'space-between', alignItems: 'center', gap: '12px', padding: '2px 0', display: 'flex' },
+      swatch: { verticalAlign: 'baseline', borderRadius: '2px', width: '8px', height: '8px', marginRight: '6px', display: 'inline-block' },
+      system: { background: 'var(--dsw-static-neutral-bluish-400)' },
+      tools: { background: '#a78bfa' },
+      messages: { background: 'var(--dsw-static-blue-450)' },
+    }
+
+    // ── 面板视觉（参考 dsh-context 的卡片/标题/chip/图例语义） ───────────────
+    const styles = {
+      page: { height: '100%', minHeight: 0, overflow: 'auto', background: 'var(--dsw-alias-bg-base)', color: 'var(--dsw-alias-label-primary)' },
+      pageInner: { maxWidth: '980px', margin: '0 auto', padding: '26px clamp(20px, 4vw, 40px) 56px', display: 'flex', flexDirection: 'column', gap: '12px' },
+      root: { display: 'flex', flexDirection: 'column', gap: '12px' },
+      title: { margin: 0, fontSize: '20px', fontWeight: 600, lineHeight: '28px' },
+      subtitle: { margin: 0, fontSize: '12px', lineHeight: 1.6, color: 'var(--dsw-alias-label-tertiary)' },
+      cols: { display: 'flex', flexWrap: 'wrap', gap: '12px', alignItems: 'stretch' },
+      card: {
+        flex: '1 1 300px',
+        minWidth: 'min(280px, 100%)',
+        boxSizing: 'border-box',
+        background: 'var(--dsw-alias-bg-layer-1)',
+        border: '0.5px solid var(--dsw-alias-border-l1)',
+        borderRadius: '12px',
+        padding: '12px 14px',
+        display: 'flex',
+        flexDirection: 'column',
+        gap: '10px',
+      },
+      cardHead: { display: 'flex', alignItems: 'center', gap: '8px' },
+      cardTitle: { margin: 0, fontSize: '13px', fontWeight: 600, color: 'var(--dsw-alias-label-primary)' },
+      cardSub: { marginLeft: 'auto', fontSize: '11px', color: 'var(--dsw-alias-label-tertiary)', fontVariantNumeric: 'tabular-nums' },
+      chipRow: { display: 'flex', flexWrap: 'wrap', gap: '6px' },
+      chip: { display: 'inline-flex', alignItems: 'center', gap: '5px', borderRadius: '6px', background: 'var(--dsw-alias-interactive-bg-hover)', padding: '1px 6px', fontSize: '12px', color: 'var(--dsw-alias-label-secondary)', minWidth: 0 },
+      chipStrong: { fontWeight: 600, color: 'var(--dsw-alias-label-primary)', fontVariantNumeric: 'tabular-nums', fontSize: '12.5px' },
+      dot: { width: '8px', height: '8px', borderRadius: '2px', display: 'inline-block' },
+      bar: { background: 'var(--dsw-alias-interactive-bg-hover)', borderRadius: '999px', height: '4px', display: 'flex', overflow: 'hidden' },
+      barFill: { borderRadius: '999px', height: '100%', minWidth: '2px' },
+      legend: { display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(150px, 1fr))', gap: '4px 12px', margin: 0, padding: 0, listStyle: 'none' },
+      legendRow: { display: 'flex', justifyContent: 'space-between', gap: '10px', fontSize: '12px', lineHeight: '18px' },
+      legendLabel: { color: 'var(--dsw-alias-label-secondary)', display: 'inline-flex', alignItems: 'center' },
+      legendValue: { fontVariantNumeric: 'tabular-nums', color: 'var(--dsw-alias-label-primary)' },
+      chartRow: { display: 'flex', alignItems: 'flex-end', gap: '3px', height: '64px', padding: '4px 2px 0' },
+      barCol: { flex: '1 1 0', minWidth: '4px', maxWidth: '22px', borderRadius: '3px 3px 0 0', background: 'var(--dsw-alias-label-tertiary)', opacity: 0.55 },
+      empty: { margin: 0, fontSize: '12px', color: 'var(--dsw-alias-label-tertiary)' },
+      row: { display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: '12px', fontSize: '12.5px' },
+      text: { margin: 0, fontSize: '12px', lineHeight: 1.6, color: 'var(--dsw-alias-label-secondary)' },
+      error: { margin: 0, fontSize: '12px', lineHeight: 1.6, color: 'var(--dsw-alias-state-error-primary)' },
+      button: { alignSelf: 'flex-start', border: '0.5px solid var(--dsw-alias-border-l2)', background: 'transparent', color: 'inherit', borderRadius: '8px', padding: '4px 10px', fontSize: '12.5px', cursor: 'pointer' },
+      collapseHead: { display: 'flex', alignItems: 'center', gap: '6px', background: 'transparent', border: 'none', padding: 0, cursor: 'pointer', color: 'var(--dsw-alias-label-primary)', fontSize: '13px', fontWeight: 600, textAlign: 'left' },
+      chev: { display: 'inline-block', width: '10px', transition: 'transform .15s ease' },
+      field: { display: 'flex', flexDirection: 'column', gap: '4px', fontSize: '12px' },
+      label: { color: 'var(--dsw-alias-label-secondary)' },
+      input: { width: '100%', boxSizing: 'border-box', border: '0.5px solid var(--dsw-alias-border-l2)', borderRadius: '8px', background: 'var(--dsw-alias-bg-base)', color: 'inherit', padding: '5px 9px', fontSize: '12.5px' },
+    }
+
+    // ── 基础视觉组件 ────────────────────────────────────────────────────────
+    function Ring(props) {
+      const percent = Math.max(0, Math.min(100, Number(props.percent) || 0))
+      const radius = 5.5
+      const circumference = 2 * Math.PI * radius
+      return h(
+        'svg',
+        { viewBox: '0 0 14 14', width: 14, height: 14, 'aria-hidden': true },
+        h('circle', { cx: 7, cy: 7, r: radius, fill: 'none', stroke: 'var(--dsw-alias-border-l3)', strokeWidth: 2 }),
+        h('circle', {
+          cx: 7,
+          cy: 7,
+          r: radius,
+          fill: 'none',
+          stroke: props.color || 'var(--dsw-alias-label-tertiary)',
+          strokeWidth: 2,
+          strokeLinecap: 'round',
+          strokeDasharray: `${(circumference * percent) / 100} ${circumference}`,
+          transform: 'rotate(-90 7 7)',
+        }),
+      )
+    }
+
+    function MeterBar(props) {
+      const percent = Math.max(0, Math.min(100, Number(props.percent) || 0))
+      return h('div', { style: styles.bar }, h('div', { style: { ...styles.barFill, width: `${percent}%`, background: props.color || 'var(--dsw-alias-brand-primary)' } }))
+    }
+
+    function StatChip(props) {
+      return h(
+        'span',
+        { style: styles.chip, title: props.title },
+        props.dot ? h('i', { style: { ...styles.dot, background: props.dot } }) : null,
+        h('span', null, props.label),
+        props.value !== undefined ? h('b', { style: styles.chipStrong }, props.value) : null,
+      )
+    }
+
+    function Card(props) {
+      return h(
+        'div',
+        { style: { ...styles.card, ...(props.style || {}) } },
+        h(
+          'div',
+          { style: styles.cardHead },
+          h('h3', { style: styles.cardTitle }, props.title),
+          props.sub !== undefined ? h('span', { style: styles.cardSub }, props.sub) : null,
+          props.action !== undefined ? props.action : null,
+        ),
+        props.children,
+      )
+    }
+
+    function CollapsibleCard(props) {
+      const [open, setOpen] = react.useState(props.defaultOpen === true)
+      return h(
+        'div',
+        { style: styles.card },
+        h(
+          'button',
+          { type: 'button', style: styles.collapseHead, onClick: () => setOpen(!open), 'aria-expanded': open, title: open ? props.t('collapse') : props.t('expand') },
+          h('span', { style: { ...styles.chev, transform: open ? 'rotate(90deg)' : 'rotate(0deg)' } }, '›'),
+          props.title,
+          props.sub !== undefined ? h('span', { style: styles.cardSub }, props.sub) : null,
+        ),
+        open ? props.children : null,
+      )
+    }
+
+    // ── 数据 hooks ─────────────────────────────────────────────────────────
     function useStatus(path) {
       const [state, setState] = react.useState({ phase: 'loading' })
       const load = react.useCallback(() => {
@@ -200,29 +374,242 @@ window.__ModuleLoader__.load({
       return [state, load]
     }
 
-    function measurementRow(t, measurement) {
-      const ratio = Number(measurement?.ratio)
-      const statusKey = measurement?.status === 'error' ? 'statusError' : measurement?.status === 'warn' ? 'statusWarn' : 'statusOk'
+    // ── 输入框下方指示器：与内置 ContextMeter 同排版，点击弹出小明细 ────────
+    function CtxDock(props) {
+      const t = props.t
+      const sessionId = props.sessionId || (props.runtime && props.runtime.sessionId) || undefined
+      const [data, setData] = react.useState(null)
+      const [open, setOpen] = react.useState(false)
+      const [hovered, setHovered] = react.useState(false)
+      const rootRef = react.useRef(null)
+
+      react.useEffect(() => {
+        if (!sessionId) return undefined
+        let cancelled = false
+        let timer
+        const tick = () => {
+          fetch(`${STATUS_PATH}/live?sessionId=${encodeURIComponent(String(sessionId))}`, { headers: { accept: 'application/json' } })
+            .then((response) => (response.ok ? response.json() : null))
+            .then((payload) => {
+              if (!cancelled && payload && payload.ok) setData(payload)
+            })
+            .catch(() => {})
+            .finally(() => {
+              if (!cancelled) timer = setTimeout(tick, 3000)
+            })
+        }
+        tick()
+        return () => {
+          cancelled = true
+          clearTimeout(timer)
+        }
+      }, [sessionId])
+
+      react.useEffect(() => {
+        if (!open) return undefined
+        const onPointerDown = (event) => {
+          if (rootRef.current && !rootRef.current.contains(event.target)) setOpen(false)
+        }
+        const onKeyDown = (event) => {
+          if (event.key === 'Escape') setOpen(false)
+        }
+        document.addEventListener('pointerdown', onPointerDown)
+        document.addEventListener('keydown', onKeyDown)
+        return () => {
+          document.removeEventListener('pointerdown', onPointerDown)
+          document.removeEventListener('keydown', onKeyDown)
+        }
+      }, [open])
+
+      const budget = data && typeof data.budget === 'number' ? data.budget : null
+      const used = data && typeof data.used === 'number' ? data.used : null
+      const ratio = data && typeof data.ratio === 'number' ? data.ratio : null
+      const percent = ratio === null ? null : Math.round(ratio * 100)
+      const color = ratioColor(ratio)
+      const label = percent === null ? `${t('ctxBrand')} —` : `${t('ctxBrand')} ${percent}%`
+
       return h(
-        'div',
-        { key: measurement?.id, style: styles.card },
+        'span',
+        { ref: rootRef, style: meter.root },
         h(
-          'div',
-          { style: styles.row },
-          h('span', { style: styles.mono }, `${formatTokens(measurement?.totalTokens)} / ${formatTokens(measurement?.budget)}`),
-          h('span', { style: styles.tag }, `${formatPercent(ratio)} · ${t(statusKey)}`),
+          'button',
+          {
+            type: 'button',
+            style: { ...meter.trigger, ...(hovered || open ? meter.triggerHover : null) },
+            'aria-haspopup': 'dialog',
+            'aria-expanded': open,
+            'aria-label': `${t('meterAria')}${percent === null ? '' : ` ${percent}%`}`,
+            title: used !== null && budget !== null ? `${formatTokens(used)} / ${formatTokens(budget)} ${t('tokens')}` : t('meterAria'),
+            'data-ctx-dock': '1',
+            onClick: () => setOpen(!open),
+            onMouseEnter: () => setHovered(true),
+            onMouseLeave: () => setHovered(false),
+          },
+          h(Ring, { percent: percent ?? 0, color }),
+          h('span', null, label),
         ),
-        h(
-          'div',
-          { style: styles.row },
-          h('span', { style: styles.tag }, `${t('surface')} ${formatTokens(measurement?.surfaceTokens)}`),
-          h('span', { style: styles.tag }, `${t('at')} ${formatTime(measurement?.at)}`),
-        ),
+        open
+          ? h(
+              'div',
+              { style: meter.panel, role: 'dialog', 'aria-label': t('meterAria') },
+              h(
+                'div',
+                { style: meter.header },
+                h('span', { style: meter.headline }, t('budget')),
+                h('span', { style: meter.percent }, percent === null ? '—' : `${percent}%`),
+                h('span', { style: meter.figures }, `~${compactTokens(used)} / ${compactTokens(budget)}`),
+              ),
+              h('div', { style: meter.bar }, h('div', { style: { ...meter.segment, width: `${Math.max(0, Math.min(100, percent ?? 0))}%`, background: color } })),
+              h(
+                'dl',
+                { style: meter.rows },
+                h('div', { style: meter.row }, h('dt', null, t('used')), h('dd', { style: meter.figures }, compactTokens(used))),
+                h('div', { style: meter.row }, h('dt', null, t('remaining')), h('dd', { style: meter.figures }, budget !== null && used !== null ? compactTokens(Math.max(0, budget - used)) : '—')),
+                h('div', { style: meter.row }, h('dt', null, t('control')), h('dd', { style: meter.figures }, props.controlActive ? t('controlOn') : t('controlOff'))),
+              ),
+            )
+          : null,
       )
     }
 
-    /** 全局配置编辑：以当前预算为初值，POST 到宿主配置路由，并轮询到新预算生效。 */
-    function ConfigEditor(props) {
+    // ── 面板内部区块 ───────────────────────────────────────────────────────
+    function OverviewCard(props) {
+      const t = props.t
+      const budget = props.budget || {}
+      const latest = props.latest
+      const used = latest && typeof latest.totalTokens === 'number' ? latest.totalTokens : null
+      const ratio = used !== null && budget.tokens > 0 ? used / budget.tokens : null
+      const color = ratioColor(ratio)
+      return h(
+        Card,
+        { title: t('budget'), sub: latest ? formatTime(latest.at) : undefined },
+        h(
+          'div',
+          { style: { display: 'flex', alignItems: 'baseline', gap: '8px' } },
+          h('span', { style: { fontSize: '22px', fontWeight: 600, fontVariantNumeric: 'tabular-nums', color } }, ratio === null ? '—' : formatPercent(ratio)),
+          h('span', { style: { ...styles.cardSub, marginLeft: 0 } }, `${compactTokens(used)} / ${compactTokens(budget.tokens)} ${t('tokens')}`),
+        ),
+        h(MeterBar, { percent: ratio === null ? 0 : ratio * 100, color }),
+        h(
+          'div',
+          { style: styles.chipRow },
+          h(StatChip, { label: t('warnAt'), value: formatPercent(budget.warnAt, 0) }),
+          h(StatChip, { label: t('errorAt'), value: formatPercent(budget.errorAt, 0) }),
+          h(StatChip, { label: t('control'), value: props.controlActive ? t('controlOn') : t('controlOff'), dot: props.controlActive ? 'var(--dsw-alias-brand-primary)' : 'var(--dsw-alias-label-tertiary)' }),
+        ),
+        h('p', { style: styles.text }, t('hint')),
+      )
+    }
+
+    function TrendCard(props) {
+      const t = props.t
+      const rows = Array.isArray(props.measurements) ? props.measurements.slice(0, 14).reverse() : []
+      const budget = props.budget && props.budget.tokens > 0 ? props.budget.tokens : 0
+      const maxValue = Math.max(1, ...rows.map((row) => Number(row.totalTokens) || 0), budget ? budget * 0.2 : 0)
+      const bars = rows.map((row, index) => {
+        const value = Number(row.totalTokens) || 0
+        const height = Math.max(3, Math.round((value / maxValue) * 60))
+        return h('div', {
+          key: row.id || index,
+          style: {
+            ...styles.barCol,
+            height: `${height}px`,
+            opacity: row.status === 'error' ? 0.95 : 0.55,
+            background: row.status === 'error' ? 'var(--dsw-alias-state-error-primary)' : row.status === 'warn' ? 'var(--dsw-alias-state-warning-primary)' : 'var(--dsw-alias-brand-primary)',
+          },
+          title: `${formatTokens(row.totalTokens)} / ${formatTokens(row.budget)} · ${formatPercent(row.ratio)} · ${formatTime(row.at)}`,
+        })
+      })
+      return h(
+        Card,
+        { title: t('chartTitle'), sub: rows.length > 0 ? String(rows.length) : undefined },
+        rows.length === 0
+          ? h('p', { style: styles.empty }, t('none'))
+          : h('div', { style: styles.chartRow }, bars),
+        rows.length > 0
+          ? h(
+              'ul',
+              { style: styles.legend },
+              rows
+                .slice(-4)
+                .reverse()
+                .map((row, index) =>
+                  h(
+                    'li',
+                    { key: row.id || index, style: styles.legendRow, title: `${t('at')} ${formatTime(row.at)}` },
+                    h('span', { style: styles.legendLabel }, `${formatTokens(row.totalTokens)} / ${formatTokens(row.budget)}`),
+                    h('span', { style: styles.legendValue }, formatPercent(row.ratio)),
+                  ),
+                ),
+            )
+          : null,
+      )
+    }
+
+    function ControlSection(props) {
+      const t = props.t
+      const control = props.control || {}
+      const [state, setState] = react.useState({ kind: 'idle' })
+
+      const toggle = (enable) => {
+        setState({ kind: 'saving' })
+        fetch(`${STATUS_PATH}/config/preset`, {
+          method: 'POST',
+          headers: { 'content-type': 'application/json' },
+          body: JSON.stringify({ enable }),
+        })
+          .then(async (response) => {
+            const payload = await response.json().catch(() => ({}))
+            if (response.status !== 202 || !payload.ok) throw new Error(payload.error || `HTTP ${response.status}`)
+            const deadline = Date.now() + 10000
+            for (;;) {
+              await new Promise((resolve) => setTimeout(resolve, 500))
+              try {
+                const status = await (await fetch(STATUS_PATH)).json()
+                if (status && status.control && status.control.active === enable) return true
+              } catch {}
+              if (Date.now() > deadline) return false
+            }
+          })
+          .then((applied) => {
+            if (!applied) {
+              setState({ kind: 'error', message: t('controlWriteFailed') })
+              return
+            }
+            setState({ kind: 'notice', message: enable ? t('controlEnabled') : t('controlDisabled') })
+            if (typeof props.onToggled === 'function') props.onToggled()
+          })
+          .catch((failure) => setState({ kind: 'error', message: `${t('controlWriteFailed')}: ${String((failure && failure.message) || failure)}` }))
+      }
+
+      return h(
+        Card,
+        {
+          title: t('control'),
+          sub: control.active ? t('controlOn') : t('controlOff'),
+        },
+        h('p', { style: styles.text }, control.active ? t('controlReady') : t('controlMissing')),
+        control.active && control.lastCompaction
+          ? h(
+              'p',
+              { style: styles.text },
+              `${t('controlLast')}: ${compactTokens(control.lastCompaction.before)} → ${compactTokens(control.lastCompaction.after)} ${t('tokens')} · ${formatTime(control.lastCompactionAt)}`,
+            )
+          : null,
+        control.presetMountable ? h('p', { style: styles.text }, t('controlPresetHint')) : null,
+        control.presetMountable
+          ? h(
+              'button',
+              { type: 'button', style: styles.button, disabled: state.kind === 'saving', onClick: () => toggle(!control.active) },
+              state.kind === 'saving' ? t('controlBusy') : control.active ? t('controlDisable') : t('controlEnable'),
+            )
+          : null,
+        state.kind === 'error' ? h('p', { style: styles.error }, state.message) : null,
+        state.kind === 'notice' ? h('p', { style: styles.text }, state.message) : null,
+      )
+    }
+
+    function ConfigSection(props) {
       const t = props.t
       const budget = props.budget || {}
       const editable = Boolean(props.editable)
@@ -258,7 +645,6 @@ window.__ModuleLoader__.load({
           .then(async (response) => {
             const payload = await response.json().catch(() => ({}))
             if (response.status !== 202 || !payload.ok) throw new Error(payload.error || `HTTP ${response.status}`)
-            // 落盘后宿主会重挂本插件；轮询状态接口直到新预算生效。
             const deadline = Date.now() + 8000
             for (;;) {
               await new Promise((resolve) => setTimeout(resolve, 400))
@@ -281,188 +667,37 @@ window.__ModuleLoader__.load({
       }
 
       const disabled = !editable || result.kind === 'saving'
-
       return h(
-        'div',
-        { style: styles.card },
-        h('h3', { style: styles.cardTitle }, t('configTitle')),
-        editable ? null : h('p', { style: styles.text }, t('configUnavailable')),
-        h(
-          'label',
-          { style: styles.field },
-          h('span', { style: styles.label }, t('defaultBudget')),
-          h('input', {
-            style: styles.input,
-            type: 'number',
-            min: 1,
-            step: 1000,
-            value: draft.tokens,
-            disabled,
-            onChange: (event) => setDraft({ ...draft, tokens: event.target.value }),
-          }),
-        ),
-        h(
-          'label',
-          { style: styles.field },
-          h('span', { style: styles.label }, t('warnLabel')),
-          h('input', {
-            style: styles.input,
-            type: 'number',
-            min: 0.01,
-            max: 1,
-            step: 0.01,
-            value: draft.warn,
-            disabled,
-            onChange: (event) => setDraft({ ...draft, warn: event.target.value }),
-          }),
-        ),
-        h(
-          'label',
-          { style: styles.field },
-          h('span', { style: styles.label }, t('errorLabel')),
-          h('input', {
-            style: styles.input,
-            type: 'number',
-            min: 0.01,
-            max: 1,
-            step: 0.01,
-            value: draft.error,
-            disabled,
-            onChange: (event) => setDraft({ ...draft, error: event.target.value }),
-          }),
-        ),
+        CollapsibleCard,
+        { t, title: t('configTitle'), sub: editable ? undefined : t('configUnavailable'), defaultOpen: false },
+        editable
+          ? h(
+              'div',
+              { style: styles.chipRow },
+              h(
+                'label',
+                { style: styles.field },
+                h('span', { style: styles.label }, t('defaultBudget')),
+                h('input', { style: styles.input, type: 'number', min: 1, step: 1000, value: draft.tokens, disabled, onChange: (event) => setDraft({ ...draft, tokens: event.target.value }) }),
+              ),
+              h(
+                'label',
+                { style: styles.field },
+                h('span', { style: styles.label }, t('warnLabel')),
+                h('input', { style: styles.input, type: 'number', min: 0.01, max: 1, step: 0.01, value: draft.warn, disabled, onChange: (event) => setDraft({ ...draft, warn: event.target.value }) }),
+              ),
+              h(
+                'label',
+                { style: styles.field },
+                h('span', { style: styles.label }, t('errorLabel')),
+                h('input', { style: styles.input, type: 'number', min: 0.01, max: 1, step: 0.01, value: draft.error, disabled, onChange: (event) => setDraft({ ...draft, error: event.target.value }) }),
+              ),
+            )
+          : null,
         h('p', { style: styles.text }, t('configHint')),
         result.kind === 'saved' ? h('p', { style: styles.text }, t('saved')) : null,
         result.kind === 'error' ? h('p', { style: styles.error }, result.message) : null,
-        h('button', { style: styles.button, type: 'button', onClick: save, disabled }, result.kind === 'saving' ? t('saving') : t('save')),
-      )
-    }
-
-    /** 控制半侧状态 + 一键把控制行写进 agent preset / 移除。 */
-    function ControlSection(props) {
-      const t = props.t
-      const control = props.control || {}
-      const [state, setState] = react.useState({ kind: 'idle' })
-
-      const toggle = (enable) => {
-        setState({ kind: 'saving', enable })
-        fetch(`${STATUS_PATH}/config/preset`, {
-          method: 'POST',
-          headers: { 'content-type': 'application/json' },
-          body: JSON.stringify({ enable }),
-        })
-          .then(async (response) => {
-            const payload = await response.json().catch(() => ({}))
-            if (response.status !== 202 || !payload.ok) throw new Error(payload.error || `HTTP ${response.status}`)
-            const deadline = Date.now() + 10000
-            for (;;) {
-              await new Promise((resolve) => setTimeout(resolve, 500))
-              try {
-                const status = await (await fetch(STATUS_PATH)).json()
-                if (status && status.control && status.control.active === enable) return true
-              } catch {}
-              if (Date.now() > deadline) return false
-            }
-          })
-          .then((applied) => {
-            setState({ kind: 'idle' })
-            if (!applied) {
-              setState({ kind: 'error', message: t('controlWriteFailed') })
-              return
-            }
-            setState({ kind: 'notice', message: enable ? t('controlEnabled') : t('controlDisabled') })
-            if (typeof props.onToggled === 'function') props.onToggled()
-          })
-          .catch((failure) => setState({ kind: 'error', message: `${t('controlWriteFailed')}: ${String((failure && failure.message) || failure)}` }))
-      }
-
-      const children = [
-        h('p', { key: 'text', style: styles.text }, `${t('control')}: ${control.active ? t('controlReady') : t('controlMissing')}`),
-      ]
-      if (control.active && control.lastCompaction) {
-        children.push(
-          h(
-            'p',
-            { key: 'last', style: styles.text },
-            `${t('controlLast')}: ${formatTokens(control.lastCompaction.before)} → ${formatTokens(control.lastCompaction.after)} ${t('tokens')} · ${formatTime(control.lastCompactionAt)}`,
-          ),
-        )
-      }
-      if (control.presetMountable) {
-        children.push(h('p', { key: 'hint', style: styles.tag }, t('controlPresetHint')))
-        const enable = !control.active
-        children.push(
-          h(
-            'button',
-            {
-              key: 'toggle',
-              type: 'button',
-              style: styles.button,
-              disabled: state.kind === 'saving',
-              onClick: () => toggle(enable),
-            },
-            state.kind === 'saving' ? t('controlBusy') : enable ? t('controlEnable') : t('controlDisable'),
-          ),
-        )
-      }
-      if (state.kind === 'error') children.push(h('p', { key: 'error', style: styles.error }, state.message))
-      if (state.kind === 'notice') children.push(h('p', { key: 'notice', style: styles.text }, state.message))
-      return h('div', { style: { display: 'flex', flexDirection: 'column', gap: '8px' } }, children)
-    }
-
-    /** 输入框下方的常驻小指示器：插件预算 + 当前会话实时占用。 */
-    function CtxDock(props) {
-      const t = props.t
-      const sessionId = props.sessionId || (props.runtime && props.runtime.sessionId) || undefined
-      const [data, setData] = react.useState(null)
-
-      react.useEffect(() => {
-        if (!sessionId) return undefined
-        let cancelled = false
-        let timer
-        const tick = () => {
-          fetch(`${STATUS_PATH}/live?sessionId=${encodeURIComponent(String(sessionId))}`, { headers: { accept: 'application/json' } })
-            .then((response) => (response.ok ? response.json() : null))
-            .then((payload) => {
-              if (!cancelled && payload && payload.ok) setData(payload)
-            })
-            .catch(() => {})
-            .finally(() => {
-              if (!cancelled) timer = setTimeout(tick, 3000)
-            })
-        }
-        tick()
-        return () => {
-          cancelled = true
-          clearTimeout(timer)
-        }
-      }, [sessionId])
-
-      const budget = data && typeof data.budget === 'number' ? data.budget : null
-      const used = data && typeof data.used === 'number' ? data.used : null
-      const ratio = data && typeof data.ratio === 'number' ? data.ratio : null
-      const color = ratio === null ? 'var(--dsw-alias-label-tertiary)' : ratio >= 0.9 ? 'var(--dsw-alias-state-error-primary)' : ratio >= 0.75 ? 'var(--dsw-alias-state-warning-primary)' : 'var(--dsw-alias-label-tertiary)'
-      const parts = [`ctx ${t('budget')}`]
-      if (budget !== null) parts.push(formatTokens(budget))
-      if (used !== null) parts.push(`· ${formatTokens(used)} (${ratio === null ? '—' : formatPercent(ratio)})`)
-      return h(
-        'div',
-        {
-          'data-ctx-dock': '1',
-          style: {
-            display: 'flex',
-            alignItems: 'center',
-            justifyContent: 'center',
-            gap: '6px',
-            fontSize: '11.5px',
-            lineHeight: '16px',
-            color,
-            padding: '2px 0',
-            fontVariantNumeric: 'tabular-nums',
-          },
-          title: used !== null && budget !== null ? `${formatTokens(used)} / ${formatTokens(budget)} tokens` : undefined,
-        },
-        h('span', null, parts.join(' ')),
+        editable ? h('button', { type: 'button', style: styles.button, onClick: save, disabled }, result.kind === 'saving' ? t('saving') : t('save')) : null,
       )
     }
 
@@ -470,7 +705,11 @@ window.__ModuleLoader__.load({
     function CtxPanel(props) {
       const t = props.t
       const [state, load] = useStatus(STATUS_PATH)
-      const statusData = state.phase === 'ready' ? state.data || {} : null
+      const data = state.phase === 'ready' ? state.data || {} : null
+      const budget = data ? data.budget || {} : {}
+      const control = data ? data.control || {} : {}
+      const measurements = data && Array.isArray(data.measurements) ? data.measurements : []
+      const latest = measurements.length > 0 ? measurements[0] : null
 
       const children = [
         h('h2', { key: 'title', style: styles.title }, props.title || t('title')),
@@ -483,45 +722,30 @@ window.__ModuleLoader__.load({
         children.push(h('p', { key: 'error', style: styles.error }, `${t('error')}: ${state.message}`))
         children.push(h('button', { key: 'retry', type: 'button', style: styles.button, onClick: load }, t('retry')))
       } else {
-        const data = state.data || {}
-        const budget = data.budget || {}
         children.push(
           h(
             'div',
-            { key: 'budget', style: styles.card },
-            h(
-              'div',
-              { style: styles.row },
-              h('span', { style: styles.label }, t('budget')),
-              h('span', { style: styles.mono }, `${formatTokens(budget.tokens)} ${t('tokens')}`),
-            ),
-            h('div', { style: styles.row }, h('span', { style: styles.label }, t('warnAt')), h('span', { style: styles.mono }, formatPercent(budget.warnAt))),
-            h('div', { style: styles.row }, h('span', { style: styles.label }, t('errorAt')), h('span', { style: styles.mono }, formatPercent(budget.errorAt))),
+            { key: 'cols', style: styles.cols },
+            h(OverviewCard, { t, budget, latest, controlActive: Boolean(control.active) }),
+            h(TrendCard, { t, measurements, budget }),
           ),
         )
-        const control = data.control || {}
-        children.push(h(ControlSection, { key: 'control', t, control, onToggled: load }))
-        const measurements = Array.isArray(data.measurements) ? data.measurements : []
-        children.push(h('h3', { key: 'recent-title', style: styles.cardTitle }, t('recent')))
-        if (measurements.length === 0) {
-          children.push(h('p', { key: 'none', style: styles.text }, t('none')))
-        } else {
-          children.push(h('div', { key: 'recent', style: { display: 'flex', flexDirection: 'column', gap: '8px' } }, measurements.map((m) => measurementRow(t, m))))
-        }
-        children.push(h('p', { key: 'hint', style: styles.text }, t('hint')))
+        children.push(
+          h('div', { key: 'cols2', style: styles.cols }, h(ControlSection, { t, control, onToggled: load }), h(ConfigSection, { t, budget, editable: Boolean(data.configEditable), onSaved: load })),
+        )
         children.push(h('button', { key: 'refresh', type: 'button', style: styles.button, onClick: load }, t('refresh')))
       }
-
-      children.push(h(ConfigEditor, { key: 'config', t, budget: statusData ? statusData.budget : undefined, editable: Boolean(statusData && statusData.configEditable), onSaved: load }))
       return h('div', { style: styles.root }, children)
     }
 
-    /** 整页：包一层滚动容器与最大宽度。 */
     function CtxPage(props) {
-      return h('div', { style: styles.page }, h('div', { style: styles.pageInner }, h(CtxPanel, { ...props, title: props.t('pageTitle') })))
+      return h(
+        'div',
+        { style: styles.page },
+        h('div', { style: styles.pageInner }, h(CtxPanel, { ...props, title: props.t('pageTitle') })),
+      )
     }
 
-    /** 左侧导航图标（仪表盘）。 */
     function CtxIcon(props) {
       const size = Number(props && props.size) || 18
       const active = Boolean(props && props.active)
@@ -545,15 +769,13 @@ window.__ModuleLoader__.load({
       )
     }
 
-    /**
-     * @param {unknown} ctx - 浏览器 cordis 上下文（slots / locale）
-     */
+    /** @param {unknown} ctx - 浏览器 cordis 上下文（slots / locale） */
     function apply(ctx) {
       ctx.effect(() => ctx.locale.register(NS, { en, zh }), 'ctx-mon-and-con: dictionaries')
       const t = ctx.locale.bind(NS)
       const face = () => ({ t })
 
-      // 1) 设置 → 上下文长度（与之前一致，组件换成共享面板）
+      // 1) 设置 → 上下文长度
       ctx.slots.inject('settings.section', () =>
         ctx.slots.register(
           { name: 'settings.section', id: CONFIG_NAMESPACE, order: 40, locale: NS, label: () => t('nav'), inject: face },
@@ -561,20 +783,30 @@ window.__ModuleLoader__.load({
         ),
       )
 
-      // 2) 左侧导航整页：main slot 用 key 定位，panellist 提供图标与标题
-      ctx.slots.inject('main', () =>
-        ctx.slots.register({ name: 'main', key: PANEL_ID, locale: NS, inject: face }, CtxPage),
-      )
+      // 2) 左侧导航整页 + 图标
+      ctx.slots.inject('main', () => ctx.slots.register({ name: 'main', key: PANEL_ID, locale: NS, inject: face }, CtxPage))
       ctx.slots.inject('sidebar.panellist', () =>
-        ctx.slots.register(
-          { name: 'sidebar.panellist', id: PANEL_ID, order: 20, locale: NS, label: () => t('panel') },
-          CtxIcon,
-        ),
+        ctx.slots.register({ name: 'sidebar.panellist', id: PANEL_ID, order: 20, locale: NS, label: () => t('panel') }, CtxIcon),
       )
 
-      // 3) 输入框下方常驻指示器：插件预算 + 当前会话实时占用
+      // 3) 输入框下方指示器（与内置 ContextMeter 同排版，可点开小明细）
       ctx.slots.inject('conversation.composer.dock', () =>
-        ctx.slots.register({ name: 'conversation.composer.dock', id: 'ctx-usage', order: 10, locale: NS, inject: face }, CtxDock),
+        ctx.slots.register({ name: 'conversation.composer.dock', id: 'ctx-usage', order: 10, locale: NS, inject: face }, (props) => {
+          const [active, setActive] = react.useState(false)
+          react.useEffect(() => {
+            let cancelled = false
+            fetch(STATUS_PATH, { headers: { accept: 'application/json' } })
+              .then((response) => (response.ok ? response.json() : null))
+              .then((payload) => {
+                if (!cancelled && payload && payload.control) setActive(Boolean(payload.control.active))
+              })
+              .catch(() => {})
+            return () => {
+              cancelled = true
+            }
+          }, [])
+          return h(CtxDock, { ...props, t, controlActive: active })
+        }),
       )
     }
 

@@ -30,7 +30,7 @@
 1. **写前自动备份**：每次 `configEditor.edit` 与 session 文件写入前，复制到
    `~/.dsh/ctx-mon-and-con/backups/`，保留最近 30 份。
    实测一次提示词编辑后出现：`cordis.patch.2026-10-17T14-24-54-501Z.bak`（8776 bytes）。
-2. **一键还原**：`scripts/wsl-restore-all.sh [profile]`
+2. **一键还原（默认只预览，需显式确认）**：`scripts/wsl-restore-all.sh [profile]`
    - 备份当前 patch/数据文件
    - `dsh plugin remove`
    - 从 patch 删除 `ctx-mon-and-con` 配置行与嵌套的 `ctx-mon-and-con-control` 行

@@ -123,7 +123,17 @@ const popover = await evaluate(`(async () => {
     style: style ? { width: style.width, borderRadius: style.borderRadius, background: style.backgroundColor, fontSize: style.fontSize, padding: style.padding } : null,
   }
 })()`)
-console.log(JSON.stringify({ ...snapshot, popover, errors }, null, 2))
+const panel = await evaluate(`(async () => {
+  const norm = (s) => (s || '').replace(/\\s+/g, ' ').trim()
+  const btn = Array.from(document.querySelectorAll('button')).find((b) => norm(b.getAttribute('aria-label')) === 'ctx')
+  if (!btn) return { ok: false, why: 'sidebar ctx button not found' }
+  btn.click()
+  await new Promise((r) => setTimeout(r, 1200))
+  const segs = Array.from(document.querySelectorAll('[data-ctx-seg]')).map((el) => ({ key: el.getAttribute('data-ctx-seg'), bg: getComputedStyle(el).backgroundColor, width: el.style.width }))
+  const legend = Array.from(document.querySelectorAll('[data-ctx-legend]')).map((el) => ({ key: el.getAttribute('data-ctx-legend'), text: norm(el.textContent) }))
+  return { ok: true, segs, legend, body: (document.body.innerText || '').slice(0, 1200) }
+})()`)
+console.log(JSON.stringify({ ...snapshot, popover, panel, errors }, null, 2))
 try { await send('Browser.close') } catch {}
 ws.close(); child.kill(); await sleep(300)
 try { rmSync(profile, { recursive: true, force: true }) } catch {}

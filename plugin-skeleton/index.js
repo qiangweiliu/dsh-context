@@ -30,7 +30,7 @@ import {
 export const inject = ['commands', 'tokenMeter']
 
 /** 与 package.json 的 version 保持一致（只用于状态接口的自述）。 */
-const PLUGIN_VERSION = '0.7.1'
+const PLUGIN_VERSION = '0.8.0'
 
 /** 浏览器半侧 client.js 拉的只读状态接口；两处路径必须一致。 */
 const STATUS_PATH = '/api/ctx-mon-and-con/status'
@@ -143,12 +143,14 @@ export function apply(ctx, config) {
     const ratio = budget > 0 ? measurement.totalTokens / budget : 0
     const status = ratio >= config.errorAt ? 'error' : ratio >= config.warnAt ? 'warn' : 'ok'
     measurements.delete(sessionId)
+    const breakdown = breakdownOf(agent?.session)
     measurements.set(sessionId, {
       id: sessionId,
       totalTokens: measurement.totalTokens,
       surfaceTokens: measurement.surfaceTokens,
       budget,
       override: typeof override === 'number' ? override : null,
+      breakdown,
       ratio,
       status,
       at: new Date().toISOString(),
@@ -247,6 +249,75 @@ export function apply(ctx, config) {
   }
 
   // 会话查找与预设挂载：给「实时占用」指示器与「启用自动压缩」按钮用。
+  let sessionProjections = null
+  ctx.inject(['sessionProjections'], (sub) => {
+    sessionProjections = sub?.sessionProjections ?? null
+    if (typeof sub.effect === 'function') sub.effect(() => () => { sessionProjections = null }, 'ctx-mon-and-con: projections presence')
+  })
+
+  /**
+   * 官方 contextBreakdown 只给 system/tools/message 三桶；这里再把 message 拆成
+   * 「本轮用户消息」与「上文」，得到四桶（skill 内容并进系统提示词/工具定义，不单列）。
+   * @returns {{ systemTokens: number, toolsTokens: number, historyTokens: number, userTokens: number, totalTokens: number } | null}
+   */
+  const breakdownOf = (session) => {
+    if (!session) return null
+    let measurement
+    try {
+      measurement = ctx.tokenMeter.measure(session)
+    } catch {
+      return null
+    }
+    const nodes = Array.isArray(measurement?.nodes) ? measurement.nodes : []
+    let systemTokens = 0
+    let toolsTokens = 0
+    let messageTokens = null
+    try {
+      const snapshot = sessionProjections && typeof sessionProjections.snapshot === 'function'
+        ? sessionProjections.snapshot(session, ['contextBreakdown'])
+        : undefined
+      const value = snapshot && snapshot.values ? snapshot.values.contextBreakdown : undefined
+      if (value && typeof value.systemTokens === 'number') {
+        systemTokens = value.systemTokens
+        toolsTokens = value.toolsTokens ?? 0
+        messageTokens = value.messageTokens
+      }
+    } catch {}
+    const heuristicOf = (node) => (typeof node?.heuristicTokens === 'number' ? node.heuristicTokens : Number(node?.tokens) || 0)
+    if (messageTokens === null) {
+      // 没有投影时的兜底：第一个节点视为系统提示词，其余算对话消息。
+      systemTokens = nodes.length > 0 ? heuristicOf(nodes[0]) : 0
+      messageTokens = nodes.slice(1).reduce((sum, node) => sum + heuristicOf(node), 0)
+    }
+    // 「本轮用户对话」= 最近一次 assistant 回复之前那一轮的用户输入（外加尚未回复的待处理输入）。
+    // 实现上取「倒数第二条 assistant 消息之后的全部 user/message 节点」，不依赖 turn 字段，
+    // 回放、compaction、steering 之后仍然成立；其余可见消息算「上文」。
+    let userTokens = 0
+    let lastAssistantIndex = -1
+    let prevAssistantIndex = -1
+    const events = []
+    for (const node of nodes) {
+      let event
+      try {
+        event = typeof session.eventAt === 'function' ? session.eventAt(node.seq) : undefined
+      } catch {}
+      events.push({ node, event })
+      if (event && event.type === 'assistant/message') {
+        prevAssistantIndex = lastAssistantIndex
+        lastAssistantIndex = events.length - 1
+      }
+    }
+    const from = prevAssistantIndex + 1
+    for (let index = from; index < events.length; index += 1) {
+      const entry = events[index]
+      if (entry.event && entry.event.type === 'user/message') userTokens += heuristicOf(entry.node)
+    }
+    userTokens = Math.min(Math.max(0, userTokens), Math.max(0, messageTokens))
+    const historyTokens = Math.max(0, messageTokens - userTokens)
+    const totalTokens = systemTokens + toolsTokens + historyTokens + userTokens
+    return { systemTokens, toolsTokens, historyTokens, userTokens, totalTokens }
+  }
+
   let sessions = null
   ctx.inject(['sessions'], (sub) => {
     sessions = sub?.sessions ?? null
@@ -281,6 +352,7 @@ export function apply(ctx, config) {
       sessionId,
       used,
       budget,
+      breakdown: breakdownOf(session),
       ratio: typeof used === 'number' && budget > 0 ? used / budget : null,
     })
   }

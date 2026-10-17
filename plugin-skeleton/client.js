@@ -76,6 +76,10 @@ window.__ModuleLoader__.load({
       warnLabel: 'Warn ratio',
       errorLabel: 'Error ratio',
       meterAria: 'ctx budget',
+      promptTokens: 'Prompt',
+      toolTokens: 'Tools',
+      historyTokens: 'History',
+      userTokens: 'This turn',
     }
 
     const zh = {
@@ -130,6 +134,10 @@ window.__ModuleLoader__.load({
       warnLabel: '警告比例',
       errorLabel: '超限比例',
       meterAria: 'ctx 预算',
+      promptTokens: '提示词',
+      toolTokens: '工具定义',
+      historyTokens: '上文',
+      userTokens: '本轮用户对话',
     }
 
     const inject = ['slots', 'locale']
@@ -175,6 +183,51 @@ window.__ModuleLoader__.load({
       if (ratio >= 0.9) return 'var(--dsw-alias-state-error-primary)'
       if (ratio >= 0.75) return 'var(--dsw-alias-state-warning-primary)'
       return 'var(--dsw-alias-brand-primary)'
+    }
+
+    // ── 预算构成四色（前三色沿用内置 HUD，第 4 色用主题 accent） ─────────────
+    const BREAKDOWN_COLORS = {
+      system: 'var(--dsw-static-neutral-bluish-400)',
+      tools: '#a78bfa',
+      history: 'var(--dsw-static-blue-450)',
+      user: 'var(--dsw-static-green-400)',
+    }
+
+    /** 把宿主返回的四桶构成转成有序图例项；share 按四桶合计算。 */
+    function breakdownCategories(t, breakdown) {
+      if (!breakdown || typeof breakdown !== 'object') return []
+      const system = Number(breakdown.systemTokens) || 0
+      const tools = Number(breakdown.toolsTokens) || 0
+      const history = Number(breakdown.historyTokens) || 0
+      const user = Number(breakdown.userTokens) || 0
+      const total = system + tools + history + user
+      const rows = [
+        { key: 'system', label: t('promptTokens'), tokens: system, color: BREAKDOWN_COLORS.system },
+        { key: 'tools', label: t('toolTokens'), tokens: tools, color: BREAKDOWN_COLORS.tools },
+        { key: 'history', label: t('historyTokens'), tokens: history, color: BREAKDOWN_COLORS.history },
+        { key: 'user', label: t('userTokens'), tokens: user, color: BREAKDOWN_COLORS.user },
+      ]
+      return rows.map((row) => ({ ...row, share: total > 0 ? row.tokens / total : 0 }))
+    }
+
+    /** 分段预算条：外层长度=已用/预算，内部颜色=四桶占比。 */
+    function SegmentedBar(props) {
+      const usedRatio = Math.max(0, Math.min(1, Number(props.usedRatio) || 0))
+      const categories = Array.isArray(props.categories) ? props.categories : []
+      const filled = categories.filter((row) => row.tokens > 0)
+      if (filled.length === 0) return h(MeterBar, { percent: usedRatio * 100, color: ratioColor(usedRatio) })
+      return h(
+        'div',
+        { style: styles.bar },
+        filled.map((row) =>
+          h('div', {
+            key: row.key,
+            'data-ctx-seg': row.key,
+            title: `${row.label} · ${compactTokens(row.tokens)} (${formatPercent(row.share)})`,
+            style: { ...styles.barSegment, width: `${(usedRatio * row.share * 100).toFixed(3)}%`, background: row.color },
+          }),
+        ),
+      )
     }
 
     // ── 内置 ContextMeter 的视觉规格（trigger / panel / bar / rows） ────────
@@ -260,6 +313,7 @@ window.__ModuleLoader__.load({
       dot: { width: '8px', height: '8px', borderRadius: '2px', display: 'inline-block' },
       bar: { background: 'var(--dsw-alias-interactive-bg-hover)', borderRadius: '999px', height: '4px', display: 'flex', overflow: 'hidden' },
       barFill: { borderRadius: '999px', height: '100%', minWidth: '2px' },
+      barSegment: { height: '100%', minWidth: '2px' },
       row: { display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: '12px', fontSize: '12.5px' },
       text: { margin: 0, fontSize: '12px', lineHeight: 1.6, color: 'var(--dsw-alias-label-secondary)' },
       error: { margin: 0, fontSize: '12px', lineHeight: 1.6, color: 'var(--dsw-alias-state-error-primary)' },
@@ -300,7 +354,7 @@ window.__ModuleLoader__.load({
     function StatChip(props) {
       return h(
         'span',
-        { style: styles.chip, title: props.title },
+        { style: styles.chip, title: props.title, 'data-ctx-legend': props.dataKey },
         props.dot ? h('i', { style: { ...styles.dot, background: props.dot } }) : null,
         h('span', null, props.label),
         props.value !== undefined ? h('b', { style: styles.chipStrong }, props.value) : null,
@@ -393,6 +447,7 @@ window.__ModuleLoader__.load({
       const ratio = data && typeof data.ratio === 'number' ? data.ratio : null
       const percent = ratio === null ? null : Math.round(ratio * 100)
       const color = ratioColor(ratio)
+      const categories = breakdownCategories(t, data && data.breakdown)
       const label = percent === null ? `${t('ctxBrand')} —` : `${t('ctxBrand')} ${percent}%`
 
       return h(
@@ -426,12 +481,18 @@ window.__ModuleLoader__.load({
                 h('span', { style: meter.percent }, percent === null ? '—' : `${percent}%`),
                 h('span', { style: meter.figures }, `~${compactTokens(used)} / ${compactTokens(budget)}`),
               ),
-              h('div', { style: meter.bar }, h('div', { style: { ...meter.segment, width: `${Math.max(0, Math.min(100, percent ?? 0))}%`, background: color } })),
+              h(SegmentedBar, { usedRatio: ratio ?? 0, categories }),
               h(
                 'dl',
                 { style: meter.rows },
-                h('div', { style: meter.row }, h('dt', null, t('used')), h('dd', { style: meter.figures }, compactTokens(used))),
-                h('div', { style: meter.row }, h('dt', null, t('remaining')), h('dd', { style: meter.figures }, budget !== null && used !== null ? compactTokens(Math.max(0, budget - used)) : '—')),
+                categories.map((row) =>
+                  h(
+                    'div',
+                    { key: row.key, style: meter.row },
+                    h('dt', null, h('span', { style: { ...meter.swatch, background: row.color } }), row.label),
+                    h('dd', { style: meter.figures }, `${compactTokens(row.tokens)} · ${formatPercent(row.share)}`),
+                  ),
+                ),
                 h('div', { style: meter.row }, h('dt', null, t('control')), h('dd', { style: meter.figures }, props.controlActive ? t('controlOn') : t('controlOff'))),
               ),
             )
@@ -447,6 +508,7 @@ window.__ModuleLoader__.load({
       const used = latest && typeof latest.totalTokens === 'number' ? latest.totalTokens : null
       const ratio = used !== null && budget.tokens > 0 ? used / budget.tokens : null
       const color = ratioColor(ratio)
+      const categories = breakdownCategories(t, latest && latest.breakdown)
       return h(
         Card,
         { title: t('budget'), sub: latest ? formatTime(latest.at) : undefined },
@@ -456,7 +518,14 @@ window.__ModuleLoader__.load({
           h('span', { style: { fontSize: '22px', fontWeight: 600, fontVariantNumeric: 'tabular-nums', color } }, ratio === null ? '—' : formatPercent(ratio)),
           h('span', { style: { ...styles.cardSub, marginLeft: 0 } }, `${compactTokens(used)} / ${compactTokens(budget.tokens)} ${t('tokens')}`),
         ),
-        h(MeterBar, { percent: ratio === null ? 0 : ratio * 100, color }),
+        h(SegmentedBar, { usedRatio: ratio ?? 0, categories }),
+        categories.length > 0
+          ? h(
+              'div',
+              { style: styles.chipRow },
+              categories.map((row) => h(StatChip, { key: row.key, dataKey: row.key, label: row.label, value: `${compactTokens(row.tokens)} · ${formatPercent(row.share)}`, dot: row.color })),
+            )
+          : null,
         h(
           'div',
           { style: styles.chipRow },

@@ -7,7 +7,7 @@
  *   3. settings.section           —— 设置 → 上下文长度
  *
  * 视觉参考：DSH 自带 ContextMeter 的 trigger/panel 尺寸与颜色 token；
- * 面板卡片布局参考 dsh-context 插件（lc-card / lc-chip / lc-legend 的信息密度），
+ * 面板卡片布局参考 dsh-context 插件（lc-card / lc-card-title / lc-chip 的信息密度），
  * 但全部用内联样式 + --dsw-alias-* token 实现，不引入 CSS 文件、不依赖 Tailwind。
  */
 window.__ModuleLoader__.load({
@@ -42,8 +42,6 @@ window.__ModuleLoader__.load({
       warnAt: 'Warn at',
       errorAt: 'Error at',
       recent: 'Recent /ctx measurements',
-      chartTitle: 'Usage trend',
-      none: 'No measurement yet. Run /ctx in a conversation.',
       loading: 'Loading…',
       refresh: 'Refresh',
       retry: 'Retry',
@@ -77,8 +75,6 @@ window.__ModuleLoader__.load({
       defaultBudget: 'Default budget (tokens)',
       warnLabel: 'Warn ratio',
       errorLabel: 'Error ratio',
-      collapse: 'Collapse',
-      expand: 'Expand',
       meterAria: 'ctx budget',
     }
 
@@ -100,8 +96,6 @@ window.__ModuleLoader__.load({
       warnAt: '警告阈值',
       errorAt: '超限阈值',
       recent: '最近的 /ctx 测量',
-      chartTitle: '用量趋势',
-      none: '还没有测量值。在会话里执行 /ctx 即可。',
       loading: '加载中…',
       refresh: '刷新',
       retry: '重试',
@@ -135,8 +129,6 @@ window.__ModuleLoader__.load({
       defaultBudget: '默认预算（tokens）',
       warnLabel: '警告比例',
       errorLabel: '超限比例',
-      collapse: '收起',
-      expand: '展开',
       meterAria: 'ctx 预算',
     }
 
@@ -268,19 +260,10 @@ window.__ModuleLoader__.load({
       dot: { width: '8px', height: '8px', borderRadius: '2px', display: 'inline-block' },
       bar: { background: 'var(--dsw-alias-interactive-bg-hover)', borderRadius: '999px', height: '4px', display: 'flex', overflow: 'hidden' },
       barFill: { borderRadius: '999px', height: '100%', minWidth: '2px' },
-      legend: { display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(150px, 1fr))', gap: '4px 12px', margin: 0, padding: 0, listStyle: 'none' },
-      legendRow: { display: 'flex', justifyContent: 'space-between', gap: '10px', fontSize: '12px', lineHeight: '18px' },
-      legendLabel: { color: 'var(--dsw-alias-label-secondary)', display: 'inline-flex', alignItems: 'center' },
-      legendValue: { fontVariantNumeric: 'tabular-nums', color: 'var(--dsw-alias-label-primary)' },
-      chartRow: { display: 'flex', alignItems: 'flex-end', gap: '3px', height: '64px', padding: '4px 2px 0' },
-      barCol: { flex: '1 1 0', minWidth: '4px', maxWidth: '22px', borderRadius: '3px 3px 0 0', background: 'var(--dsw-alias-label-tertiary)', opacity: 0.55 },
-      empty: { margin: 0, fontSize: '12px', color: 'var(--dsw-alias-label-tertiary)' },
       row: { display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: '12px', fontSize: '12.5px' },
       text: { margin: 0, fontSize: '12px', lineHeight: 1.6, color: 'var(--dsw-alias-label-secondary)' },
       error: { margin: 0, fontSize: '12px', lineHeight: 1.6, color: 'var(--dsw-alias-state-error-primary)' },
       button: { alignSelf: 'flex-start', border: '0.5px solid var(--dsw-alias-border-l2)', background: 'transparent', color: 'inherit', borderRadius: '8px', padding: '4px 10px', fontSize: '12.5px', cursor: 'pointer' },
-      collapseHead: { display: 'flex', alignItems: 'center', gap: '6px', background: 'transparent', border: 'none', padding: 0, cursor: 'pointer', color: 'var(--dsw-alias-label-primary)', fontSize: '13px', fontWeight: 600, textAlign: 'left' },
-      chev: { display: 'inline-block', width: '10px', transition: 'transform .15s ease' },
       field: { display: 'flex', flexDirection: 'column', gap: '4px', fontSize: '12px' },
       label: { color: 'var(--dsw-alias-label-secondary)' },
       input: { width: '100%', boxSizing: 'border-box', border: '0.5px solid var(--dsw-alias-border-l2)', borderRadius: '8px', background: 'var(--dsw-alias-bg-base)', color: 'inherit', padding: '5px 9px', fontSize: '12.5px' },
@@ -336,22 +319,6 @@ window.__ModuleLoader__.load({
           props.action !== undefined ? props.action : null,
         ),
         props.children,
-      )
-    }
-
-    function CollapsibleCard(props) {
-      const [open, setOpen] = react.useState(props.defaultOpen === true)
-      return h(
-        'div',
-        { style: styles.card },
-        h(
-          'button',
-          { type: 'button', style: styles.collapseHead, onClick: () => setOpen(!open), 'aria-expanded': open, title: open ? props.t('collapse') : props.t('expand') },
-          h('span', { style: { ...styles.chev, transform: open ? 'rotate(90deg)' : 'rotate(0deg)' } }, '›'),
-          props.title,
-          props.sub !== undefined ? h('span', { style: styles.cardSub }, props.sub) : null,
-        ),
-        open ? props.children : null,
       )
     }
 
@@ -501,51 +468,6 @@ window.__ModuleLoader__.load({
       )
     }
 
-    function TrendCard(props) {
-      const t = props.t
-      const rows = Array.isArray(props.measurements) ? props.measurements.slice(0, 14).reverse() : []
-      const budget = props.budget && props.budget.tokens > 0 ? props.budget.tokens : 0
-      const maxValue = Math.max(1, ...rows.map((row) => Number(row.totalTokens) || 0), budget ? budget * 0.2 : 0)
-      const bars = rows.map((row, index) => {
-        const value = Number(row.totalTokens) || 0
-        const height = Math.max(3, Math.round((value / maxValue) * 60))
-        return h('div', {
-          key: row.id || index,
-          style: {
-            ...styles.barCol,
-            height: `${height}px`,
-            opacity: row.status === 'error' ? 0.95 : 0.55,
-            background: row.status === 'error' ? 'var(--dsw-alias-state-error-primary)' : row.status === 'warn' ? 'var(--dsw-alias-state-warning-primary)' : 'var(--dsw-alias-brand-primary)',
-          },
-          title: `${formatTokens(row.totalTokens)} / ${formatTokens(row.budget)} · ${formatPercent(row.ratio)} · ${formatTime(row.at)}`,
-        })
-      })
-      return h(
-        Card,
-        { title: t('chartTitle'), sub: rows.length > 0 ? String(rows.length) : undefined },
-        rows.length === 0
-          ? h('p', { style: styles.empty }, t('none'))
-          : h('div', { style: styles.chartRow }, bars),
-        rows.length > 0
-          ? h(
-              'ul',
-              { style: styles.legend },
-              rows
-                .slice(-4)
-                .reverse()
-                .map((row, index) =>
-                  h(
-                    'li',
-                    { key: row.id || index, style: styles.legendRow, title: `${t('at')} ${formatTime(row.at)}` },
-                    h('span', { style: styles.legendLabel }, `${formatTokens(row.totalTokens)} / ${formatTokens(row.budget)}`),
-                    h('span', { style: styles.legendValue }, formatPercent(row.ratio)),
-                  ),
-                ),
-            )
-          : null,
-      )
-    }
-
     function ControlSection(props) {
       const t = props.t
       const control = props.control || {}
@@ -668,8 +590,8 @@ window.__ModuleLoader__.load({
 
       const disabled = !editable || result.kind === 'saving'
       return h(
-        CollapsibleCard,
-        { t, title: t('configTitle'), sub: editable ? undefined : t('configUnavailable'), defaultOpen: false },
+        Card,
+        { title: t('configTitle'), sub: editable ? undefined : t('configUnavailable') },
         editable
           ? h(
               'div',
@@ -722,16 +644,10 @@ window.__ModuleLoader__.load({
         children.push(h('p', { key: 'error', style: styles.error }, `${t('error')}: ${state.message}`))
         children.push(h('button', { key: 'retry', type: 'button', style: styles.button, onClick: load }, t('retry')))
       } else {
+        // 概览卡占满一行；控制卡 + 全局配置卡并排两列。
+        children.push(h(OverviewCard, { key: 'overview', t, budget, latest, controlActive: Boolean(control.active) }))
         children.push(
-          h(
-            'div',
-            { key: 'cols', style: styles.cols },
-            h(OverviewCard, { t, budget, latest, controlActive: Boolean(control.active) }),
-            h(TrendCard, { t, measurements, budget }),
-          ),
-        )
-        children.push(
-          h('div', { key: 'cols2', style: styles.cols }, h(ControlSection, { t, control, onToggled: load }), h(ConfigSection, { t, budget, editable: Boolean(data.configEditable), onSaved: load })),
+          h('div', { key: 'cols', style: styles.cols }, h(ControlSection, { t, control, onToggled: load }), h(ConfigSection, { t, budget, editable: Boolean(data.configEditable), onSaved: load })),
         )
         children.push(h('button', { key: 'refresh', type: 'button', style: styles.button, onClick: load }, t('refresh')))
       }

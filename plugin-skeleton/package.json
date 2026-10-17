@@ -29,6 +29,11 @@
     "token-budget"
   ],
   "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/qiangweiliu/dsh-context.git",
+    "directory": "plugin-skeleton"
+  },
   "dsh": {
     "manifestVersion": 1,
     "bundle": {

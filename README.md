@@ -20,6 +20,8 @@ DSH 已经内置了完整的上下文管理底座——计量（`ctx.tokenMeter`
 | [`research/arch.md`](research/arch.md) | DSH 插件机制调研：三层结构、Host 插件形态、`dsh` 清单字段、patch DSL、客户端 slots、安装与 HMR |
 | [`research/context-core.md`](research/context-core.md) | 上下文/压缩子系统调研：请求组装、token 计量、压缩服务与事件协议、默认后端配置、五条内容变换通道、真实装配层 |
 | [`research/sample-plugin.md`](research/sample-plugin.md) | 参考实现分析：`billion-context` / `dsh-bloom-theme` / `dshmarket`，以及第三方插件的模块解析结论 |
+| [`docs/market-submission.md`](docs/market-submission.md) | 为什么在插件市场里搜不到、收录规则逐条核对、已实测的安装命令，以及还差的三步 |
+| [`submission/`](submission) | 可直接复制进收录 PR 的条目文件 `qiangweiliu__dsh-context--plugin-skeleton.yml` |
 
 ## 快速开始
 
@@ -40,6 +42,15 @@ DSH 已经内置了完整的上下文管理底座——计量（`ctx.tokenMeter`
 - 打开 设置 → 上下文 —— 查看配置预算、阈值与最近的测量值
 
 详情见 [`plugin-skeleton/README.md`](plugin-skeleton/README.md)。
+
+也可以直接从 GitHub 安装（等价于插件市场上架后的安装命令，已实测可装可启动）：
+
+```powershell
+& <dsh> plugin --profile desktop add "github:qiangweiliu/dsh-context#path:/plugin-skeleton"
+```
+
+插件市场（dshmarket）目前搜不到本插件：市场只收录 `awesome-dsh-plugin` 精选目录里的条目。
+原因与收录步骤见 [`docs/market-submission.md`](docs/market-submission.md)。
 
 ## 关键结论（写插件前先看）
 

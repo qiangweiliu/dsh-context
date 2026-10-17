@@ -88,7 +88,8 @@ check('control maxAttempts 越界被拒绝', Array.isArray(controlBadAttempts.is
 const controlBadKey = controlValidate({ nope: 1 })
 check('control 未知配置键被拒绝', Array.isArray(controlBadKey.issues) && controlBadKey.issues.length > 0, JSON.stringify(controlBadKey.issues))
 
-// ── 4. manifest 与 bundle patch 结构 ───────────────────────────────────────check('dsh.client 声明合法', manifest.dsh?.client?.platform === 'web' && typeof manifest.dsh.client.immediately === 'boolean' && Array.isArray(manifest.dsh.client.inject), JSON.stringify(manifest.dsh?.client))
+// ── 4. manifest 与 bundle patch 结构 ───────────────────────────────────────
+check('dsh.client 声明合法', manifest.dsh?.client?.platform === 'web' && typeof manifest.dsh.client.immediately === 'boolean' && Array.isArray(manifest.dsh.client.inject), JSON.stringify(manifest.dsh?.client))
 check('dsh.bundle.patch 指向存在的文件', existsSync(new URL(`../${manifest.dsh?.bundle?.patch ?? 'missing'}`, import.meta.url)))
 const patch = readFileSync(new URL('../dsh.bundle.patch.yml', import.meta.url), 'utf8')
 check('bundle patch 含 insert 层', /^- insert:/m.test(patch))
@@ -155,17 +156,34 @@ const client = (() => {
         return () => {}
       },
     },
+    configForms: {
+      get() {
+        checks.push({ name: '不再使用 configForms（改为宿主配置路由）', ok: false, detail: 'unexpected call' })
+        return null
+      },
+    },
   }
   moduleExports.apply(ctx)
   return { moduleExports, slotInjects, slotRegistrations, dictionaries }
 })()
-check('client exports inject = ["slots","locale"]', client.moduleExports.inject?.join(',') === 'slots,locale', JSON.stringify(client.moduleExports.inject))
-client.slotInjects[0]?.callback()
-const section = client.slotRegistrations[0]?.definition ?? {}
+check('client exports inject', client.moduleExports.inject?.join(',') === 'slots,locale', JSON.stringify(client.moduleExports.inject))
+for (const inject of client.slotInjects) inject.callback()
+
+const bySlot = (name) => client.slotRegistrations.find((entry) => entry.definition.name === name) ?? {}
+const section = bySlot('settings.section').definition ?? {}
 check('client 注册 settings.section', section.name === 'settings.section', JSON.stringify(section))
 check('settings.section id/order/locale', section.id === 'ctx-mon-and-con' && typeof section.order === 'number' && section.locale === 'ctxMonAndCon', JSON.stringify(section))
-check('settings.section label 走中文词典', section.label?.() === '上下文', section.label?.())
-check('settings.section 组件是函数', typeof client.slotRegistrations[0]?.component === 'function', typeof client.slotRegistrations[0]?.component)
+check('settings.section label 走中文词典', section.label?.() === '上下文长度', section.label?.())
+check('settings.section 组件是函数', typeof bySlot('settings.section').component === 'function', typeof bySlot('settings.section').component)
+
+const mainEntry = bySlot('main').definition ?? {}
+check('client 注册 main 整页', mainEntry.name === 'main' && mainEntry.key === 'ctx', JSON.stringify(mainEntry))
+check('main 页组件是函数', typeof bySlot('main').component === 'function', typeof bySlot('main').component)
+
+const panelEntry = bySlot('sidebar.panellist').definition ?? {}
+check('client 注册 sidebar.panellist', panelEntry.name === 'sidebar.panellist' && panelEntry.id === 'ctx', JSON.stringify(panelEntry))
+check('sidebar.panellist 标题是 ctx', panelEntry.label?.() === 'ctx', panelEntry.label?.())
+check('sidebar.panellist 图标组件是函数', typeof bySlot('sidebar.panellist').component === 'function', typeof bySlot('sidebar.panellist').component)
 
 const failed = checks.filter((entry) => !entry.ok)
 console.log(`\n[static] ${checks.length - failed.length}/${checks.length} 项通过`)

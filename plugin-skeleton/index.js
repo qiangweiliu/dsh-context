@@ -30,7 +30,7 @@ import {
 export const inject = ['commands', 'tokenMeter']
 
 /** 与 package.json 的 version 保持一致（只用于状态接口的自述）。 */
-const PLUGIN_VERSION = '0.4.0'
+const PLUGIN_VERSION = '0.5.0'
 
 /** 浏览器半侧 client.js 拉的只读状态接口；两处路径必须一致。 */
 const STATUS_PATH = '/api/ctx-mon-and-con/status'
@@ -266,6 +266,7 @@ export function apply(ctx, config) {
       },
       sessionBudgets: listSessionBudgets(),
       control: controlSnapshot(),
+      configEditable: Boolean(configEditor && typeof configEditor.edit === 'function'),
       measurements: [...measurements.values()].reverse(),
     })
     response.statusCode = 200
@@ -274,11 +275,107 @@ export function apply(ctx, config) {
     response.end(body)
   }
 
+  // 可写配置：宿主平面有 configEditor 服务时（Web/Desktop profile 都有），
+  // 面板可以把预算/阈值写回 profile 的 patch 层，写完后 Loader 会按新配置重挂本插件。
+  let configEditor = null
+  ctx.inject(['configEditor'], (sub) => {
+    configEditor = sub?.configEditor ?? null
+    if (typeof sub.effect === 'function') sub.effect(() => () => { configEditor = null }, 'ctx-mon-and-con: config editor presence')
+  })
+
+  /** 校验来自浏览器面板的配置补丁；不合法返回 null。 */
+  const parseConfigPatch = (raw) => {
+    let input
+    try {
+      input = JSON.parse(raw)
+    } catch {
+      return null
+    }
+    if (typeof input !== 'object' || input === null) return null
+    const patch = {}
+    if (input.contextWindowTokens !== undefined) {
+      if (!Number.isInteger(input.contextWindowTokens) || input.contextWindowTokens <= 0) return null
+      patch.contextWindowTokens = input.contextWindowTokens
+    }
+    const ratios = {}
+    for (const key of ['warnAt', 'errorAt']) {
+      if (input[key] === undefined) continue
+      if (typeof input[key] !== 'number' || !(input[key] > 0 && input[key] <= 1)) return null
+      ratios[key] = input[key]
+    }
+    const warn = ratios.warnAt ?? config.warnAt
+    const error = ratios.errorAt ?? config.errorAt
+    if (!(warn < error)) return null
+    return { ...patch, ...ratios }
+  }
+
+  /** POST 配置：先 202 应答，再在后台让 configEditor 落盘并重挂（重挂会销毁本路由）。 */
+  const configHandler = (request, response) => {
+    if (request.method !== 'POST') {
+      response.statusCode = 405
+      response.setHeader('allow', 'POST')
+      response.end()
+      return
+    }
+    const editor = configEditor
+    if (!editor || typeof editor.edit !== 'function' || typeof editor.entries !== 'function') {
+      response.statusCode = 501
+      response.setHeader('content-type', 'application/json; charset=utf-8')
+      response.end(JSON.stringify({ ok: false, error: 'config editor unavailable in this profile' }))
+      return
+    }
+    const chunks = []
+    let size = 0
+    request.on('data', (chunk) => {
+      size += chunk.length
+      if (size > 16 * 1024) {
+        response.statusCode = 413
+        response.end()
+        request.destroy()
+        return
+      }
+      chunks.push(chunk)
+    })
+    request.on('end', () => {
+      const patch = parseConfigPatch(Buffer.concat(chunks).toString('utf8'))
+      if (patch === null) {
+        response.statusCode = 400
+        response.setHeader('content-type', 'application/json; charset=utf-8')
+        response.end(JSON.stringify({ ok: false, error: 'invalid config patch' }))
+        return
+      }
+      const entry = editor.entries().find((candidate) => candidate?.options?.id === 'ctx-mon-and-con')
+      if (!entry) {
+        response.statusCode = 409
+        response.setHeader('content-type', 'application/json; charset=utf-8')
+        response.end(JSON.stringify({ ok: false, error: 'plugin entry is not editable in the active profile' }))
+        return
+      }
+      response.statusCode = 202
+      response.setHeader('content-type', 'application/json; charset=utf-8')
+      response.end(JSON.stringify({ ok: true, accepted: patch }))
+      // 落盘会触发重挂，本插件的旧实例（包括这条路由）随即被销毁。
+      void editor
+        .edit(entry, (current) => ({ ...(current ?? {}), ...patch }))
+        .catch((error) => {
+          const logger = ctx.logger
+          if (typeof logger?.warn === 'function') logger.warn(`ctx-mon-and-con: config write failed: ${error instanceof Error ? error.message : String(error)}`)
+        })
+    })
+  }
+
   ctx.inject(['webServer'], (sub) => {
     const server = sub?.webServer
     if (!server || typeof server.register !== 'function') return
-    const register = () => server.register({ kind: 'exact', path: STATUS_PATH, handler: statusHandler })
-    if (typeof sub.effect === 'function') sub.effect(register, 'ctx-mon-and-con: status route')
+    const register = () => {
+      const offStatus = server.register({ kind: 'exact', path: STATUS_PATH, handler: statusHandler })
+      const offConfig = server.register({ kind: 'exact', path: `${STATUS_PATH}/config`, handler: configHandler })
+      return () => {
+        offConfig()
+        offStatus()
+      }
+    }
+    if (typeof sub.effect === 'function') sub.effect(register, 'ctx-mon-and-con: routes')
     else register()
   })
 

@@ -292,7 +292,7 @@ client.slotInjects[0]?.callback()
 const section = client.slotRegistrations[0]?.definition ?? {}
 check('client 注册 settings.section', section.name === 'settings.section', JSON.stringify(section))
 check('settings.section id/order/locale', section.id === 'ctx-mon-and-con' && typeof section.order === 'number' && section.locale === 'ctxMonAndCon', JSON.stringify(section))
-check('settings.section label 走中文词典', section.label?.() === '上下文', section.label?.())
+check('settings.section label 走中文词典', section.label?.() === '上下文长度', section.label?.())
 check('settings.section 组件是函数', typeof client.slotRegistrations[0]?.component === 'function', typeof client.slotRegistrations[0]?.component)
 
 const failed = checks.filter((item) => !item.ok)

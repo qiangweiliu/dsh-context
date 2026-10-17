@@ -7,19 +7,34 @@ DSH（DeepSeek Harness）的**上下文长度管理**插件，分两个平面：
 
 ## 设置面板在哪
 
-装好后**重启 dsh 进程**（不是刷新页面），打开「设置」→ 左侧最后几项里会有 **「上下文长度」**（英文界面 `Context length`）：
+装好后**重启 dsh 进程**（不是刷新页面），你现在有三个入口看到同一块面板：
+
+1. **左侧导航的 `ctx`** —— 仪表盘图标，点开是整页「ctx —— 上下文长度控制」
+2. **设置 → 上下文长度** —— 设置弹窗里的分区
+3. `GET /api/ctx-mon-and-con/status` —— 面板的数据源
+
+面板内容：
 
 ```
-上下文长度
-当前预算        128,000 tokens
-警告阈值        75.0%
-超限阈值        90.0%
+ctx —— 上下文长度控制
+预算 128,000 tokens / 警告阈值 75.0% / 超限阈值 90.0%
 控制: 尚未生效 —— 需要把 ctx-mon-and-con/control 加到 agent preset…
 最近的 /ctx 测量   （执行过 /ctx 后这里出现数据）
-刷新
+全局配置
+  默认预算（tokens） [ 128000 ]
+  警告比例           [ 0.75 ]
+  超限比例           [ 0.9 ]
+  [保存]
 ```
 
-> **看不到这个分区？** 99% 是没重启进程：客户端模块清单在 dsh 启动时注入页面，只刷新页面不会重新扫描新装的插件。`Ctrl+C` 停掉 `dsh --profile web` 再启动即可。也可以用 `scripts/ui-probe.mjs` 无头验证（见仓库根 README）。
+**全局配置是真写的**：保存后走宿主 `ctx.configEditor`，把值写进 profile 的
+`cordis.patch.yml`（对应 `- id: ctx-mon-and-con` 那一行），然后 Loader 按新配置重挂插件。
+实测：把 128000 改成 90000 → 面板显示「已保存」、`status` 接口的 `budget.tokens` 变成 90000、
+`--dump-config` 里出现 `# == ctx-mon-and-con, patched by …/cordis.patch.yml`。
+
+> **看不到侧栏 `ctx` 或设置分区？** 99% 是没重启进程：客户端模块清单在 dsh 启动时注入页面，
+> 只刷新页面不会重新扫描新装的插件。`Ctrl+C` 停掉 `dsh --profile web` 再启动即可。
+> 也可以用 `scripts/ui-probe.mjs` / `scripts/ui-probe-ctx.mjs` 无头验证（见仓库根 README）。
 
 ## 三条功能
 
@@ -90,14 +105,14 @@ powershell -NoProfile -ExecutionPolicy Bypass -File scripts/verify-uninstall.ps1
 
 | 文件 | 作用 |
 | --- | --- |
-| `index.js` | Cordis 插件（宿主侧）：`name` / `inject` / `Config`（手写 Standard Schema）/ `apply(ctx, config)`，注册 `/ctx` 命令与状态路由 |
+| `index.js` | Cordis 插件（宿主侧）：`name` / `inject` / `Config`（手写 Standard Schema）/ `apply(ctx, config)`，注册 `/ctx` 命令、状态路由与 `POST /api/ctx-mon-and-con/config`（经 `ctx.configEditor` 写回 profile patch） |
 | `control.js` | Cordis 插件（preset 侧）：预算控制 + `/ctx-compact`，零 import，只用 `ctx.compaction` 服务 |
 | `state.js` | 两个半侧共享的进程内状态（默认预算 / 会话覆盖 / 控制状态）；只是同包相对 import |
-| `client.js` | 浏览器半侧：`window.__ModuleLoader__.load({ id, factory })` 形态，`apply(ctx)` 注册 `settings.section` 面板 |
+| `client.js` | 浏览器半侧：`apply(ctx)` 里注册 `sidebar.panellist`（左侧 `ctx` 图标）、`main`（整页 `key: ctx`）与 `settings.section`（设置分区），三处共用同一面板组件 |
 | `dsh.bundle.patch.yml` | bundle 层：往 profile 的 boot graph `insert` 一行 `id: ctx-mon-and-con` |
 | `locale/{en,zh}.json` | 插件市场/插件管理页显示的 `meta.title` / `meta.description` |
 | `icon.svg` | 插件图标（`exports["./icon"]` 暴露） |
-| `test/static.mjs` | 纯离线静态检查（32 项，不需要 DSH） |
+| `test/static.mjs` | 纯离线静态检查（38 项，不需要 DSH） |
 | `test/smoke.mjs` | 用真实 Cordis 的集成冒烟测试（43 项，需先 `node test/prepare-deps.mjs`） |
 | `test/control.mjs` | 控制半侧的离线测试（33 项：预算来源、idle/pre-step/notify、重试、cooldown、命令、状态回写、卸载） |
 | `test/prepare-deps.mjs` | 从 app.asar 离线解出 cordis/cosmokit 到 `test/deps/`（交付不带第三方副本） |
@@ -152,7 +167,7 @@ bash /mnt/c/<repo>/scripts/wsl-uninstall.sh web    # 卸载并核对残留
 1. **离线自检**（不启动 DSH）：
 
    ```powershell
-   node test/static.mjs        # 32/32：导出形状、Config 校验、exports 解析、locale、client mock、control 形状
+   node test/static.mjs        # 38/38：导出形状、Config 校验、exports 解析、locale、client mock、control 形状
    node --check index.js; node --check control.js; node --check client.js
    node test/prepare-deps.mjs  # 可选：从 app.asar 解出 cordis，第一次需要
    node test/smoke.mjs         # 43/43：真实 Cordis 里加载、/ctx 与 reset、状态路由、卸载清理

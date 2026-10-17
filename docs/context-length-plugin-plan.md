@@ -351,7 +351,7 @@ window.__ModuleLoader__.load({
 | `index.js` | Cordis 插件（宿主侧）：`name` / `inject = ['commands','tokenMeter']` / 手写 Standard Schema 的 `Config` / `apply(ctx, config)`；注册 `/ctx` 命令 + `GET /api/ctx-mon-and-con/status` 只读路由 |
 | `control.js` | Cordis 插件（preset 侧，`ctx-mon-and-con/control`）：预算控制 —— `mode: idle` 在轮末调 `compactNow()` 并重试到低于预算、`mode: pre-step` 在 step 边界调 `compactIfNeeded()`、`notify` 只记录；另注册 `/ctx-compact` |
 | `state.js` | 两个半侧共享的进程内状态（默认预算 / 会话级覆盖 / 控制状态），同包相对 import，不涉及 npm 依赖 |
-| `client.js` | `window.__ModuleLoader__.load({ id, factory })`，`apply(ctx)` 里 `ctx.slots.inject('settings.section', …)` 注册面板（含控制是否生效与最近一次压缩） |
+| `client.js` | `apply(ctx)` 注册 `sidebar.panellist`（左侧 `ctx` 图标）、`main`（整页 `key: ctx`）、`settings.section`（设置分区），共用同一面板；配置编辑通过宿主 `POST /api/ctx-mon-and-con/config` → `ctx.configEditor` 写回 profile patch |
 | `dsh.bundle.patch.yml` | `- insert: [- id: ctx-mon-and-con, name: ctx-mon-and-con]` |
 | `package.json` | `dsh.bundle.patch` + `dsh.client` + `exports`（含 `./control`）+ `files` |
 | `locale/{en,zh}.json`、`icon.svg` | 插件管理与设置页的展示元数据 |

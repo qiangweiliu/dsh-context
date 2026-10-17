@@ -191,7 +191,7 @@ export function snapshotSessionToggles() {
   const prompts = {}
   for (const [sessionId, set] of sessionTools) if (set.size > 0) tools[sessionId] = [...set]
   for (const [sessionId, set] of sessionPrompts) if (set.size > 0) prompts[sessionId] = [...set]
-  return { tools, prompts, promptText: snapshotSessionPromptText() }
+  return { tools, prompts, promptText: snapshotSessionPromptText(), autoMountControl }
 }
 
 /** 启动时从磁盘恢复会话开关。 */
@@ -203,6 +203,7 @@ export function hydrateSessionToggles(data) {
   for (const [sessionId, names] of Object.entries(tools)) if (Array.isArray(names) && names.length > 0) sessionTools.set(sessionId, new Set(names))
   for (const [sessionId, names] of Object.entries(prompts)) if (Array.isArray(names) && names.length > 0) sessionPrompts.set(sessionId, new Set(names))
   hydrateSessionPromptText(data && data.promptText)
+  if (data && typeof data.autoMountControl === 'boolean') autoMountControl = data.autoMountControl
 }
 
 /** sessionId -> Map(section name -> 文本)：会话级提示词覆盖（比全局优先）。 */
@@ -247,4 +248,15 @@ export function hydrateSessionPromptText(data) {
     for (const [name, text] of Object.entries(entries)) if (typeof text === "string") map.set(name, text)
     if (map.size > 0) sessionPromptText.set(sessionId, map)
   }
+}
+
+/** 是否自动把控制行补挂进 agent preset（面板手动停用后置 false，存 session-toggles.json）。 */
+let autoMountControl = true
+
+export function setAutoMountControl(value) {
+  autoMountControl = value !== false
+}
+
+export function getAutoMountControl() {
+  return autoMountControl
 }

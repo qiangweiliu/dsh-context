@@ -24,6 +24,7 @@ import {
   budgetFor,
   clearSessionToggles,
   clearSessionPromptText,
+  getAutoMountControl,
   hydrateSessionToggles,
   setGlobalDisabledTools,
   setGlobalPromptOverrides,
@@ -32,6 +33,7 @@ import {
   getSessionDisabledPrompts,
   getSessionDisabledTools,
   setSessionPromptEnabled,
+  setAutoMountControl,
   setSessionPromptText,
   setSessionToolEnabled,
   snapshotSessionToggles,
@@ -47,7 +49,7 @@ import {
 export const inject = ['commands', 'tokenMeter']
 
 /** 与 package.json 的 version 保持一致（只用于状态接口的自述）。 */
-const PLUGIN_VERSION = '0.12.2'
+const PLUGIN_VERSION = '0.13.0'
 
 /** 浏览器半侧 client.js 拉的只读状态接口；两处路径必须一致。 */
 const STATUS_PATH = '/api/ctx-mon-and-con/status'
@@ -66,6 +68,8 @@ const DEFAULT_CONFIG = {
   disabledTools: [],
   // 全局提示词覆盖：section name -> 替换文本；空对象表示全部用原文。
   promptOverrides: {},
+  // 是否在启动时自动把控制行补挂进 agent preset（面板手动停用后置 false）。
+  autoMountControl: true,
 }
 
 const CONFIG_KEYS = Object.keys(DEFAULT_CONFIG)
@@ -82,7 +86,7 @@ function validateConfig(input) {
   if (typeof raw !== 'object' || raw === null || Array.isArray(raw)) {
     return { issues: [{ message: 'config must be an object' }] }
   }
-  const config = { ...DEFAULT_CONFIG, disabledTools: [], promptOverrides: {} }
+  const config = { ...DEFAULT_CONFIG, disabledTools: [], promptOverrides: {}, autoMountControl: true }
   for (const key of NUMERIC_KEYS) {
     const value = raw[key]
     if (value === undefined) continue
@@ -126,8 +130,12 @@ function validateConfig(input) {
       config.promptOverrides = overrides
     }
   }
+  if (raw.autoMountControl !== undefined) {
+    if (typeof raw.autoMountControl !== 'boolean') issues.push({ message: 'expected a boolean', path: ['autoMountControl'] })
+    else config.autoMountControl = raw.autoMountControl
+  }
   for (const key of Object.keys(raw)) {
-    if (!CONFIG_KEYS.includes(key) && key !== 'disabledTools' && key !== 'promptOverrides') issues.push({ message: 'unknown config key', path: [key] })
+    if (!CONFIG_KEYS.includes(key) && key !== 'disabledTools' && key !== 'promptOverrides' && key !== 'autoMountControl') issues.push({ message: 'unknown config key', path: [key] })
   }
   if (!Number.isInteger(config.contextWindowTokens) || config.contextWindowTokens <= 0) {
     issues.push({ message: 'expected a positive integer', path: ['contextWindowTokens'] })
@@ -636,6 +644,29 @@ export function apply(ctx, config) {
   }
 
   /** POST /config/preset {enable:boolean}：把控制行写进 preset-standard 或移除。 */
+  let presetQueue = Promise.resolve()
+  const enqueuePreset = (task) => {
+    presetQueue = presetQueue.then(task).catch((error) => {
+      const logger = ctx.logger
+      if (typeof logger?.warn === 'function') logger.warn(`ctx-mon-and-con: preset task failed: ${error instanceof Error ? error.message : String(error)}`)
+    })
+  }
+
+  /** 启动时检测：preset 里没有控制行且未被手动停用 → 自动补挂。 */
+  function autoMountControl() {
+    if (!getAutoMountControl()) return
+    const editor = configEditor
+    const entry = findPresetEntry()
+    if (!editor || typeof editor.edit !== 'function' || !entry) return
+    if (presetMountState().presetMounted) return
+    void editor
+      .edit(entry, (current) => mutatePreset(current, true))
+      .catch((error) => {
+        const logger = ctx.logger
+        if (typeof logger?.warn === 'function') logger.warn(`ctx-mon-and-con: auto-mount failed: ${error instanceof Error ? error.message : String(error)}`)
+      })
+  }
+
   const presetHandler = (request, response) => {
     const send = (code, payload) => {
       response.statusCode = code
@@ -662,12 +693,23 @@ export function apply(ctx, config) {
       }
       if (typeof input?.enable !== 'boolean') return send(400, { ok: false, error: 'enable must be a boolean' })
       send(202, { ok: true, accepted: { enable: input.enable } })
-      void editor
-        .edit(entry, (current) => mutatePreset(current, input.enable))
-        .catch((error) => {
-          const logger = ctx.logger
-          if (typeof logger?.warn === 'function') logger.warn(`ctx-mon-and-con: preset write failed: ${error instanceof Error ? error.message : String(error)}`)
+      if (input.enable) {
+        setAutoMountControl(true)
+        saveSessionToggles()
+        enqueuePreset(async () => {
+          const ed = configEditor
+          const target = findPresetEntry()
+          if (ed && typeof ed.edit === 'function' && target) await ed.edit(target, (current) => mutatePreset(current, true))
         })
+      } else {
+        setAutoMountControl(false)
+        saveSessionToggles()
+        enqueuePreset(async () => {
+          const ed = configEditor
+          const target = findPresetEntry()
+          if (ed && typeof ed.edit === 'function' && target) await ed.edit(target, (current) => mutatePreset(current, false))
+        })
+      }
     })
   }
 
@@ -706,6 +748,11 @@ export function apply(ctx, config) {
   let configEditor = null
   ctx.inject(['configEditor'], (sub) => {
     configEditor = sub?.configEditor ?? null
+    setTimeout(() => {
+      try {
+        autoMountControl()
+      } catch {}
+    }, 1200)
     if (typeof sub.effect === 'function') sub.effect(() => () => { configEditor = null }, 'ctx-mon-and-con: config editor presence')
   })
 

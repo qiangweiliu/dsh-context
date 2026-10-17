@@ -134,6 +134,16 @@ ctx 整页底部新增「工具与提示词」卡，展示**当前会话**这次
 > 会话级开关依赖 **`ctx-mon-and-con/control` 已挂进 agent preset**（见上一节）；没挂时开关能存，
 > 但不会应用到请求。
 
+## 更新时配置保留（已实测）
+
+| 状态 | 位置 | remove + 重新 add | 官方 `update` |
+|---|---|---|---|
+| 全局预算/阈值/全局提示词/全局工具/autoMount 标志 | profile `cordis.patch.yml` | ✅ 文件逐字节不变 | ✅ 文件逐字节不变 |
+| preset 控制行 | profile `cordis.patch.yml` | ✅ 保留 | ✅ 保留 |
+| 会话开关/会话文本/自动挂载标志 | `~/.dsh/ctx-mon-and-con/session-toggles.json` | ✅ sha256 不变 | ✅ sha256 不变 |
+
+验证方法：临时 profile 安装 → 写入可识别配置（111000/0.7/0.85、禁用 bash、promptOverrides）→ remove+add → update，前后对比文件 hash 与内容。
+
 ## 标准安装与更新（DSH 官方方式）
 
 包已带标准清单：`dsh.manifestVersion: 1`、`dsh.bundle.patch`、`dsh.client.platform: "web"`，可直接用官方 CLI 安装/更新。
@@ -184,7 +194,13 @@ dsh plugin --profile web add ctx-mon-and-con
 
 ## 一键启用自动压缩（让压缩也按插件预算）
 
-面板的控制区带一个按钮：
+控制半侧默认**自动挂载**（v0.13.0）：
+
+- 插件启动时检查 `preset-standard` 的 compaction 组；没有 `ctx-mon-and-con/control` 行就自动写入一行（通过 `ctx.configEditor`，只写 profile 覆盖层）。
+- 在面板点「停用自动压缩」后，会移除 preset 行并把 `autoMountControl: false` 记到
+  `~/.dsh/ctx-mon-and-con/session-toggles.json`；此后启动不会自动加回。
+- 点「启用自动压缩」会恢复自动挂载并把标志置回 true。
+- 面板按钮仍可手动启用/停用：
 
 - **启用自动压缩（写入 agent preset）** —— 把 `ctx-mon-and-con/control` 行写进 `preset-standard`
   的 compaction 组（走宿主 `ctx.configEditor`，写进 profile 的 patch 层），重挂后

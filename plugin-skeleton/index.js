@@ -22,6 +22,7 @@ import { dirname, join } from 'node:path'
 import {
   budgetFor,
   clearSessionToggles,
+  setGlobalDisabledTools,
   setGlobalPromptOverrides,
   getAppliedTools,
   getInventory,
@@ -41,7 +42,7 @@ import {
 export const inject = ['commands', 'tokenMeter']
 
 /** 与 package.json 的 version 保持一致（只用于状态接口的自述）。 */
-const PLUGIN_VERSION = '0.11.1'
+const PLUGIN_VERSION = '0.11.2'
 
 /** 浏览器半侧 client.js 拉的只读状态接口；两处路径必须一致。 */
 const STATUS_PATH = '/api/ctx-mon-and-con/status'
@@ -320,6 +321,7 @@ export function apply(ctx, config) {
   // 全局默认预算写进共享状态：控制半侧（control.js）在没有会话覆盖时用它。
   setDefaultBudget(config.contextWindowTokens)
   setGlobalPromptOverrides(config.promptOverrides)
+  setGlobalDisabledTools(config.disabledTools)
   const inFlight = new Set()
   // 浏览器状态接口的数据源：按 session id 保留最近 MAX_MEASUREMENTS 条。
   const measurements = new Map()

@@ -34,6 +34,7 @@ import {
   budgetFor,
   getSessionDisabledPrompts,
   getSessionDisabledTools,
+  getGlobalDisabledTools,
   getGlobalPromptOverrides,
   recordAppliedTools,
   recordCompaction,
@@ -154,7 +155,7 @@ export function apply(ctx, config) {
       gate = { denyKey: '', dispose: null, promptInstalled: false }
       agentGates.set(agent, gate)
     }
-    const deny = getSessionDisabledTools(sessionId)
+    const deny = [...new Set([...getSessionDisabledTools(sessionId), ...getGlobalDisabledTools()])]
     const key = deny.join('\u0000')
     if (key !== gate.denyKey) {
       try {

@@ -173,3 +173,14 @@ export function setGlobalPromptOverrides(value) {
 export function getGlobalPromptOverrides() {
   return globalPromptOverrides
 }
+
+/** 全局禁用的工具名（Config.disabledTools，宿主 apply 时同步）。 */
+let globalDisabledTools = []
+
+export function setGlobalDisabledTools(value) {
+  globalDisabledTools = Array.isArray(value) ? [...value] : []
+}
+
+export function getGlobalDisabledTools() {
+  return globalDisabledTools
+}

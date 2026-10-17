@@ -171,23 +171,29 @@ export function apply(ctx, config) {
         try {
           const disabled = new Set(getSessionDisabledPrompts(sessionId))
           const overrides = getGlobalPromptOverrides()
-          if (Array.isArray(result.sections)) {
-            result.sections = result.sections.filter((section) => !disabled.has(section.name))
+          const raw = Array.isArray(result.sections) ? result.sections : []
+          const mapped = []
+          const inventory = []
+          for (const section of raw) {
+            if (disabled.has(section.name)) continue
+            const original = String(section.text === undefined || section.text === null ? '' : section.text)
+            const overridden = Object.prototype.hasOwnProperty.call(overrides, section.name)
+            const effective = overridden ? String(overrides[section.name]) : original
+            // 原 section 可能是 frozen 的：不改它，重建一个 AssembledSection。
+            const next = { name: section.name, text: effective }
+            if (section.interpolate !== undefined) next.interpolate = section.interpolate
+            mapped.push(next)
+            inventory.push({
+              name: section.name,
+              tokens: Math.ceil(effective.length / 4),
+              text: effective,
+              originalText: original,
+              overridden,
+            })
           }
+          result.sections = mapped
           recordInventory(sessionId, {
-            sections: (result.sections || []).map((section) => {
-              const original = String(section.text || '')
-              const overridden = Object.prototype.hasOwnProperty.call(overrides, section.name)
-              if (overridden) section.text = String(overrides[section.name])
-              const effective = String(section.text || '')
-              return {
-                name: section.name,
-                tokens: Math.ceil(effective.length / 4),
-                text: effective,
-                originalText: original,
-                overridden,
-              }
-            }),
+            sections: inventory,
             tools: (result.tools || []).map((tool) => ({
               name: tool.name,
               description: typeof tool.description === 'string' ? tool.description : undefined,
@@ -195,7 +201,9 @@ export function apply(ctx, config) {
               tokens: Math.ceil(JSON.stringify(tool).length / 4),
             })),
           })
-        } catch {}
+        } catch (error) {
+          log('warn', `assemble hook failed: ${error instanceof Error ? error.message : String(error)}`)
+        }
         return result
       })
     }

@@ -35,6 +35,8 @@ export const control = {
   at: null,
   /** 最近一次自动压缩的结果：{ before, after, shadowed }。 */
   last: null,
+  /** 最近一次自动压缩失败的原因（null 表示无）。 */
+  lastError: null,
 }
 
 /** 宿主半侧写入全局默认预算。 */
@@ -259,4 +261,9 @@ export function setAutoMountControl(value) {
 
 export function getAutoMountControl() {
   return autoMountControl
+}
+
+/** 记录控制半侧压缩失败原因，供面板/状态接口展示。 */
+export function recordControlError(message) {
+  control.lastError = message ? String(message) : null
 }

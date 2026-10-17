@@ -39,6 +39,7 @@ import {
   getGlobalPromptOverrides,
   recordAppliedTools,
   recordCompaction,
+  recordControlError,
   recordInventory,
   recordSyncDebug,
   setControlActive,
@@ -314,9 +315,26 @@ export function apply(ctx, config) {
             }
             if (!throttle(agent)) return
             // 事件回调必须同步返回：压缩异步进行，失败只记日志，绝不影响轮次。
-            void enforce(agent, 'idle').catch((error) => {
-              log('warn', `idle compaction failed: ${error instanceof Error ? error.message : String(error)}`)
-            })
+            const retryEnforce = async () => {
+              for (let attempt = 0; ; attempt += 1) {
+                try {
+                  return await enforce(agent, 'idle')
+                } catch (error) {
+                  const message = error instanceof Error ? error.message : String(error)
+                  const retryable = /idle agent|queued work|waking queued/i.test(message)
+                  if (!retryable || attempt >= 2) throw error
+                  log('info', `idle compaction retry ${attempt + 1}: ${message}`)
+                  await new Promise((resolve) => setTimeout(resolve, 600))
+                }
+              }
+            }
+            void retryEnforce()
+              .then(() => recordControlError(null))
+              .catch((error) => {
+                const message = error instanceof Error ? error.message : String(error)
+                recordControlError(message)
+                log('warn', `idle compaction failed: ${message}`)
+              })
           }),
         'ctx-mon-and-con-control: idle budget enforcement',
       )

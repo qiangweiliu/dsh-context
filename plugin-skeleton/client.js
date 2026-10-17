@@ -687,7 +687,7 @@ window.__ModuleLoader__.load({
             onMouseLeave: () => setHovered(false),
           },
           h(Ring, { percent: percent ?? 0, color }),
-          h('span', null, label),
+          h('span', { style: { color } }, label),
         ),
         open
           ? h(

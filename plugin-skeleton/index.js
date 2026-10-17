@@ -16,7 +16,7 @@
 export const name = 'ctx-mon-and-con'
 
 /** 与 control.js 共享的进程内状态（同一包内相对 import，不涉及 npm 依赖）。 */
-import { existsSync, mkdirSync, readFileSync, readdirSync, realpathSync, statSync, writeFileSync } from 'node:fs'
+import { copyFileSync, existsSync, mkdirSync, readFileSync, readdirSync, realpathSync, statSync, unlinkSync, writeFileSync } from 'node:fs'
 import { homedir } from 'node:os'
 import { dirname, join } from 'node:path'
 
@@ -49,7 +49,7 @@ import {
 export const inject = ['commands', 'tokenMeter']
 
 /** 与 package.json 的 version 保持一致（只用于状态接口的自述）。 */
-const PLUGIN_VERSION = '0.13.0'
+const PLUGIN_VERSION = '0.13.1'
 
 /** 浏览器半侧 client.js 拉的只读状态接口；两处路径必须一致。 */
 const STATUS_PATH = '/api/ctx-mon-and-con/status'
@@ -340,6 +340,7 @@ export function apply(ctx, config) {
   const SESSION_TOGGLES_PATH = join(homedir(), '.dsh', 'ctx-mon-and-con', 'session-toggles.json')
   const saveSessionToggles = () => {
     try {
+      backupFile(SESSION_TOGGLES_PATH, 'session-toggles')
       mkdirSync(dirname(SESSION_TOGGLES_PATH), { recursive: true })
       writeFileSync(SESSION_TOGGLES_PATH, JSON.stringify(snapshotSessionToggles(), null, 2) + '\n', 'utf8')
     } catch (error) {
@@ -743,11 +744,47 @@ export function apply(ctx, config) {
     response.end(body)
   }
 
+  // 所有写操作前自动备份（profile patch 与 session-toggles.json），保留最近 30 份。
+  const BACKUP_DIR = join(homedir(), '.dsh', 'ctx-mon-and-con', 'backups')
+  const backupFile = (filePath, label) => {
+    try {
+      if (!filePath || !existsSync(filePath)) return
+      mkdirSync(BACKUP_DIR, { recursive: true })
+      const stamp = new Date().toISOString().replace(/[:.]/g, '-')
+      copyFileSync(filePath, join(BACKUP_DIR, `${label}.${stamp}.bak`))
+      const names = readdirSync(BACKUP_DIR)
+        .filter((name) => name.startsWith(label + '.'))
+        .sort()
+      while (names.length > 30) {
+        const stale = names.shift()
+        try {
+          unlinkSync(join(BACKUP_DIR, stale))
+        } catch {}
+      }
+    } catch (error) {
+      const logger = ctx.logger
+      if (typeof logger?.warn === 'function') logger.warn('ctx-mon-and-con: backup failed: ' + (error instanceof Error ? error.message : String(error)))
+    }
+  }
+
   // 可写配置：宿主平面有 configEditor 服务时（Web/Desktop profile 都有），
   // 面板可以把预算/阈值写回 profile 的 patch 层，写完后 Loader 会按新配置重挂本插件。
   let configEditor = null
   ctx.inject(['configEditor'], (sub) => {
     configEditor = sub?.configEditor ?? null
+    try {
+      if (configEditor && typeof configEditor.edit === 'function' && !configEditor.__ctxBackedUp) {
+        const originalEdit = configEditor.edit.bind(configEditor)
+        configEditor.edit = (...args) => {
+          try {
+            const patchPath = typeof configEditor.documentPath === 'string' ? configEditor.documentPath : null
+            backupFile(patchPath, 'cordis.patch')
+          } catch {}
+          return originalEdit(...args)
+        }
+        configEditor.__ctxBackedUp = true
+      }
+    } catch {}
     setTimeout(() => {
       try {
         autoMountControl()

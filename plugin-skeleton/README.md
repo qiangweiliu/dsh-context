@@ -390,3 +390,7 @@ bash /mnt/c/<repo>/scripts/wsl-uninstall.sh web    # 卸载并核对残留
 ## 许可
 
 MIT
+
+## 安全与恢复
+
+写操作清单、备份位置（~/.dsh/ctx-mon-and-con/backups/）、一键还原脚本与残留风险见 [docs/security-audit.md](../docs/security-audit.md)。

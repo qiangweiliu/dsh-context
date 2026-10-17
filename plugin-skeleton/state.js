@@ -163,3 +163,13 @@ export function getSyncDebug(sessionId) {
 export function getAppliedTools(sessionId) {
   return applied.get(sessionId) ?? null
 }
+/** 全局提示词覆盖（section name -> 文本），宿主半侧从 Config 同步过来。 */
+let globalPromptOverrides = {}
+
+export function setGlobalPromptOverrides(value) {
+  globalPromptOverrides = value && typeof value === 'object' ? { ...value } : {}
+}
+
+export function getGlobalPromptOverrides() {
+  return globalPromptOverrides
+}

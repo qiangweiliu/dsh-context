@@ -19,6 +19,7 @@ export const name = 'ctx-mon-and-con'
 import {
   budgetFor,
   clearSessionToggles,
+  setGlobalPromptOverrides,
   getAppliedTools,
   getInventory,
   getSessionDisabledPrompts,
@@ -38,7 +39,7 @@ import {
 export const inject = ['commands', 'tokenMeter']
 
 /** 与 package.json 的 version 保持一致（只用于状态接口的自述）。 */
-const PLUGIN_VERSION = '0.9.2'
+const PLUGIN_VERSION = '0.10.0'
 
 /** 浏览器半侧 client.js 拉的只读状态接口；两处路径必须一致。 */
 const STATUS_PATH = '/api/ctx-mon-and-con/status'
@@ -55,6 +56,8 @@ const DEFAULT_CONFIG = {
   errorAt: 0.9,
   // 全局禁用的工具名（从每个请求的 tools 里摘掉，schema token 一并省掉）。
   disabledTools: [],
+  // 全局提示词覆盖：section name -> 替换文本；空对象表示全部用原文。
+  promptOverrides: {},
 }
 
 const CONFIG_KEYS = Object.keys(DEFAULT_CONFIG)
@@ -71,7 +74,7 @@ function validateConfig(input) {
   if (typeof raw !== 'object' || raw === null || Array.isArray(raw)) {
     return { issues: [{ message: 'config must be an object' }] }
   }
-  const config = { ...DEFAULT_CONFIG, disabledTools: [] }
+  const config = { ...DEFAULT_CONFIG, disabledTools: [], promptOverrides: {} }
   for (const key of NUMERIC_KEYS) {
     const value = raw[key]
     if (value === undefined) continue
@@ -96,8 +99,27 @@ function validateConfig(input) {
       config.disabledTools = names
     }
   }
+  if (raw.promptOverrides !== undefined) {
+    if (typeof raw.promptOverrides !== 'object' || raw.promptOverrides === null || Array.isArray(raw.promptOverrides)) {
+      issues.push({ message: 'expected an object of section name -> text', path: ['promptOverrides'] })
+    } else {
+      const overrides = {}
+      for (const [name, text] of Object.entries(raw.promptOverrides)) {
+        if (typeof name !== 'string' || name.length === 0) {
+          issues.push({ message: 'expected non-empty section name', path: ['promptOverrides'] })
+          break
+        }
+        if (typeof text !== 'string') {
+          issues.push({ message: 'expected string text', path: ['promptOverrides', name] })
+          break
+        }
+        overrides[name] = text
+      }
+      config.promptOverrides = overrides
+    }
+  }
   for (const key of Object.keys(raw)) {
-    if (!CONFIG_KEYS.includes(key) && key !== 'disabledTools') issues.push({ message: 'unknown config key', path: [key] })
+    if (!CONFIG_KEYS.includes(key) && key !== 'disabledTools' && key !== 'promptOverrides') issues.push({ message: 'unknown config key', path: [key] })
   }
   if (!Number.isInteger(config.contextWindowTokens) || config.contextWindowTokens <= 0) {
     issues.push({ message: 'expected a positive integer', path: ['contextWindowTokens'] })
@@ -155,6 +177,7 @@ function renderUsage(measurement, budget, config) {
 export function apply(ctx, config) {
   // 全局默认预算写进共享状态：控制半侧（control.js）在没有会话覆盖时用它。
   setDefaultBudget(config.contextWindowTokens)
+  setGlobalPromptOverrides(config.promptOverrides)
   const inFlight = new Set()
   // 浏览器状态接口的数据源：按 session id 保留最近 MAX_MEASUREMENTS 条。
   const measurements = new Map()
@@ -650,6 +673,8 @@ export function apply(ctx, config) {
       disabledSessionTools: sessionId ? getSessionDisabledTools(sessionId) : [],
       disabledSessionPrompts: sessionId ? getSessionDisabledPrompts(sessionId) : [],
       disabledTools: Array.isArray(config.disabledTools) ? config.disabledTools : [],
+      promptOverrides: config.promptOverrides || {},
+      promptWrite,
       applied: sessionId ? getAppliedTools(sessionId) : null,
       debug: sessionId ? getSyncDebug(sessionId) : null,
       configWrite,
@@ -738,6 +763,76 @@ export function apply(ctx, config) {
     })
   }
 
+  let promptWrite = null
+
+  /** 把 promptOverrides 写回 profile config。 */
+  const writePromptOverrides = (next, response, send) => {
+    const editor = configEditor
+    const entry = editor && typeof editor.entries === 'function' ? editor.entries().find((candidate) => candidate?.options?.id === 'ctx-mon-and-con') : undefined
+    if (!editor || typeof editor.edit !== 'function' || !entry) return send(501, { ok: false, error: 'config editor unavailable in this profile' })
+    send(202, { ok: true, accepted: next })
+    void editor
+      .edit(entry, (value) => ({ ...(value ?? {}), promptOverrides: next }))
+      .then(() => {
+        promptWrite = { at: new Date().toISOString(), promptOverrides: next }
+      })
+      .catch((error) => {
+        promptWrite = { at: new Date().toISOString(), error: error instanceof Error ? error.message : String(error) }
+      })
+  }
+
+  /** POST /inventory/prompt {name, text}：全局覆盖一个提示词 section。 */
+  const promptEditHandler = (request, response) => {
+    const send = (code, payload) => {
+      response.statusCode = code
+      response.setHeader('content-type', 'application/json; charset=utf-8')
+      response.end(JSON.stringify(payload))
+    }
+    if (request.method !== 'POST') {
+      response.setHeader('allow', 'POST')
+      return send(405, { ok: false, error: 'method not allowed' })
+    }
+    const chunks = []
+    request.on('data', (chunk) => chunks.push(chunk))
+    request.on('end', () => {
+      let input
+      try {
+        input = JSON.parse(Buffer.concat(chunks).toString('utf8'))
+      } catch {
+        return send(400, { ok: false, error: 'invalid body' })
+      }
+      if (typeof input?.name !== 'string' || input.name.length === 0 || typeof input.text !== 'string') return send(400, { ok: false, error: 'name/text are required' })
+      const next = { ...(config.promptOverrides || {}), [input.name]: input.text }
+      writePromptOverrides(next, response, send)
+    })
+  }
+
+  /** POST /inventory/prompt/reset {name?}：恢复一个或全部提示词原文。 */
+  const promptResetHandler = (request, response) => {
+    const send = (code, payload) => {
+      response.statusCode = code
+      response.setHeader('content-type', 'application/json; charset=utf-8')
+      response.end(JSON.stringify(payload))
+    }
+    if (request.method !== 'POST') {
+      response.setHeader('allow', 'POST')
+      return send(405, { ok: false, error: 'method not allowed' })
+    }
+    const chunks = []
+    request.on('data', (chunk) => chunks.push(chunk))
+    request.on('end', () => {
+      let input
+      try {
+        input = JSON.parse(Buffer.concat(chunks).toString('utf8'))
+      } catch {
+        return send(400, { ok: false, error: 'invalid body' })
+      }
+      const current = { ...(config.promptOverrides || {}) }
+      const next = typeof input?.name === 'string' && input.name.length > 0 ? Object.fromEntries(Object.entries(current).filter(([key]) => key !== input.name)) : {}
+      writePromptOverrides(next, response, send)
+    })
+  }
+
   ctx.inject(['webServer'], (sub) => {
     const server = sub?.webServer
     if (!server || typeof server.register !== 'function') return
@@ -750,6 +845,8 @@ export function apply(ctx, config) {
         server.register({ kind: 'exact', path: `${STATUS_PATH}/inventory`, handler: inventoryHandler }),
         server.register({ kind: 'exact', path: `${STATUS_PATH}/inventory/toggle`, handler: inventoryToggleHandler }),
         server.register({ kind: 'exact', path: `${STATUS_PATH}/inventory/reset`, handler: inventoryResetHandler }),
+        server.register({ kind: 'exact', path: `${STATUS_PATH}/inventory/prompt`, handler: promptEditHandler }),
+        server.register({ kind: 'exact', path: `${STATUS_PATH}/inventory/prompt/reset`, handler: promptResetHandler }),
       ]
       return () => offs.forEach((off) => off())
     }

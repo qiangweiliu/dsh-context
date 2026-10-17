@@ -92,6 +92,13 @@ window.__ModuleLoader__.load({
       copy: 'Copy',
       copied: 'Copied',
       parameters: 'Parameters (JSON Schema)',
+      edit: 'Edit',
+      save: 'Save',
+      confirmSave: 'Overwrite the global prompt section on next request?',
+      resetOriginal: 'Restore original',
+      restoreAllPrompts: 'Restore all prompt edits (global)',
+      overridden: 'overridden (global)',
+      editHint: 'Writes profile config (global). Original kept for restore.',
       promptTokens: 'Prompt',
       toolTokens: 'Tools',
       historyTokens: 'History',
@@ -166,6 +173,13 @@ window.__ModuleLoader__.load({
       copy: '复制',
       copied: '已复制',
       parameters: '参数（JSON Schema）',
+      edit: '编辑',
+      save: '保存',
+      confirmSave: '确认覆盖该提示词 section（全局，下一次请求生效）？',
+      resetOriginal: '恢复原文',
+      restoreAllPrompts: '恢复全部提示词（全局）',
+      overridden: '已覆盖（全局）',
+      editHint: '写入 profile 配置（全局生效），原文保留可恢复。',
       promptTokens: '提示词',
       toolTokens: '工具定义',
       historyTokens: '上文',
@@ -372,6 +386,7 @@ window.__ModuleLoader__.load({
       detailHead: { display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '8px' },
       pre: { margin: 0, padding: '8px 10px', borderRadius: '8px', background: 'var(--dsw-alias-bg-layer-2)', border: '0.5px solid var(--dsw-alias-border-l1)', fontFamily: 'ui-monospace, SFMono-Regular, Menlo, monospace', fontSize: '11.5px', lineHeight: 1.55, whiteSpace: 'pre-wrap', wordBreak: 'break-word', color: 'var(--dsw-alias-label-secondary)' },
       copyBtn: { border: '0.5px solid var(--dsw-alias-border-l2)', background: 'transparent', color: 'inherit', borderRadius: '6px', padding: '1px 8px', fontSize: '11.5px', cursor: 'pointer' },
+      promptEditor: { width: '100%', boxSizing: 'border-box', minHeight: '120px', resize: 'vertical', padding: '8px 10px', borderRadius: '8px', background: 'var(--dsw-alias-bg-layer-2)', border: '0.5px solid var(--dsw-alias-border-l1)', fontFamily: 'ui-monospace, SFMono-Regular, Menlo, monospace', fontSize: '11.5px', lineHeight: 1.55, color: 'var(--dsw-alias-label-primary)' },
       error: { margin: 0, fontSize: '12px', lineHeight: 1.6, color: 'var(--dsw-alias-state-error-primary)' },
       button: { alignSelf: 'flex-start', border: '0.5px solid var(--dsw-alias-border-l2)', background: 'transparent', color: 'inherit', borderRadius: '8px', padding: '4px 10px', fontSize: '12.5px', cursor: 'pointer' },
       field: { display: 'flex', flexDirection: 'column', gap: '4px', fontSize: '12px' },
@@ -653,6 +668,10 @@ window.__ModuleLoader__.load({
       const [copied, setCopied] = react.useState(null)
       const [pending, setPending] = react.useState(null)
       const [busy, setBusy] = react.useState(null)
+      const [editDraft, setEditDraft] = react.useState(null)
+      const [promptSave, setPromptSave] = react.useState(null)
+      const [promptBusy, setPromptBusy] = react.useState(false)
+      const [localEdits, setLocalEdits] = react.useState({})
 
       const post = (body) => {
         setBusy(body)
@@ -704,6 +723,26 @@ window.__ModuleLoader__.load({
         if (navigator.clipboard && typeof navigator.clipboard.writeText === 'function') {
           navigator.clipboard.writeText(text).then(done).catch(done)
         } else done()
+      }
+
+      const postPrompt = (suffix, body) => {
+        setPromptBusy(true)
+        fetch(`${STATUS_PATH}/inventory/prompt${suffix}`, {
+          method: 'POST',
+          headers: { 'content-type': 'application/json' },
+          body: JSON.stringify(body),
+        })
+          .then((response) => response.json().catch(() => ({})))
+          .then(() => {
+            setPromptBusy(false)
+            setEditDraft(null)
+            setPromptSave(null)
+            if (suffix === '') setLocalEdits((prev) => ({ ...prev, [body.name]: body.text }))
+            else if (body && typeof body.name === 'string') setLocalEdits((prev) => { const next = { ...prev }; delete next[body.name]; return next })
+            else setLocalEdits({})
+            setTimeout(() => props.reload && props.reload(), 1200)
+          })
+          .catch(() => setPromptBusy(false))
       }
 
       const switchNode = (kind, name, layer, enabled) => {
@@ -823,6 +862,29 @@ window.__ModuleLoader__.load({
       const promptRow = (section) => {
         const key = `prompt:${section.name}`
         const isOpen = Boolean(expanded[key])
+        const editing = editDraft && editDraft.name === section.name
+        const hasLocal = Object.prototype.hasOwnProperty.call(localEdits, section.name)
+        const effectiveText = hasLocal ? localEdits[section.name] : section.text || ''
+        const dirty = hasLocal || section.overridden || (section.originalText !== undefined && section.originalText !== section.text)
+        const editorNode = editing
+          ? h('textarea', {
+              style: styles.promptEditor,
+              rows: 8,
+              value: editDraft.text,
+              'data-ctx-prompt-editor': section.name,
+              onChange: (event) => setEditDraft({ ...editDraft, text: event.target.value }),
+            })
+          : h('div', { style: styles.detailBox },
+              h('div', { style: styles.detailHead },
+                h('span', { style: styles.cardSub }, dirty ? t('overridden') : t('editHint')),
+                h('span', { style: { display: 'inline-flex', gap: '6px' } },
+                  h('button', { type: 'button', style: styles.copyBtn, 'data-ctx-prompt-edit': section.name, onClick: () => { setEditDraft({ name: section.name, text: effectiveText }); setPromptSave(null) }, disabled: promptBusy }, t('edit')),
+                  dirty ? h('button', { type: 'button', style: styles.copyBtn, 'data-ctx-prompt-reset': section.name, onClick: () => postPrompt('/reset', { name: section.name }), disabled: promptBusy }, t('resetOriginal')) : null,
+                  h('button', { type: 'button', style: styles.copyBtn, onClick: () => copy(key, effectiveText) }, copied === key ? t('copied') : t('copy')),
+                ),
+              ),
+              h('pre', { style: styles.pre, 'data-ctx-detail': key }, effectiveText),
+            )
         return h(
           'li',
           { key, style: styles.inventoryItem },
@@ -834,6 +896,7 @@ window.__ModuleLoader__.load({
               { type: 'button', style: styles.inventoryHead, 'data-ctx-expand': key, 'aria-expanded': isOpen, onClick: () => setExpanded({ ...expanded, [key]: !isOpen }) },
               chevron(isOpen),
               h('span', { style: styles.inventoryName }, section.name),
+              dirty ? h('span', { style: styles.cardSub }, t('overridden')) : null,
               section.tokens !== null && section.tokens !== undefined ? h('span', { style: styles.cardSub }, `~${compactTokens(section.tokens)} ${t('tokensShort')}`) : null,
             ),
             h(
@@ -842,7 +905,18 @@ window.__ModuleLoader__.load({
               h('span', { style: styles.cardSub }, t('sessionSwitch')), switchNode('prompt', section.name, 'session', !disabledSessionPrompts.includes(section.name)),
             ),
           ),
-          isOpen ? details(key, section.text || '') : null,
+          isOpen ? editorNode : null,
+          isOpen && editing
+            ? h('div', { style: { display: 'flex', gap: '6px', alignItems: 'center', flexWrap: 'wrap' } },
+                promptSave === section.name
+                  ? [h('span', { key: 'q', style: styles.cardSub }, t('confirmSave')),
+                     h('button', { key: 'ok', type: 'button', style: styles.copyBtn, 'data-ctx-prompt-confirm': section.name, onClick: () => postPrompt('', { name: section.name, text: editDraft.text }), disabled: promptBusy }, t('confirm')),
+                     h('button', { key: 'no', type: 'button', style: styles.copyBtn, onClick: () => setPromptSave(null) }, t('cancel'))]
+                  : [h('button', { key: 'save', type: 'button', style: styles.copyBtn, 'data-ctx-prompt-save': section.name, onClick: () => setPromptSave(section.name), disabled: promptBusy }, t('save')),
+                     h('button', { key: 'cancel', type: 'button', style: styles.copyBtn, onClick: () => { setEditDraft(null); setPromptSave(null) } }, t('cancel')),
+                     h('span', { key: 'hint', style: styles.cardSub }, t('editHint'))],
+              )
+            : null,
         )
       }
 
@@ -877,6 +951,7 @@ window.__ModuleLoader__.load({
               ),
               h('p', { style: styles.text }, t('inventoryRisk')),
               h('button', { type: 'button', style: styles.button, onClick: restore }, t('restoreAll')),
+              h('button', { type: 'button', style: styles.button, 'data-ctx-prompt-reset-all': '1', onClick: () => postPrompt('/reset', {}), disabled: promptBusy }, t('restoreAllPrompts')),
             )
           : null,
         h('button', { key: 'reload', type: 'button', style: styles.button, onClick: props.reload }, t('refresh')),

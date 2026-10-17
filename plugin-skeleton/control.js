@@ -34,6 +34,7 @@ import {
   budgetFor,
   getSessionDisabledPrompts,
   getSessionDisabledTools,
+  getGlobalPromptOverrides,
   recordAppliedTools,
   recordCompaction,
   recordInventory,
@@ -169,15 +170,24 @@ export function apply(ctx, config) {
         const result = await next()
         try {
           const disabled = new Set(getSessionDisabledPrompts(sessionId))
-          if (disabled.size > 0 && Array.isArray(result.sections)) {
+          const overrides = getGlobalPromptOverrides()
+          if (Array.isArray(result.sections)) {
             result.sections = result.sections.filter((section) => !disabled.has(section.name))
           }
           recordInventory(sessionId, {
-            sections: (result.sections || []).map((section) => ({
-              name: section.name,
-              tokens: Math.ceil(String(section.text || '').length / 4),
-              text: String(section.text || ''),
-            })),
+            sections: (result.sections || []).map((section) => {
+              const original = String(section.text || '')
+              const overridden = Object.prototype.hasOwnProperty.call(overrides, section.name)
+              if (overridden) section.text = String(overrides[section.name])
+              const effective = String(section.text || '')
+              return {
+                name: section.name,
+                tokens: Math.ceil(effective.length / 4),
+                text: effective,
+                originalText: original,
+                overridden,
+              }
+            }),
             tools: (result.tools || []).map((tool) => ({
               name: tool.name,
               description: typeof tool.description === 'string' ? tool.description : undefined,

@@ -580,9 +580,21 @@ window.__ModuleLoader__.load({
           .catch(() => {})
       }, [sessionId])
 
-      // 打开会话时同步一次触发器，不轮询。
+      // 打开会话时同步一次触发器；随后补一次延迟同步（等首次装配完成），窗口重新可见/聚焦时也同步。
+      // 不是定时轮询：只在挂载、会话变化、可见性变化时各取一次。
       react.useEffect(() => {
         fetchLive()
+        const timer = setTimeout(fetchLive, 4000)
+        const onVisible = () => {
+          if (document.visibilityState === 'visible') fetchLive()
+        }
+        document.addEventListener('visibilitychange', onVisible)
+        window.addEventListener('focus', onVisible)
+        return () => {
+          clearTimeout(timer)
+          document.removeEventListener('visibilitychange', onVisible)
+          window.removeEventListener('focus', onVisible)
+        }
       }, [fetchLive])
 
       // 点开浮层时再拉一次最新值。

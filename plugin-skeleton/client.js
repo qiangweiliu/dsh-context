@@ -89,6 +89,9 @@ window.__ModuleLoader__.load({
       cancel: 'Cancel',
       restoreAll: 'Restore all (session)',
       tokensShort: 'tok',
+      copy: 'Copy',
+      copied: 'Copied',
+      parameters: 'Parameters (JSON Schema)',
       promptTokens: 'Prompt',
       toolTokens: 'Tools',
       historyTokens: 'History',
@@ -160,6 +163,9 @@ window.__ModuleLoader__.load({
       cancel: '取消',
       restoreAll: '恢复全部（会话）',
       tokensShort: 'tok',
+      copy: '复制',
+      copied: '已复制',
+      parameters: '参数（JSON Schema）',
       promptTokens: '提示词',
       toolTokens: '工具定义',
       historyTokens: '上文',
@@ -355,6 +361,17 @@ window.__ModuleLoader__.load({
       row: { display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: '12px', fontSize: '12.5px' },
       text: { margin: 0, fontSize: '12px', lineHeight: 1.6, color: 'var(--dsw-alias-label-secondary)' },
       emptyText: { margin: 0, fontSize: '12px', lineHeight: 1.6, color: 'var(--dsw-alias-label-tertiary)' },
+      inventorySection: { display: 'flex', flexDirection: 'column', gap: '6px' },
+      sectionHead: { display: 'flex', alignItems: 'center', gap: '6px', background: 'transparent', border: 'none', padding: 0, cursor: 'pointer', color: 'var(--dsw-alias-label-primary)', fontSize: '13px', fontWeight: 600, textAlign: 'left' },
+      inventoryList: { display: 'flex', flexDirection: 'column', gap: '4px', margin: 0, padding: 0, listStyle: 'none' },
+      inventoryItem: { display: 'flex', flexDirection: 'column', gap: '6px', padding: '2px 0' },
+      inventoryRow: { display: 'flex', alignItems: 'center', gap: '8px', justifyContent: 'space-between' },
+      inventoryHead: { display: 'flex', alignItems: 'center', gap: '6px', minWidth: 0, background: 'transparent', border: 'none', padding: 0, cursor: 'pointer', color: 'inherit', textAlign: 'left' },
+      inventoryName: { fontFamily: 'ui-monospace, SFMono-Regular, Menlo, monospace', fontSize: '12px', whiteSpace: 'nowrap' },
+      detailBox: { display: 'flex', flexDirection: 'column', gap: '6px', padding: '8px 10px', borderLeft: '2px solid var(--dsw-alias-border-l2)' },
+      detailHead: { display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '8px' },
+      pre: { margin: 0, padding: '8px 10px', borderRadius: '8px', background: 'var(--dsw-alias-bg-layer-2)', border: '0.5px solid var(--dsw-alias-border-l1)', fontFamily: 'ui-monospace, SFMono-Regular, Menlo, monospace', fontSize: '11.5px', lineHeight: 1.55, whiteSpace: 'pre-wrap', wordBreak: 'break-word', color: 'var(--dsw-alias-label-secondary)' },
+      copyBtn: { border: '0.5px solid var(--dsw-alias-border-l2)', background: 'transparent', color: 'inherit', borderRadius: '6px', padding: '1px 8px', fontSize: '11.5px', cursor: 'pointer' },
       error: { margin: 0, fontSize: '12px', lineHeight: 1.6, color: 'var(--dsw-alias-state-error-primary)' },
       button: { alignSelf: 'flex-start', border: '0.5px solid var(--dsw-alias-border-l2)', background: 'transparent', color: 'inherit', borderRadius: '8px', padding: '4px 10px', fontSize: '12.5px', cursor: 'pointer' },
       field: { display: 'flex', flexDirection: 'column', gap: '4px', fontSize: '12px' },
@@ -623,7 +640,7 @@ window.__ModuleLoader__.load({
       )
     }
 
-    /** 本会话工具 / 提示词 section 清单 + 会话级 / 全局级开关。 */
+    /** 本会话工具 / 提示词 section 清单：两级折叠 + 会话/全局开关 + 展开看原文。 */
     function InventoryCard(props) {
       const t = props.t
       const data = props.data || {}
@@ -631,6 +648,9 @@ window.__ModuleLoader__.load({
       const disabledSessionTools = Array.isArray(data.disabledSessionTools) ? data.disabledSessionTools : []
       const disabledSessionPrompts = Array.isArray(data.disabledSessionPrompts) ? data.disabledSessionPrompts : []
       const disabledGlobalTools = Array.isArray(data.disabledTools) ? data.disabledTools : []
+      const [open, setOpen] = react.useState({ tools: true, prompts: true })
+      const [expanded, setExpanded] = react.useState({})
+      const [copied, setCopied] = react.useState(null)
       const [pending, setPending] = react.useState(null)
       const [busy, setBusy] = react.useState(null)
 
@@ -676,6 +696,16 @@ window.__ModuleLoader__.load({
           .catch(() => {})
       }
 
+      const copy = (key, text) => {
+        const done = () => {
+          setCopied(key)
+          setTimeout(() => setCopied(null), 1200)
+        }
+        if (navigator.clipboard && typeof navigator.clipboard.writeText === 'function') {
+          navigator.clipboard.writeText(text).then(done).catch(done)
+        } else done()
+      }
+
       const switchNode = (kind, name, layer, enabled) => {
         const key = `${kind}:${name}:${layer}`
         const confirming = pending && pending.kind === kind && pending.name === name && pending.layer === layer
@@ -684,8 +714,8 @@ window.__ModuleLoader__.load({
           return h(
             'span',
             { style: { display: 'inline-flex', gap: '4px', alignItems: 'center' } },
-            h('button', { type: 'button', style: styles.button, onClick: confirm, 'data-ctx-confirm': '1' }, t('confirm')),
-            h('button', { type: 'button', style: styles.button, onClick: () => setPending(null) }, t('cancel')),
+            h('button', { type: 'button', style: styles.copyBtn, onClick: confirm, 'data-ctx-confirm': '1' }, t('confirm')),
+            h('button', { type: 'button', style: styles.copyBtn, onClick: () => setPending(null) }, t('cancel')),
           )
         }
         return h(
@@ -716,15 +746,104 @@ window.__ModuleLoader__.load({
         )
       }
 
-      const row = (children, key) => h('li', { key, style: styles.legendRow }, children)
+      const chevron = (isOpen) => h('span', { style: { display: 'inline-block', width: '10px', transform: isOpen ? 'rotate(90deg)' : 'none', transition: 'transform .15s ease' } }, '›')
+
+      const details = (key, text, extra) => {
+        const openKey = expanded[key]
+        if (!openKey) return null
+        return h(
+          'div',
+          { style: styles.detailBox },
+          extra || null,
+          h(
+            'div',
+            { style: styles.detailHead },
+            h('span', { style: styles.cardSub }, t('copy')),
+            h('button', { type: 'button', style: styles.copyBtn, onClick: () => copy(key, text) }, copied === key ? t('copied') : t('copy')),
+          ),
+          h('pre', { style: styles.pre, 'data-ctx-detail': key }, text),
+        )
+      }
 
       const tools = inventory && Array.isArray(inventory.tools) ? inventory.tools.slice() : []
       for (const name of [...disabledSessionTools, ...disabledGlobalTools]) {
-        if (!tools.some((tool) => tool.name === name)) tools.push({ name, tokens: null, description: undefined })
+        if (!tools.some((tool) => tool.name === name)) tools.push({ name, tokens: null })
       }
       const sections = inventory && Array.isArray(inventory.sections) ? inventory.sections.slice() : []
       for (const name of disabledSessionPrompts) {
-        if (!sections.some((section) => section.name === name)) sections.push({ name, tokens: null })
+        if (!sections.some((section) => section.name === name)) sections.push({ name, tokens: null, text: '' })
+      }
+
+      const toolRow = (tool) => {
+        const key = `tool:${tool.name}`
+        const schemaText = tool.parameters ? JSON.stringify(tool.parameters, null, 2) : ''
+        const isOpen = Boolean(expanded[key])
+        return h(
+          'li',
+          { key, style: styles.inventoryItem },
+          h(
+            'div',
+            { style: styles.inventoryRow },
+            h(
+              'button',
+              { type: 'button', style: styles.inventoryHead, 'data-ctx-expand': key, 'aria-expanded': isOpen, onClick: () => setExpanded({ ...expanded, [key]: !isOpen }) },
+              chevron(isOpen),
+              h('span', { style: styles.inventoryName }, tool.name),
+              tool.tokens !== null && tool.tokens !== undefined ? h('span', { style: styles.cardSub }, `~${compactTokens(tool.tokens)} ${t('tokensShort')}`) : null,
+            ),
+            h(
+              'span',
+              { style: { display: 'inline-flex', gap: '8px', alignItems: 'center', flex: 'none' } },
+              h('span', { style: styles.cardSub }, t('sessionSwitch')), switchNode('tool', tool.name, 'session', !disabledSessionTools.includes(tool.name)),
+              h('span', { style: styles.cardSub }, t('globalSwitch')), switchNode('tool', tool.name, 'global', !disabledGlobalTools.includes(tool.name)),
+            ),
+          ),
+          isOpen
+            ? details(
+                key,
+                tool.description || '',
+                schemaText
+                  ? h(
+                      'div',
+                      { key: 'schema', style: { display: 'flex', flexDirection: 'column', gap: '4px' } },
+                      h(
+                        'div',
+                        { style: styles.detailHead },
+                        h('span', { style: styles.cardSub }, t('parameters')),
+                        h('button', { type: 'button', style: styles.copyBtn, onClick: () => copy(`${key}:schema`, schemaText) }, copied === `${key}:schema` ? t('copied') : t('copy')),
+                      ),
+                      h('pre', { style: styles.pre, 'data-ctx-schema': key }, schemaText),
+                    )
+                  : null,
+              )
+            : null,
+        )
+      }
+
+      const promptRow = (section) => {
+        const key = `prompt:${section.name}`
+        const isOpen = Boolean(expanded[key])
+        return h(
+          'li',
+          { key, style: styles.inventoryItem },
+          h(
+            'div',
+            { style: styles.inventoryRow },
+            h(
+              'button',
+              { type: 'button', style: styles.inventoryHead, 'data-ctx-expand': key, 'aria-expanded': isOpen, onClick: () => setExpanded({ ...expanded, [key]: !isOpen }) },
+              chevron(isOpen),
+              h('span', { style: styles.inventoryName }, section.name),
+              section.tokens !== null && section.tokens !== undefined ? h('span', { style: styles.cardSub }, `~${compactTokens(section.tokens)} ${t('tokensShort')}`) : null,
+            ),
+            h(
+              'span',
+              { style: { display: 'inline-flex', gap: '8px', alignItems: 'center', flex: 'none' } },
+              h('span', { style: styles.cardSub }, t('sessionSwitch')), switchNode('prompt', section.name, 'session', !disabledSessionPrompts.includes(section.name)),
+            ),
+          ),
+          isOpen ? details(key, section.text || '') : null,
+        )
       }
 
       const empty = tools.length === 0 && sections.length === 0
@@ -735,38 +854,27 @@ window.__ModuleLoader__.load({
         !empty
           ? h(
               'div',
-              { style: { display: 'flex', flexDirection: 'column', gap: '10px' } },
-              h('div', null, h('p', { style: styles.cardTitle }, t('inventoryTools')), h('ul', { style: styles.legend },
-                tools.map((tool) =>
-                  row(
-                    [
-                      h('span', { key: 'name', style: { ...styles.legendLabel, minWidth: 0, gap: '6px' } },
-                        h('span', { style: { fontFamily: 'ui-monospace, SFMono-Regular, Menlo, monospace', fontSize: '12px' } }, tool.name),
-                        tool.tokens !== null && tool.tokens !== undefined ? h('span', { style: styles.cardSub }, `~${compactTokens(tool.tokens)} ${t('tokensShort')}`) : null,
-                      ),
-                      h('span', { key: 'switches', style: { display: 'inline-flex', gap: '8px', alignItems: 'center' } },
-                        h('span', { style: styles.cardSub }, t('sessionSwitch')), switchNode('tool', tool.name, 'session', !disabledSessionTools.includes(tool.name)),
-                        h('span', { style: styles.cardSub }, t('globalSwitch')), switchNode('tool', tool.name, 'global', !disabledGlobalTools.includes(tool.name)),
-                      ),
-                    ],
-                    tool.name,
-                  ),
+              { style: { display: 'flex', flexDirection: 'column', gap: '12px' } },
+              h(
+                'div',
+                { style: styles.inventorySection },
+                h(
+                  'button',
+                  { type: 'button', style: styles.sectionHead, 'data-ctx-section': 'tools', onClick: () => setOpen({ ...open, tools: !open.tools }) },
+                  chevron(open.tools), t('inventoryTools'), h('span', { style: styles.cardSub }, String(tools.length)),
                 ),
-              )),
-              h('div', null, h('p', { style: styles.cardTitle }, t('inventoryPrompts')), h('ul', { style: styles.legend },
-                sections.map((section) =>
-                  row(
-                    [
-                      h('span', { key: 'name', style: styles.legendLabel }, section.name),
-                      h('span', { key: 'meta', style: { display: 'inline-flex', gap: '8px', alignItems: 'center' } },
-                        section.tokens !== null && section.tokens !== undefined ? h('span', { style: styles.cardSub }, `~${compactTokens(section.tokens)} ${t('tokensShort')}`) : null,
-                        h('span', { style: styles.cardSub }, t('sessionSwitch')), switchNode('prompt', section.name, 'session', !disabledSessionPrompts.includes(section.name)),
-                      ),
-                    ],
-                    section.name,
-                  ),
+                open.tools ? h('ul', { style: styles.inventoryList }, tools.map(toolRow)) : null,
+              ),
+              h(
+                'div',
+                { style: styles.inventorySection },
+                h(
+                  'button',
+                  { type: 'button', style: styles.sectionHead, 'data-ctx-section': 'prompts', onClick: () => setOpen({ ...open, prompts: !open.prompts }) },
+                  chevron(open.prompts), t('inventoryPrompts'), h('span', { style: styles.cardSub }, String(sections.length)),
                 ),
-              )),
+                open.prompts ? h('ul', { style: styles.inventoryList }, sections.map(promptRow)) : null,
+              ),
               h('p', { style: styles.text }, t('inventoryRisk')),
               h('button', { type: 'button', style: styles.button, onClick: restore }, t('restoreAll')),
             )

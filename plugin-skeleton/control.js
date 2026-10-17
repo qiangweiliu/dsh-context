@@ -173,10 +173,15 @@ export function apply(ctx, config) {
             result.sections = result.sections.filter((section) => !disabled.has(section.name))
           }
           recordInventory(sessionId, {
-            sections: (result.sections || []).map((section) => ({ name: section.name, tokens: Math.ceil(String(section.text || '').length / 4) })),
+            sections: (result.sections || []).map((section) => ({
+              name: section.name,
+              tokens: Math.ceil(String(section.text || '').length / 4),
+              text: String(section.text || ''),
+            })),
             tools: (result.tools || []).map((tool) => ({
               name: tool.name,
-              description: typeof tool.description === 'string' ? tool.description.slice(0, 160) : undefined,
+              description: typeof tool.description === 'string' ? tool.description : undefined,
+              parameters: tool.parameters,
               tokens: Math.ceil(JSON.stringify(tool).length / 4),
             })),
           })

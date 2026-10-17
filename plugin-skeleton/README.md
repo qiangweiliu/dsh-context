@@ -113,6 +113,13 @@ ctx 整页底部新增「工具与提示词」卡，展示**当前会话**这次
   名称 + `~token` 估算），每个 section 一个 `会话` 开关（按你的选择，提示词不做全局开关）。
 - 关闭前会二次确认；底部「恢复全部（会话）」一键清空本会话开关；卡片上标注风险提示。
 
+折叠与详情：
+
+- 两个大分区（工具 / 提示词 section）可折叠，默认展开；每个工具 / section 默认收起。
+- 展开工具：完整 description + 参数 JSON Schema（格式化、等宽字体、带复制按钮）。
+- 展开提示词 section：完整原文（等宽字体、带复制按钮，不限高）。
+- 展开内容直接来自 inventory 接口（宿主把装配时的 	ool.parameters 与 section.text 全量带回）。
+
 实现（全部走官方 seam，不 import 任何包）：
 
 - 会话级工具：`agent.ctx.tools.restrict({ deny })`，在 `agent/pre-step` 里按当前开关重装/撤销，

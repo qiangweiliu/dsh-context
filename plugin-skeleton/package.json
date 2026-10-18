@@ -1,6 +1,6 @@
 {
   "name": "ctx-mon-and-con",
-  "version": "0.14.12",
+  "version": "0.14.13",
   "description": "DSH 上下文长度管理插件：/ctx 查看会话 token 用量与预算；可选的 control 半侧挂在 agent preset 内，按预算自动压缩",
   "type": "module",
   "main": "index.js",
@@ -20,10 +20,13 @@
     "icon.svg",
     "locale/*.json",
     "dsh.bundle.patch.yml",
-    "README.md"
+    "README.md",
+    "PERMISSIONS.md",
+    "docs/EVIDENCE.md"
   ],
   "engines": {
-    "node": ">=20"
+    "node": ">=20",
+    "dsh": ">=0.2.0-rc.2 <0.3.0 || 0.2.1-rc.2"
   },
   "keywords": [
     "dsh",
@@ -39,6 +42,17 @@
   },
   "dsh": {
     "manifestVersion": 1,
+    "compatibility": {
+      "dsh": ">=0.2.0-rc.2 <0.3.0 || 0.2.1-rc.2",
+      "dshReleases": {
+        "0.2.0-rc.2": "compatible",
+        "0.2.1-rc.2": "compatible"
+      },
+      "profiles": [
+        "web",
+        "desktop"
+      ]
+    },
     "bundle": {
       "patch": "./dsh.bundle.patch.yml"
     },

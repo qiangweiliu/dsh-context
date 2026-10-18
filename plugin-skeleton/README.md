@@ -386,18 +386,40 @@ bash /mnt/c/<repo>/scripts/wsl-uninstall.sh web    # 卸载并核对残留
 
 会同步从 `dsh.profile.bundles` 里移除（管理器负责），重启 Desktop 后命令/面板/路由消失。
 
+## 兼容性声明（DSH STORE）
+
+manifest 已显式声明宿主兼容范围与逐版本精确记录：
+
+```json
+"engines": {
+  "node": ">=20",
+  "dsh": ">=0.2.0-rc.2 <0.3.0 || 0.2.1-rc.2"
+},
+"dsh": {
+  "compatibility": {
+    "dsh": ">=0.2.0-rc.2 <0.3.0 || 0.2.1-rc.2",
+    "dshReleases": { "0.2.0-rc.2": "compatible", "0.2.1-rc.2": "compatible" },
+    "profiles": ["web", "desktop"]
+  }
+}
+```
+
+已实测宿主：WSL `dsh 0.2.0-rc.2`（web profile）与 Windows 桌面版 `0.2.1-rc.2`（desktop profile）。其他版本未做运行验证，保持 `unknown`，不用范围声明代替真实验收。安装/启动/卸载与 UI 证据见 [docs/EVIDENCE.md](docs/EVIDENCE.md)。
+
 ## 限制（重要）
 
 - **Web 形态下宿主自带的 `auto` 自动压缩关不掉**：`@deepseek-ai/dsh-web-app` 层已把宿主平面的 `compaction-basic` 行设成 `disabled`，真正运行的实例藏在 `preset-standard` 条目的 `plugins` 里，bundle 层**无法按 id 命中**。要关 `auto` 必须在 profile 级 `cordis.patch.yml` 里对 `preset-standard` 做整段 config 覆盖（会连带把 preset roster 冻结成快照，直到 DSH 更新 preset 后重新复制；billion-context 的 `dsh.bundle.patch.yml` 注释记录了同一限制 DSH #2474）。控制半侧因此**必须挂在 preset 内**，见上节。
 - **第三方插件默认不能 `import '@deepseek-ai/*'`**：宿主包在 `app.asar` 内、只由 DSH 自己的 loader（锚在 asar 内）解析，不暴露给插件代码；本机 profile 的 `node_modules` 顶层没有 `@deepseek-ai`。想在插件里用 zod/schemastery 时，必须把它写进 `dependencies`（pnpm 的 hoisted 布局会提升到 profile `node_modules` 顶层），且那是**第二份**副本，不能拿去 `instanceof` 宿主里的类。详见 `research/sample-plugin.md`。
 - `client.js` 的 `require('react')` 由平台共享模块表提供，不要打包 React。
-- 本骨架未声明 `engines.dsh`（上架插件市场时补上，装前兼容性预检会读它；不合规时可 `dsh plugin --profile desktop allow-version ... --accept-risk` 授权）。
+- 已在 manifest 声明 `engines.dsh` 与 `dsh.compatibility.dshReleases`（见上节「兼容性声明」）；装前兼容性预检会读它，缺失时可用 `dsh plugin --profile desktop allow-version ... --accept-risk` 显式授权，但这不等于运行验收。
 - **宿主半侧的 `/ctx` 只读不改**：它只调用 `ctx.tokenMeter.measure(session)`。真正会改历史的只有控制半侧，而它只通过官方 `ctx.compaction` 服务操作（`compactNow` / `compactIfNeeded`），从不自己写 `surfaceOp` 或拼接事件。
 
 ## 许可
 
 MIT
 
-## 安全与恢复
+## 安全、权限与恢复
 
-写操作清单、备份位置（~/.dsh/ctx-mon-and-con/backups/）、一键还原脚本与残留风险见 [docs/security-audit.md](../docs/security-audit.md)。
+- 权限矩阵（文件/网络/命令/凭据/Profile/外部服务）与失败边界：[PERMISSIONS.md](PERMISSIONS.md)
+- 安装/启动/卸载/UI 验收证据：[docs/EVIDENCE.md](docs/EVIDENCE.md)
+- 写操作清单、备份位置（~/.dsh/ctx-mon-and-con/backups/）、一键还原脚本与残留风险：[docs/security-audit.md](../docs/security-audit.md)

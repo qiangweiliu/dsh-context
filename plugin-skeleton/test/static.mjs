@@ -20,6 +20,28 @@ function check(name, condition, detail) {
 const plugin = await import(new URL('../index.js', import.meta.url).href)
 const manifest = JSON.parse(readFileSync(new URL('../package.json', import.meta.url), 'utf8'))
 
+// ── 1b. DSH STORE manifest 契约（兼容性声明 / 生命周期脚本 / 分发文件）──────
+check('manifest 声明 engines.node', typeof manifest.engines?.node === 'string' && manifest.engines.node.trim() !== '', JSON.stringify(manifest.engines))
+check('manifest 声明 engines.dsh（DSH 兼容范围）', typeof manifest.engines?.dsh === 'string' && manifest.engines.dsh.trim() !== '', JSON.stringify(manifest.engines))
+const releases = manifest.dsh?.compatibility?.dshReleases
+check(
+  'manifest 声明 dsh.compatibility.dshReleases（逐版本精确记录）',
+  releases && typeof releases === 'object' && Object.values(releases).every((value) => ['compatible', 'unknown', 'failed'].includes(value)),
+  JSON.stringify(releases),
+)
+check(
+  'manifest 未声明安装生命周期脚本',
+  !manifest.scripts || !Object.keys(manifest.scripts).some((name) => ['preinstall', 'install', 'postinstall', 'prepare'].includes(name)),
+  JSON.stringify(manifest.scripts ?? null),
+)
+check(
+  'manifest files 分发全部运行文件',
+  ['index.js', 'control.js', 'state.js', 'client.js', 'dsh.bundle.patch.yml'].every((file) => Array.isArray(manifest.files) && manifest.files.includes(file)),
+  JSON.stringify(manifest.files),
+)
+check('manifest 无 npm 运行依赖（只依赖宿主服务与 Node 内置模块）', !manifest.dependencies || Object.keys(manifest.dependencies).length === 0, JSON.stringify(manifest.dependencies ?? {}))
+check('manifest 声明权限说明文档已分发', Array.isArray(manifest.files) && manifest.files.includes('PERMISSIONS.md'))
+
 // ── 1. 插件导出形状 ────────────────────────────────────────────────────────
 check('exports name 是字符串', typeof plugin.name === 'string' && plugin.name.length > 0, plugin.name)
 check('exports inject 是字符串数组', Array.isArray(plugin.inject) && plugin.inject.every((value) => typeof value === 'string'), JSON.stringify(plugin.inject))

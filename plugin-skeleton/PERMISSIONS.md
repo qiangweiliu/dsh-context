@@ -1,0 +1,71 @@
+# 权限与数据边界（ctx-mon-and-con）
+
+本文档对应 DSH STORE 权限披露要求：逐项列出插件访问的文件、网络、命令、凭据、Profile/会话与外部服务，并给出触发条件与失败边界。**声明本身不替代商城审阅或独立安全审计。**
+
+## 汇总
+
+| 能力 | 是否使用 | 范围 | 权限档位（商城口径） |
+| --- | --- | --- | --- |
+| 文件读取 | 是 | 宿主 `@deepseek-ai/*` 包的 `lib/*.js`（只读，取工具来源路径）；插件自己的状态文件 | 有界只读 |
+| 文件写入 | 是 | `~/.dsh/ctx-mon-and-con/` 下自己的状态与备份；profile 的 `cordis.patch.yml` 仅经官方 `configEditor` | 插件私有状态 + Profile |
+| 网络 | 仅本机同源 | 宿主已有 Web 服务器上注册 `/api/ctx-mon-and-con/*` 路由；浏览器端只 `fetch` 同源 API | 无外发 |
+| 命令执行 | 否 | 无 `child_process`、无 Shell、无动态执行外部代码 | 无 |
+| 凭据 | 否 | 不读取 API Key、Cookie、Token、环境变量（源码中无 `process.env` 引用） | 无 |
+| 外部服务 | 否 | 无遥测、无 CDN、无第三方端点、无账号体系 | 无 |
+| Profile / 会话 | 是 | 经 `tokenMeter.measure(session)` 读取 token 用量；经 `configEditor` 在用户开启自动压缩时写 preset 的一行 | 敏感持久状态（**high**） |
+
+> 按商城保守口径，本插件因会写 Profile 配置，整体权限等级应视为 **high / user-reviewed**，而不是低风险自动通道。
+
+## 1. 文件访问
+
+### 1.1 只读：宿主官方包源码
+
+- 位置：DSH 安装目录内 `@deepseek-ai/*/lib/`（通过 `process.argv[1]`/`process.cwd()` 向上查找 `node_modules/@deepseek-ai`）。
+- 目的：设置面板「工具与提示词」里给出每个工具的真实源码路径。
+- 边界：一次索引最多 700 个文件、2 MiB；`node_modules` 与 `client` 目录跳过；只读，不修改官方包。
+- 失败边界：读不到时降级为仅显示工具名，不影响 DSH 启动。
+
+### 1.2 读写：插件私有状态
+
+- `~/.dsh/ctx-mon-and-con/session-toggles.json`：按会话保存工具/提示词开关、内联提示词文本、`autoMountControl` 标志。
+- `~/.dsh/ctx-mon-and-con/backups/`：每次写入前备份，保留最近 30 份。
+- 边界：只写上述路径；不遍历用户目录；不读取会话正文内容（只通过 `tokenMeter` 拿计数）。
+
+### 1.3 经官方 `configEditor` 写 Profile
+
+- 只在两种情况下发生：用户点击「启用自动压缩」，或启动时检测到控制行缺失且 `autoMountControl` 为真。
+- 写入内容：profile `cordis.patch.yml` 中的插件 config 行 / `preset-standard` 整段覆盖 / compaction 组内 `ctx-mon-and-con/control` 一行。
+- 保护：写前自动备份 `cordis.patch.yml`；桌面版不允许时自动挂载失败不阻塞启动，面板显示原因与手动重试。
+- 卸载残留：`dsh plugin remove` 不会清理这些行，仓库提供 `scripts/clean-ctx-profile-patch.mjs` 清理并备份。
+
+## 2. 网络
+
+- **无外发请求**：宿主侧不调用 `fetch`/`http.request` 连接任何外部地址。
+- 宿主侧仅在 DSH 已有 Web 服务器上注册本机路由（`/api/ctx-mon-and-con/status|config|live|inventory|prompt`）。
+- 浏览器侧 `client.js` 只 `fetch` 同源相对路径，用于读取状态与提交开关/配置。
+- 无 CDN、无外部脚本、无遥测、无第三方服务依赖。
+
+## 3. 命令、凭据与外部依赖
+
+- 无 `child_process` / `exec` / `spawn` / Shell 命令。
+- 无凭据读取：不读环境变量、不读凭据文件、不接触 provider API Key。
+- `package.json` 无 `dependencies` 运行依赖；宿主能力全部来自 Cordis 服务（`commands`、`tokenMeter`、`webServer`、`configEditor`、`sessions`）。
+- 无 `preinstall/install/postinstall/prepare` 生命周期脚本。
+
+## 4. 已知风险与失败边界
+
+| 场景 | 行为 |
+| --- | --- |
+| 自动挂载被宿主拒绝（如桌面 profile 由 Electron 独占） | 启动继续，面板提示原因；不阻塞会话，不静默改配置 |
+| 压缩后用量未下降 | 记录 `lastError`（before → after），不反复重试、不删会话内容 |
+| 写配置/状态失败 | 捕获异常，保留内存态并提示；已有备份可人工回滚 |
+| 卸载 | 依赖与 bundles 由 `dsh plugin remove` 清理；patch 残留行用清理脚本移除 |
+
+## 5. 兼容性声明
+
+- `engines.node`：`>=20`
+- `engines.dsh`：`>=0.2.0-rc.2 <0.3.0 || 0.2.1-rc.2`
+- `dsh.compatibility.dshReleases`：`0.2.0-rc.2`、`0.2.1-rc.2` 标为 `compatible`（均为真实安装/启动验证过的宿主版本）
+- `dsh.compatibility.profiles`：`web`、`desktop`
+
+其他宿主版本未做运行验证，保持 `unknown`，不以范围声明代替真实验收。

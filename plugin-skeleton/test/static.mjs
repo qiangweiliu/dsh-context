@@ -59,6 +59,10 @@ const unknown = validate({ nope: 1 })
 check('未知配置键被拒绝', Array.isArray(unknown.issues) && unknown.issues.some((issue) => issue.path?.join('.') === 'nope'), JSON.stringify(unknown.issues))
 const inverted = validate({ warnAt: 0.95, errorAt: 0.9 })
 check('warnAt >= errorAt 被拒绝', Array.isArray(inverted.issues) && inverted.issues.length > 0, JSON.stringify(inverted.issues))
+const triggerValid = validate({ triggerAt: 0.75 })
+check('triggerAt 接受 (0, 1] 内的值', !triggerValid.issues && triggerValid.value?.triggerAt === 0.75, JSON.stringify(triggerValid))
+const triggerInvalid = validate({ triggerAt: 1.5 })
+check('triggerAt 超出 (0, 1] 被拒绝', Array.isArray(triggerInvalid.issues) && triggerInvalid.issues.length > 0, JSON.stringify(triggerInvalid.issues))
 
 // ── 3. 包资源解析（宿主 readPluginMeta / client-modules 都走 ESM 解析器）──
 const require = createRequire(new URL('../package.json', import.meta.url))

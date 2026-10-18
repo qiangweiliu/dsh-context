@@ -30,7 +30,7 @@ ctx —— 上下文监控
 │ ▓▓▓░░░░░░░░░░░░░░░░░░░░░░░  4px（四色分段）            │
 │ [提示词 1.4K·20%] [工具定义 5.2K·73%]                   │
 │ [上文 12·0.2%] [本轮用户对话 483·6.8%]                  │
-│ [警告阈值 75%] [超限阈值 90%] [控制 已启用]             │
+│ [警告阈值 75%] [超限阈值 90%] [触发阈值 100%] [控制 已启用]             │
 └────────────────────────────────────────────────────────┘
 ┌ 控制 ───────────────────┐ ┌ 全局配置 ─────────────────┐
 │ 已启用 + 说明 + [停用按钮] │ │ 默认上下文 / 警告 / 超限      │
@@ -212,11 +212,11 @@ dsh plugin --profile web add ctx-mon-and-con
 
 - **启用自动压缩（写入 agent preset）** —— 把 `ctx-mon-and-con/control` 行写进 `preset-standard`
   的 compaction 组（走宿主 `ctx.configEditor`，写进 profile 的 patch 层），重挂后
-  `control.active=true`，轮末超出上下文即压缩。
+  `control.active=true`，到触发线即自动压缩。
 - **停用自动压缩（移除 preset 行）** —— 把该行移除。
 
 写入的是 **preset-standard 的整段 config 快照**，这是 DSH 的既定行为；DSH 升级 preset 后
-需要按新默认重新点一次或手工同步。默认 `mode: idle`：轮末检查、超出上下文就压。
+需要按新默认重新点一次或手工同步。默认 `mode: idle`：每个 step 边界检查，达到 `triggerAt`（默认 100%）就压。
 
 ## 三条功能
 
@@ -224,7 +224,7 @@ dsh plugin --profile web add ctx-mon-and-con
 | --- | --- | --- |
 | 1 | 监控当前会话上下文长度 | 会话里发 `/ctx`；设置 → 上下文面板；`GET /api/ctx-mon-and-con/status` |
 | 2 | 设置上下文长度（上下文） | `/ctx <tokens>` 设**当前会话**的临时上下文、`/ctx reset` 恢复默认；全局默认在插件 `Config.contextWindowTokens`（profile patch 或 preset 里改） |
-| 3 | 到达上下文时主动压缩 | 控制半侧 `mode: idle`（默认）在轮末自动压缩；需要 step 内触发用 `pre-step`；也可 `/ctx-compact` 手动压 |
+| 3 | 到达触发线时主动压缩 | 控制半侧 `mode: idle`（默认）在 step 边界自动压缩；`Config.triggerAt` 可提前到警告/超限比例（默认 1 = 到上限才触发）；也可 `/ctx-compact` 手动压 |
 
 **上下文三级取值**（控制半侧每次触发时实时计算，改完立即生效）：会话级覆盖（`/ctx <tokens>`）→ 宿主默认（`Config.contextWindowTokens`）→ 控制行自己的 `maxContextTokens`。
 
@@ -232,12 +232,14 @@ dsh plugin --profile web add ctx-mon-and-con
 
 | `mode` | 行为 |
 | --- | --- |
-| `idle`（默认） | 每轮结束（`agent/status === 'idle'`）测量，超过上下文就调用 `ctx.compaction.compactNow()` 强制压缩；压完仍超会按 `maxAttempts` 重试，直到降到上下文以下或无可安全压缩的范围 |
-| `pre-step` | 每个 step 边界调用 `ctx.compaction.compactIfNeeded(agent, 'pressure', signal)`，由本插件决定触发时机（适合把 `compaction-basic.auto` 关掉后接管） |
-| `notify` | 只测量并写日志，不动作 |
+| `idle`（默认） | 每个 `agent/pre-step` 检查用量（受 `cooldownMs` 节流）：超过触发线时先 `compactIfNeeded(agent,'pressure')`；若没降到上限内，再对较早消息调 `compactRegion` 兜底（保留 `keepTokens`，默认预算 25%）。不做多轮 `maxAttempts` 重试 |
+| `pre-step` | 每个 step 边界只调 `compactIfNeeded(agent,'pressure',signal)`，不做范围压缩兜底（适合把 `compaction-basic.auto` 关掉后接管） |
+| `notify` | 只在 `agent/status === 'idle'` 时测量并写日志，不动作 |
 | `off` | 完全不启用 |
 
-压缩目标是「**降到上下文以下即可**」：复用引擎自己的选区逻辑，不自己算范围、不写 `surfaceOp`、不碰影子价。另外注册 `/ctx-compact`：立刻对该会话做一次 idle 压缩（同样要求 agent 空闲）。
+**触发线** = 上下文上限 × `Config.triggerAt`（0–1，默认 1）。例如 `triggerAt: 0.75` 表示用量到警告比例就预压缩；`warnAt` / `errorAt` 只负责标记和颜色，不参与触发。
+
+压缩目标是「**降到上下文以下即可**」：复用引擎自己的选区逻辑，不自己算范围、不写 `surfaceOp`、不碰影子价。另外注册 `/ctx-compact`：立刻对该会话做一次 idle 压缩（同样要求 agent 空闲，不受 `triggerAt` 限制，按 `maxAttempts` 重试）。
 
 ```yaml
 # 设置 → Agent preset（或在 profile patch 的 preset 配置里）加一行：
@@ -245,8 +247,8 @@ dsh plugin --profile web add ctx-mon-and-con
   name: 'ctx-mon-and-con/control'
   config:
     mode: idle          # off | notify | idle | pre-step
-    cooldownMs: 60000   # 两次自动压缩最小间隔
-    maxAttempts: 2      # 压完仍超出上下文时最多连续压几次
+    cooldownMs: 60000   # 两次自动压缩最小间隔（idle/pre-step）
+    maxAttempts: 2      # 仅 /ctx-compact 手动压实仍超上限时最多连续压几次
     # maxContextTokens: 100000  # 0（默认）= 跟随宿主默认与会话覆盖
 ```
 
@@ -359,8 +361,8 @@ bash /mnt/c/<repo>/scripts/wsl-uninstall.sh web    # 卸载并核对残留
    node test/static.mjs        # 40/40：导出形状、Config 校验、exports 解析、locale、client mock、control 形状
    node --check index.js; node --check control.js; node --check client.js
    node test/prepare-deps.mjs  # 可选：从 app.asar 解出 cordis，第一次需要
-   node test/smoke.mjs         # 43/43：真实 Cordis 里加载、/ctx 与 reset、状态路由、卸载清理
-   node test/control.mjs       # 33/33：上下文来源、idle/pre-step/notify、重试、cooldown、命令、状态回写、卸载
+   node test/smoke.mjs         # 46/46：真实 Cordis 里加载、/ctx 与 reset、状态路由、压缩记录落盘、卸载清理
+   node test/control.mjs       # 45/45：上下文来源、triggerAt 触发、idle/pre-step/notify、命令、状态回写、卸载
    ```
 
 2. **确认 bundle 层生效**：
@@ -383,6 +385,7 @@ bash /mnt/c/<repo>/scripts/wsl-uninstall.sh web    # 卸载并核对残留
        contextWindowTokens: 200000
        warnAt: 0.7
        errorAt: 0.85
+       triggerAt: 0.85   # 到 85% 就预压缩；默认 1 = 到上限才触发
    ```
 
 ## 卸载

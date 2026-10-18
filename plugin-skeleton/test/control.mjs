@@ -102,6 +102,7 @@ class MockCommands extends Service {
 /** 每个用例前清空共享状态，避免用例之间互相污染。 */
 function resetState() {
   state.setDefaultBudget(undefined)
+  state.setDefaultTriggerAt(1)
   for (const entry of state.listSessionBudgets()) state.clearSessionBudget(entry.sessionId)
   state.setControlActive(false)
   state.control.last = null
@@ -154,6 +155,30 @@ check('exports apply function', typeof controlPlugin.apply === 'function')
   check('非 idle 状态不压缩', compaction.calls.length === 0, compaction.calls.length)
   await fiber.dispose()
   check('卸载后 control.active = false', state.control.active === false, String(state.control.active))
+  await root.fiber.dispose()
+}
+
+// ── 2b. triggerAt：阈值参与自动压缩触发（默认 1 = 到上限才触发） ──────────────
+{
+  const { root, fiber, meter, compaction, agent } = await mount({ mode: 'idle', cooldownMs: 0, maxContextTokens: 100000 })
+  compaction.shrinkTo = 40000
+  state.setDefaultTriggerAt(0.5)
+
+  meter.tokens = 60000
+  await root.waterfall('agent/pre-step', { agent, signal: new AbortController().signal }, () => 'inner-reached')
+  check('triggerAt=0.5 时 60% 用量触发预压缩', compaction.calls.length >= 1 && state.control.last?.before === 60000 && state.control.last?.after === 40000, JSON.stringify({ calls: compaction.calls.length, last: state.control.last }))
+
+  state.setDefaultTriggerAt(1)
+  compaction.calls.length = 0
+  meter.tokens = 60000
+  await root.waterfall('agent/pre-step', { agent, signal: new AbortController().signal }, () => 'inner-reached')
+  check('triggerAt=1 时 60% 用量不压缩', compaction.calls.length === 0, compaction.calls.length)
+
+  meter.tokens = 120000
+  await root.waterfall('agent/pre-step', { agent, signal: new AbortController().signal }, () => 'inner-reached')
+  check('triggerAt=1 时 120% 仍压缩', compaction.calls.length >= 1, compaction.calls.length)
+
+  await fiber.dispose()
   await root.fiber.dispose()
 }
 

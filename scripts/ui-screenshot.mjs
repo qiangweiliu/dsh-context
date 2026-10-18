@@ -88,6 +88,41 @@ if (selector === 'none') {
     if (ctxBtn) ctxBtn.click()
     await new Promise((r) => setTimeout(r, 2200))
   })()`)
+} else if (selector === 'populatetrigger') {
+  // 新建会话 -> hi（在 triggerAt 低于当前用量时，pre-step 应自动触发压缩并写日志）
+  await evaluate(`(async () => {
+    const norm = (s) => (s || '').replace(/\\s+/g, ' ').trim()
+    const btn = Array.from(document.querySelectorAll('button')).find((b) => /新建会话/.test(norm(b.getAttribute('aria-label')) || '') || /新建会话/.test(norm(b.textContent)))
+    if (btn) btn.click()
+    await new Promise((r) => setTimeout(r, 1200))
+    const composer = document.querySelector('textarea, [contenteditable="true"]')
+    if (composer) composer.focus()
+  })()`)
+  const sendText = async (text) => {
+    await evaluate(`(() => { const c = document.querySelector('textarea, [contenteditable="true"]'); if (c) c.focus() })()`)
+    await send('Input.insertText', { text })
+    await sleep(400)
+    await evaluate(`(() => { const norm = (s) => (s || '').replace(/\\s+/g, ' ').trim(); const b = Array.from(document.querySelectorAll('button')).find((x) => /发送消息/.test(norm(x.getAttribute('aria-label')) || '')); if (b) b.click() })()`)
+  }
+  await sendText('hi')
+  await sleep(16000)
+  // 第二个 turn 的 pre-step 才能看到上一 turn 的用量，从而触发 triggerAt。
+  await sendText('again')
+  await sleep(16000)
+  await evaluate(`(async () => {
+    const norm = (s) => (s || '').replace(/\\s+/g, ' ').trim()
+    const ctxBtn = Array.from(document.querySelectorAll('button')).find((b) => norm(b.getAttribute('aria-label')) === 'ctx' || norm(b.textContent) === 'ctx')
+    if (ctxBtn) ctxBtn.click()
+    await new Promise((r) => setTimeout(r, 1800))
+    const toggle = document.querySelector('[data-ctx-log-toggle]')
+    if (toggle) toggle.click()
+    await new Promise((r) => setTimeout(r, 700))
+  })()`)
+  const state = await evaluate(`(() => {
+    const items = Array.from(document.querySelectorAll('[data-ctx-log-item]'))
+    return JSON.stringify({ count: items.length, outcomes: items.map((el) => el.getAttribute('data-ctx-log-outcome')), first: items[0] ? items[0].textContent.slice(0, 160) : null })
+  })()`)
+  console.log('trigger-log', state)
 } else if (selector === 'empty') {
   // 新建空会话 -> 打开 ctx 页，检查空态布局
   await evaluate(`(async () => {
@@ -123,6 +158,56 @@ if (selector === 'none') {
     if (trigger) trigger.click()
     await new Promise((r) => setTimeout(r, 1200))
   })()`)
+} else if (selector === 'configtrigger') {
+  const result = await evaluate(`(async () => {
+    const response = await fetch('/api/ctx-mon-and-con/status/config', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ contextWindowTokens: 10000, warnAt: 0.5, errorAt: 0.6, triggerAt: 0.5 }) })
+    return JSON.stringify({ status: response.status, body: (await response.text()).slice(0, 200) })
+  })()`)
+  console.log('config-trigger', result)
+  await sleep(6000)
+  await send('Page.reload')
+  await sleep(4500)
+} else if (selector === 'configprobe') {
+  const postConfig = async (payload) => {
+    return evaluate(`(async () => {
+      const response = await fetch('/api/ctx-mon-and-con/status/config', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify(${JSON.stringify(payload)}) })
+      return JSON.stringify({ status: response.status, body: (await response.text()).slice(0, 200) })
+    })()`)
+  }
+  console.log('config-post', await postConfig({ contextWindowTokens: 10000, warnAt: 0.5, errorAt: 0.6, triggerAt: 1 }))
+  await sleep(6000)
+  await send('Page.reload')
+  await sleep(4000)
+  await evaluate(`(async () => {
+    const norm = (s) => (s || '').replace(/\\s+/g, ' ').trim()
+    const sessionBtn = Array.from(document.querySelectorAll('button, a')).find((el) => /Hi greeting|Greeting exchange session|Hello and Greeting Exchange/.test(norm(el.textContent)) && norm(el.textContent).length < 80)
+    if (sessionBtn) sessionBtn.click()
+    await new Promise((r) => setTimeout(r, 1500))
+    const ctxBtn = Array.from(document.querySelectorAll('button')).find((b) => norm(b.getAttribute('aria-label')) === 'ctx' || norm(b.textContent) === 'ctx')
+    if (ctxBtn) ctxBtn.click()
+    await new Promise((r) => setTimeout(r, 1800))
+  })()`)
+  const probe = await evaluate(`(async () => {
+    const status = await (await fetch('/api/ctx-mon-and-con/status')).json()
+    return JSON.stringify({
+      budget: status.budget,
+      badge: document.querySelector('[data-ctx-status]')?.getAttribute('data-ctx-status'),
+      badgeText: document.querySelector('[data-ctx-status]')?.textContent,
+      chips: Array.from(document.querySelectorAll('[data-ctx-status], [data-ctx-version]')).length,
+      thresholdText: Array.from(document.querySelectorAll('div')).map((el) => (el.textContent || '').trim()).find((text) => /警告阈值/.test(text) && text.length < 80) || null,
+    })
+  })()`)
+  console.log('config-probe', probe)
+  console.log('runtime-errors', JSON.stringify(runtimeErrors.slice(0, 5)))
+} else if (selector === 'configrestore') {
+  const restored = await evaluate(`(async () => {
+    const response = await fetch('/api/ctx-mon-and-con/status/config', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ contextWindowTokens: 128000, warnAt: 0.75, errorAt: 0.9, triggerAt: 1 }) })
+    return JSON.stringify({ status: response.status, body: (await response.text()).slice(0, 200) })
+  })()`)
+  console.log('config-restore', restored)
+  await sleep(6000)
+  await send('Page.reload')
+  await sleep(3500)
 } else if (selector === 'lightlogview') {
   await evaluate(`(async () => {
     document.documentElement.setAttribute('data-ds-theme-source', 'light')

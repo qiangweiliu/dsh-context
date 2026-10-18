@@ -20,6 +20,9 @@ const MAX_OVERRIDES = 200
 /** 全局默认预算（token）；宿主半侧 apply 时写入。 */
 let defaultBudget
 
+/** 自动压缩触发比例（0–1；1 = 到上下限才触发）；宿主半侧 apply 时写入。 */
+let defaultTriggerAt = 1
+
 /** sessionId -> token 预算 */
 const overrides = new Map()
 
@@ -47,6 +50,17 @@ export function setDefaultBudget(tokens) {
 /** 读取全局默认预算（可能为 undefined）。 */
 export function getDefaultBudget() {
   return defaultBudget
+}
+
+/** 宿主半侧写入自动压缩触发比例（非法值忽略，保持默认 1）。 */
+export function setDefaultTriggerAt(value) {
+  const number = Number(value)
+  if (Number.isFinite(number) && number > 0 && number <= 1) defaultTriggerAt = number
+}
+
+/** 读取自动压缩触发比例（默认 1）。 */
+export function getDefaultTriggerAt() {
+  return defaultTriggerAt
 }
 
 /** 写入某个会话的临时预算覆盖。 */

@@ -44,6 +44,7 @@ import {
   getSessionBudget,
   listSessionBudgets,
   setDefaultBudget,
+  setDefaultTriggerAt,
   setSessionBudget,
   clearSessionBudget,
 } from './state.js'
@@ -52,7 +53,7 @@ import {
 export const inject = ['commands', 'tokenMeter']
 
 /** 与 package.json 的 version 保持一致（只用于状态接口的自述）。 */
-const PLUGIN_VERSION = '0.14.16'
+const PLUGIN_VERSION = '0.14.17'
 
 /** 浏览器半侧 client.js 拉的只读状态接口；两处路径必须一致。 */
 const STATUS_PATH = '/api/ctx-mon-and-con/status'
@@ -63,10 +64,12 @@ const MAX_MEASUREMENTS = 10
 const DEFAULT_CONFIG = {
   // 上下文窗口上下文（token）。不同模型窗口不同，按需覆盖。
   contextWindowTokens: 128000,
-  // 达到窗口的多少比例时标记“警告”。
+  // 达到窗口的多少比例时标记“警告”（只影响标记/颜色，不触发压缩）。
   warnAt: 0.75,
-  // 达到窗口的多少比例时标记“超限”（骨架里只影响 /ctx 的输出标记，不做拦截）。
+  // 达到窗口的多少比例时标记“超限”（只影响标记/颜色，不做拦截）。
   errorAt: 0.9,
+  // 自动压缩的触发比例（0–1；1 = 到上下限才触发，0.75 = 到警告阈值就预压缩）。
+  triggerAt: 1,
   // 全局禁用的工具名（从每个请求的 tools 里摘掉，schema token 一并省掉）。
   disabledTools: [],
   // 全局提示词覆盖：section name -> 替换文本；空对象表示全部用原文。
@@ -78,7 +81,7 @@ const DEFAULT_CONFIG = {
 }
 
 const CONFIG_KEYS = Object.keys(DEFAULT_CONFIG)
-const NUMERIC_KEYS = ['contextWindowTokens', 'warnAt', 'errorAt']
+const NUMERIC_KEYS = ['contextWindowTokens', 'warnAt', 'errorAt', 'triggerAt']
 
 /**
  * 手写的 Standard Schema（零依赖）。
@@ -149,7 +152,7 @@ function validateConfig(input) {
   if (!Number.isInteger(config.contextWindowTokens) || config.contextWindowTokens <= 0) {
     issues.push({ message: 'expected a positive integer', path: ['contextWindowTokens'] })
   }
-  for (const key of ['warnAt', 'errorAt']) {
+  for (const key of ['warnAt', 'errorAt', 'triggerAt']) {
     const value = config[key]
     if (!(value > 0 && value <= 1)) issues.push({ message: 'expected a number in (0, 1]', path: [key] })
   }
@@ -342,6 +345,7 @@ function renderUsage(measurement, budget, config) {
 export function apply(ctx, config) {
   // 全局默认上下文写进共享状态：控制半侧（control.js）在没有会话覆盖时用它。
   setDefaultBudget(config.contextWindowTokens)
+  setDefaultTriggerAt(config.triggerAt)
   setGlobalPromptOverrides(config.promptOverrides)
   setGlobalDisabledTools(config.disabledTools)
 
@@ -645,6 +649,9 @@ export function apply(ctx, config) {
       used,
       budget,
       breakdown: breakdownOf(session),
+      warnAt: config.warnAt,
+      errorAt: config.errorAt,
+      triggerAt: config.triggerAt,
       ratio: typeof used === 'number' && budget > 0 ? used / budget : null,
     })
   }
@@ -795,6 +802,7 @@ export function apply(ctx, config) {
         tokens: config.contextWindowTokens,
         warnAt: config.warnAt,
         errorAt: config.errorAt,
+        triggerAt: config.triggerAt,
         source: 'default',
       },
       sessionBudgets: listSessionBudgets(),
@@ -872,7 +880,7 @@ export function apply(ctx, config) {
       patch.contextWindowTokens = input.contextWindowTokens
     }
     const ratios = {}
-    for (const key of ['warnAt', 'errorAt']) {
+    for (const key of ['warnAt', 'errorAt', 'triggerAt']) {
       if (input[key] === undefined) continue
       if (typeof input[key] !== 'number' || !(input[key] > 0 && input[key] <= 1)) return null
       ratios[key] = input[key]

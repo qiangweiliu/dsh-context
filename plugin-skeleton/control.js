@@ -18,20 +18,25 @@
  *   3. 本行 Config.maxContextTokens（0 = 跟随前两级；宿主没装时才用它）
  *
  * 控制语义（v1，只走官方 seam，不 import 任何包）：
- *   - mode: 'idle'     每轮结束（agent/status === 'idle'）检查用量，超过上下文就调用
- *                      `compaction.compactNow()` 强制压缩；压完仍超会重试（maxAttempts）。
- *   - mode: 'pre-step' 每个 step 边界调用 `compaction.compactIfNeeded(agent, 'pressure',
- *                      signal)`，把触发时机交给本插件（配合把 `compaction-basic.auto` 关掉）。
- *   - mode: 'notify'   只测量并写日志，不动作。
+ *   - 触发条件：`tokenMeter` 实测用量 > 插件上下文上限 × `triggerAt`（默认 1，
+ *     即 100% 才触发；调到 0.75 就表示到警告比例预压缩）。
+ *   - mode: 'idle'     每个 `agent/pre-step` 检查（受 cooldownMs 节流）：先调
+ *                      `compaction.compactIfNeeded(agent, 'pressure')`；若没降到上限内，
+ *                      再自己选较早的消息节点调 `compactRegion` 兜底（保留 keepTokens）。
+ *   - mode: 'pre-step' 只在 step 边界调 `compactIfNeeded`，不做范围压缩兜底
+ *                      （适合把 `compaction-basic.auto` 关掉后接管）。
+ *   - mode: 'notify'   只在 `agent/status === 'idle'` 时测量并写日志，不动作。
  *   - mode: 'off'      完全禁用。
- * 另注册 `/ctx-compact` 手动强制压缩一次（同样要求 agent 空闲）。
+ * 另注册 `/ctx-compact` 手动强制压缩一次（不受 triggerAt 限制，仍要求 agent 空闲；
+ * 用 compactNow，按 maxAttempts 重试）。
  *
- * 压缩目标按「降到上下文以下即可」实现：复用引擎自己的选区逻辑（compactNow），
- * 不自己算范围、不写 surfaceOp、不碰影子价。
+ * 压缩目标按「降到上下文以下即可」实现：复用引擎自己的选区逻辑，不自己算范围、
+ * 不写 surfaceOp、不碰影子价。
  */
 
 import {
   budgetFor,
+  getDefaultTriggerAt,
   getSessionDisabledPrompts,
   getSessionDisabledTools,
   getGlobalDisabledTools,
@@ -249,6 +254,12 @@ export function apply(ctx, config) {
   /** 某会话的实际上下文：会话覆盖 > 宿主默认 > 本行配置 > 兜底。 */
   const budgetOf = (agent) => budgetFor(sessionIdOf(agent), config.maxContextTokens || FALLBACK_BUDGET)
 
+  /** 自动压缩的触发线：上下文上限 × triggerAt（宿主半侧 Config.triggerAt，默认 1）。 */
+  const triggerTokensOf = (budget) => {
+    const ratio = getDefaultTriggerAt()
+    return typeof ratio === 'number' && ratio > 0 && ratio <= 1 ? budget * ratio : budget
+  }
+
   /** 测量；任何异常都返回 null，绝不打断轮次。 */
   const measure = (agent) => {
     const session = agent?.session
@@ -341,7 +352,7 @@ export function apply(ctx, config) {
               if (signal?.aborted) return next()
               const first = measure(agent)
               const budget = budgetOf(agent)
-              if (!first || first.totalTokens <= budget) return next()
+              if (!first || first.totalTokens <= triggerTokensOf(budget)) return next()
               if (!throttle(agent)) return next()
               let after = first
               try {
@@ -394,7 +405,10 @@ export function apply(ctx, config) {
                 }
               }
               if (after.totalTokens >= first.totalTokens) {
-                logCompactionFailure('idle', `压缩后用量未降低（${formatTokens(first.totalTokens)} → ${formatTokens(after.totalTokens)}，上限 ${formatTokens(budget)}）；当前预算可能低于系统提示+工具定义的基础开销，或没有可安全压缩的历史`, { sessionId: sessionIdOf(agent), before: first.totalTokens, after: after.totalTokens, budget })
+                const reason = first.totalTokens <= budget
+                  ? `达到预压缩阈值但用量未降低（${formatTokens(first.totalTokens)} → ${formatTokens(after.totalTokens)}）；当前没有可安全压缩的历史`
+                  : `压缩后用量未降低（${formatTokens(first.totalTokens)} → ${formatTokens(after.totalTokens)}，上限 ${formatTokens(budget)}）；当前预算可能低于系统提示+工具定义的基础开销，或没有可安全压缩的历史`
+                logCompactionFailure('idle', reason, { sessionId: sessionIdOf(agent), before: first.totalTokens, after: after.totalTokens, budget })
               } else {
                 recordCompaction(sessionIdOf(agent), first.totalTokens, after.totalTokens)
                 logCompaction({ outcome: 'success', trigger: 'idle', sessionId: sessionIdOf(agent), before: first.totalTokens, after: after.totalTokens, budget })
@@ -415,35 +429,10 @@ export function apply(ctx, config) {
             if (status !== 'idle') return
             const measurement = measure(agent)
             const budget = budgetOf(agent)
-            if (!measurement || measurement.totalTokens <= budget) return
-            if (config.mode === 'notify') {
-              log('warn', `over budget (notify only): ${formatTokens(measurement.totalTokens)} > ${formatTokens(budget)}`)
-              return
-            }
-            if (!throttle(agent)) return
-            // 事件回调必须同步返回：压缩异步进行，失败只记日志，绝不影响轮次。
-            const retryEnforce = async () => {
-              for (let attempt = 0; ; attempt += 1) {
-                try {
-                  return await enforce(agent, 'idle')
-                } catch (error) {
-                  const message = error instanceof Error ? error.message : String(error)
-                  const retryable = /idle agent|queued work|waking queued/i.test(message)
-                  if (!retryable || attempt >= 2) throw error
-                  log('info', `idle compaction retry ${attempt + 1}: ${message}`)
-                  await new Promise((resolve) => setTimeout(resolve, 600))
-                }
-              }
-            }
-            void retryEnforce()
-              .then(() => recordControlError(null))
-              .catch((error) => {
-                const message = error instanceof Error ? error.message : String(error)
-                logCompactionFailure('idle', message, { sessionId: sessionIdOf(agent) })
-                log('warn', `idle compaction failed: ${message}`)
-              })
+            if (!measurement || measurement.totalTokens <= triggerTokensOf(budget)) return
+            log('warn', `over trigger (notify only): ${formatTokens(measurement.totalTokens)} > ${formatTokens(triggerTokensOf(budget))} (budget ${formatTokens(budget)})`)
           }),
-        'ctx-mon-and-con-control: idle budget enforcement',
+        'ctx-mon-and-con-control: notify-only measurement',
       )
     }
 
@@ -455,9 +444,9 @@ export function apply(ctx, config) {
               if (signal?.aborted) return next()
               const measurement = measure(agent)
               const budget = budgetOf(agent)
-              if (!measurement || measurement.totalTokens <= budget) return next()
+              if (!measurement || measurement.totalTokens <= triggerTokensOf(budget)) return next()
               if (!throttle(agent)) return next()
-              log('info', `over budget at step: ${formatTokens(measurement.totalTokens)} > ${formatTokens(budget)}`)
+              log('info', `over trigger at step: ${formatTokens(measurement.totalTokens)} > ${formatTokens(triggerTokensOf(budget))} (budget ${formatTokens(budget)})`)
               // 复用引擎的阈值/选区/事务，只由我们决定触发时机。
               const before = measurement.totalTokens
               const result = await compaction.compactIfNeeded(agent, 'pressure', signal)

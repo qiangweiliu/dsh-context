@@ -42,6 +42,11 @@ window.__ModuleLoader__.load({
       statusError: 'over the context limit',
       warnAt: 'Warn at',
       errorAt: 'Error at',
+      triggerAt: 'Trigger at',
+      triggerLabel: 'Trigger ratio',
+      invalidTrigger: 'Trigger ratio must be in (0, 1].',
+      triggerHint: 'Auto-compaction triggers when usage reaches this share of the budget (1 = only at the limit; 0.75 = pre-compress at the warn ratio).'
+      ,
       recent: 'Recent /ctx measurements',
       loading: 'Loading…',
       refresh: 'Refresh',
@@ -150,6 +155,11 @@ window.__ModuleLoader__.load({
       statusError: '已超限',
       warnAt: '警告阈值',
       errorAt: '超限阈值',
+      triggerAt: '触发阈值',
+      triggerLabel: '触发比例',
+      invalidTrigger: '触发比例必须在 (0, 1] 之间。',
+      triggerHint: '用量达到预算的这个比例时自动压缩（1 = 到上限才触发；0.75 = 到警告比例就预压缩）。'
+      ,
       recent: '最近的 /ctx 测量',
       loading: '加载中…',
       refresh: '刷新',
@@ -314,18 +324,18 @@ window.__ModuleLoader__.load({
       return text.slice(0, 12)
     }
 
-    function ratioColor(ratio) {
+    function ratioColor(ratio, warnAt = 0.75, errorAt = 0.9) {
       if (ratio === null || ratio === undefined) return 'var(--dsw-alias-label-tertiary)'
-      if (ratio >= 0.9) return 'var(--dsw-alias-state-error-primary)'
-      if (ratio >= 0.75) return 'var(--dsw-alias-state-warn-primary)'
+      if (ratio >= errorAt) return 'var(--dsw-alias-state-error-primary)'
+      if (ratio >= warnAt) return 'var(--dsw-alias-state-warn-primary)'
       return 'var(--dsw-alias-brand-primary)'
     }
 
     /** ok / warn / error —— 与 ratioColor 的阈值一致，用于状态 badge 与文字。 */
-    function ratioState(ratio) {
+    function ratioState(ratio, warnAt = 0.75, errorAt = 0.9) {
       if (ratio === null || ratio === undefined) return 'ok'
-      if (ratio >= 0.9) return 'error'
-      if (ratio >= 0.75) return 'warn'
+      if (ratio >= errorAt) return 'error'
+      if (ratio >= warnAt) return 'warn'
       return 'ok'
     }
 
@@ -374,7 +384,7 @@ window.__ModuleLoader__.load({
         const frame = requestAnimationFrame(() => setGrown(true))
         return () => cancelAnimationFrame(frame)
       }, [signature])
-      if (filled.length === 0) return h(MeterBar, { percent: usedRatio * 100, color: ratioColor(usedRatio) })
+      if (filled.length === 0) return h(MeterBar, { percent: usedRatio * 100, color: ratioColor(usedRatio, props.warnAt, props.errorAt) })
       return h(
         'div',
         { style: styles.bar },
@@ -887,8 +897,11 @@ window.__ModuleLoader__.load({
       const budget = data && typeof data.budget === 'number' ? data.budget : null
       const used = data && typeof data.used === 'number' ? data.used : null
       const ratio = data && typeof data.ratio === 'number' ? data.ratio : null
+      const warnAt = data && typeof data.warnAt === 'number' ? data.warnAt : 0.75
+      const errorAt = data && typeof data.errorAt === 'number' ? data.errorAt : 0.9
       const percent = ratio === null ? null : Math.round(ratio * 100)
-      const color = ratioColor(ratio)
+      const color = ratioColor(ratio, warnAt, errorAt)
+      const state = ratioState(ratio, warnAt, errorAt)
       const categories = breakdownCategories(t, data && data.breakdown)
       const label = percent === null ? `${t('ctxBrand')} —` : `${t('ctxBrand')} ${percent}%`
 
@@ -903,7 +916,7 @@ window.__ModuleLoader__.load({
             'aria-haspopup': 'dialog',
             'aria-expanded': open,
             'aria-label': `${t('meterAria')}${percent === null ? '' : ` ${percent}%`}`,
-            title: used !== null && budget !== null ? `${formatTokens(used)} / ${formatTokens(budget)} ${t('tokens')}${ratioState(ratio) === 'error' ? ` · ${t('statusError')}` : ratioState(ratio) === 'warn' ? ` · ${t('statusWarn')}` : ''}` : t('meterAria'),
+            title: used !== null && budget !== null ? `${formatTokens(used)} / ${formatTokens(budget)} ${t('tokens')}${state === 'error' ? ` · ${t('statusError')}` : state === 'warn' ? ` · ${t('statusWarn')}` : ''}` : t('meterAria'),
             'data-ctx-dock': '1',
             onClick: () => setOpen(!open),
             onMouseEnter: () => setHovered(true),
@@ -923,7 +936,7 @@ window.__ModuleLoader__.load({
                 h('span', { style: meter.percent }, percent === null ? '—' : `${percent}%`),
                 h('span', { style: meter.figures }, `~${compactTokens(used)} / ${compactTokens(budget)}`),
               ),
-              h(SegmentedBar, { usedRatio: ratio ?? 0, categories }),
+              h(SegmentedBar, { usedRatio: ratio ?? 0, categories, warnAt, errorAt }),
               h(
                 'dl',
                 { style: meter.rows },
@@ -963,8 +976,11 @@ window.__ModuleLoader__.load({
       const used = liveUsed !== null ? liveUsed : latest && typeof latest.totalTokens === 'number' ? latest.totalTokens : null
       const budgetTokens = liveBudget !== null ? liveBudget : budget.tokens
       const ratio = used !== null && budgetTokens > 0 ? used / budgetTokens : null
-      const color = ratioColor(ratio)
-      const state = ratioState(ratio)
+      const warnAt = live && typeof live.warnAt === 'number' ? live.warnAt : typeof budget.warnAt === 'number' ? budget.warnAt : 0.75
+      const errorAt = live && typeof live.errorAt === 'number' ? live.errorAt : typeof budget.errorAt === 'number' ? budget.errorAt : 0.9
+      const triggerAt = live && typeof live.triggerAt === 'number' ? live.triggerAt : typeof budget.triggerAt === 'number' ? budget.triggerAt : 1
+      const color = ratioColor(ratio, warnAt, errorAt)
+      const state = ratioState(ratio, warnAt, errorAt)
       const remaining = used !== null && budgetTokens > 0 ? Math.max(0, budgetTokens - used) : null
       const breakdown = (live && live.breakdown) || (liveUsed === null && latest ? latest.breakdown : null)
       const categories = breakdownCategories(t, breakdown)
@@ -1009,13 +1025,14 @@ window.__ModuleLoader__.load({
             ),
           ),
         ),
-        h(SegmentedBar, { usedRatio: ratio ?? 0, categories }),
+        h(SegmentedBar, { usedRatio: ratio ?? 0, categories, warnAt, errorAt }),
         h(LegendGrid, { categories, tokensLabel: t('tokens') }),
         h(
           'div',
           { style: styles.thresholds },
-          h('span', { style: { ...styles.thresholdChip, color: 'var(--dsw-alias-state-warn-primary)' } }, `${t('warnAt')} ${formatPercent(budget.warnAt, 0)}`),
-          h('span', { style: { ...styles.thresholdChip, color: 'var(--dsw-alias-state-error-primary)' } }, `${t('errorAt')} ${formatPercent(budget.errorAt, 0)}`),
+          h('span', { style: { ...styles.thresholdChip, color: 'var(--dsw-alias-state-warn-primary)' } }, `${t('warnAt')} ${formatPercent(warnAt, 0)}`),
+          h('span', { style: { ...styles.thresholdChip, color: 'var(--dsw-alias-state-error-primary)' } }, `${t('errorAt')} ${formatPercent(errorAt, 0)}`),
+          h('span', { style: { ...styles.thresholdChip, color: triggerAt < 1 ? 'var(--dsw-alias-state-warn-primary)' : 'var(--dsw-alias-label-tertiary)' } }, `${t('triggerAt')} ${formatPercent(triggerAt, 0)}`),
         ),
         h('p', { style: styles.text }, t('hint')),
       )
@@ -1589,7 +1606,7 @@ window.__ModuleLoader__.load({
       const t = props.t
       const budget = props.budget || {}
       const editable = Boolean(props.editable)
-      const [draft, setDraft] = react.useState({ tokens: '', warn: '', error: '' })
+      const [draft, setDraft] = react.useState({ tokens: '', warn: '', error: '', trigger: '' })
       const [result, setResult] = react.useState({ kind: 'idle' })
 
       react.useEffect(() => {
@@ -1597,13 +1614,15 @@ window.__ModuleLoader__.load({
           tokens: budget.tokens === undefined ? '' : String(budget.tokens),
           warn: budget.warnAt === undefined ? '' : String(budget.warnAt),
           error: budget.errorAt === undefined ? '' : String(budget.errorAt),
+          trigger: budget.triggerAt === undefined ? '' : String(budget.triggerAt),
         })
-      }, [budget.tokens, budget.warnAt, budget.errorAt])
+      }, [budget.tokens, budget.warnAt, budget.errorAt, budget.triggerAt])
 
       const save = () => {
         const tokens = Number(draft.tokens)
         const warn = Number(draft.warn)
         const error = Number(draft.error)
+        const trigger = Number(draft.trigger)
         if (!Number.isInteger(tokens) || tokens <= 0) {
           setResult({ kind: 'error', message: t('invalidTokens') })
           return
@@ -1612,11 +1631,15 @@ window.__ModuleLoader__.load({
           setResult({ kind: 'error', message: t('invalidRatios') })
           return
         }
+        if (!(trigger > 0 && trigger <= 1)) {
+          setResult({ kind: 'error', message: t('invalidTrigger') })
+          return
+        }
         setResult({ kind: 'saving' })
         fetch(`${STATUS_PATH}/config`, {
           method: 'POST',
           headers: { 'content-type': 'application/json' },
-          body: JSON.stringify({ contextWindowTokens: tokens, warnAt: warn, errorAt: error }),
+          body: JSON.stringify({ contextWindowTokens: tokens, warnAt: warn, errorAt: error, triggerAt: trigger }),
         })
           .then(async (response) => {
             const payload = await response.json().catch(() => ({}))
@@ -1684,10 +1707,22 @@ window.__ModuleLoader__.load({
                 ),
                 h('input', { style: styles.input, type: 'number', min: 0.01, max: 1, step: 0.01, value: draft.error, disabled, onChange: (event) => setDraft({ ...draft, error: event.target.value }) }),
               ),
+              h(
+                'label',
+                { style: styles.field },
+                h(
+                  'span',
+                  { style: styles.fieldLabelRow },
+                  h('span', { style: styles.label }, t('triggerLabel')),
+                  h('span', { style: styles.fieldUnit }, '0–1'),
+                ),
+                h('input', { style: styles.input, type: 'number', min: 0.01, max: 1, step: 0.01, value: draft.trigger, disabled, onChange: (event) => setDraft({ ...draft, trigger: event.target.value }) }),
+              ),
             )
           : null,
         source ? h('p', { style: { ...styles.cardSub, marginLeft: 0 } }, `${t('source')}: ${source}`) : null,
         h('p', { style: styles.text }, t('configHint')),
+        h('p', { style: { ...styles.text, color: 'var(--dsw-alias-label-tertiary)', fontSize: '11.5px' } }, t('triggerHint')),
         h(
           'div',
           { style: styles.actionRow },

@@ -1,0 +1,89 @@
+# UI 优化提案（同类插件调研 + 改动方案）
+
+> 状态：**待确认**，未改代码。确认选哪几项后我再实现（保持现有卡片风格，小步优化）。
+>
+> 调研日期：2026-10-18；参考版本：`ctx-mon-and-con@0.14.13`
+
+## 1. 调研范围
+
+DSH STORE 目录（816 条）中筛出 **39 个**与「上下文 / token 用量 / 压缩」相关的插件，重点分析 4 个有代表性的 UI：
+
+| 插件 | 类型 | 值得借鉴的 UI 做法 |
+| --- | --- | --- |
+| [dsh-context](https://github.com/bowenliang123/dsh-context)（v0.66.1，本机已装） | 全量上下文仪表盘 | 2 列卡片网格；KPI 数字块；环形图 + 图例（颜色小方点 + 右侧对齐数值 + 百分比）；可折叠 Context Browser 行；`Live (Next Request)` 下拉；状态 tab；hover tooltip |
+| [DSH Token Monitor](https://github.com/AI-Scarlett/DSH_TokenMonitor) | 用量统计 | 设置页紧凑指标卡（4 列网格：Total/Input/Output/Cache …）；范围 pills（Today/7D/All）；provider/model 过滤行；可展开表格行 |
+| [dsh-token-usage-sidebar](https://github.com/y2zyyr/dsh-token-usage-sidebar) | 侧栏用量摘要 | 侧栏摘要 + 设置页指标卡 + 范围选择；数据为空/未测量时有明确文案，不用 0 冒充 |
+| [dsh-context-actions](https://github.com/CN-Hang/dsh-context-actions) | 上下文动作按钮 | 在 composer 圆环弹层底部放「压缩 / 交接」+ 一行状态反馈；先探测预设是否可压缩，不可用给可操作提示 |
+
+参考截图（原始链接）：
+
+- dsh-context 会话面板：<https://raw.githubusercontent.com/bowenliang123/dsh-context/main/docs/context-overview.png>
+- dsh-context Insights 页：<https://raw.githubusercontent.com/bowenliang123/dsh-context/main/docs/context-dashboard.png>
+- dsh-context 统计卡：<https://raw.githubusercontent.com/bowenliang123/dsh-context/main/docs/context-stats.png>
+- dsh-token-usage-sidebar 设置页：<https://raw.githubusercontent.com/y2zyyr/dsh-token-usage-sidebar/main/docs/screenshots/token-usage-settings-en-v1.1.5.png>
+
+其余同类（未逐一细看 UI，仅确认存在竞争/重叠）：DSH Token Heatmap、DSH Usage Dashboard(+Plus)、DSH Token Stats、Billion Context DSH、DSH Adaptive Context、DSH Command Context Trim、DSH Token Optimizer、DSH Token Ledger、DSH Usage Mini/Meter/Unified 等。
+
+## 2. 当前 UI 与问题清单
+
+当前截图：`docs/ui/current-panel-empty.png`（空会话）、`docs/ui/current-panel-session.png`（有历史会话）。
+
+### P0（布局 bug / 明显空白，优先修）
+
+| # | 问题 | 证据 | 建议 |
+| --- | --- | --- | --- |
+| P0-1 | 概览卡被撑到约 320px 高，下半截大片空白 | `client.js` 中 `styles.card` 带 `flex: '1 1 320px'`（L413），但 `styles.root` 是纵向 flex（L406），纵向 flex-basis 直接变成卡片高度 | 卡片默认 `flex: '0 0 auto'`；只在 `.cols` 横向容器里的子卡设 `flex:'1 1 320px'` |
+| P0-2 | 工具/提示词空态同样占满高卡（约 300px），空态文案孤零零在左上角 | 同上 + 空态未单独布局 | 空态/加载态改为高度自适应的虚线框，文案 + 刷新按钮居中；加载时 3 行 skeleton |
+| P0-3 | 四色图例挤在一行、数值不右对齐，颜色只靠 chip 左侧小色块 | 截图：`提示词 0.0% · 0%` 等 | 借鉴 dsh-context：2×2 网格，每项 = 颜色小方点 + 名称 + `值 · 百分比` 右对齐，`tabular-nums` |
+| P0-4 | 没有总体状态徽章（正常/警告/超限），阈值只是两段纯文本 | 截图「警告阈值 75% 超限阈值 90%」 | 顶部加状态 badge（用 `--dsw-alias-state-success/warn/error-primary` 着色），阈值放到 badge 的 tooltip |
+
+### P1（信息层级与交互效率）
+
+| # | 问题 | 借鉴 | 建议 |
+| --- | --- | --- | --- |
+| P1-1 | 概览卡层级弱：`0.0%`、`0 / 128K`、bar、图例几乎是同一视觉权重 | dsh-context 的 `Context Stats` 卡：大数字 + 环形图 + 图例分组 | 概览卡重排为 hero：左侧大号百分比 + 8px 圆角分段条（可选环形图），右侧 KPI 小格（已用 / 剩余 / 阈值）；图例 2×2 网格放到底部 |
+| P1-2 | 控制卡 3 行说明 + 超长按钮文案，信息重复 | dsh-context 的 badge + 一行说明；context-actions 的「状态反馈行」 | 顶部一行：状态 badge + `已启用 · idle · 最近压缩 215K→80K`；长说明收进「?」tooltip / details；按钮改为「停用自动压缩」danger ghost |
+| P1-3 | 全局配置卡：输入框无单位提示、保存按钮和提示语分离 | token-usage-settings 的紧凑字段卡 | label 后加单位（tokens / 0–1）；输入框右侧显示当前来源（config / default / session）；保存后行内「已保存，重启后完全生效」 |
+| P1-4 | 工具与提示词卡：列表长时缺少筛选/搜索；分组头会随滚动消失 | dsh-context 的 Context Browser 折叠行 + 搜索过滤 | 加搜索框 + 「仅看已启用」筛选；分组头 sticky；每行沿用现有 session/global 开关；行高压缩到 36px |
+| P1-5 | Dock HUD：已有圆环 + 点击 popover（结构不错），但缺状态文案与入口 | dsh-context-actions 在 composer 弹层底部放入口 | 保留圆环；>75% 时圆环变警告色并在 tooltip 加「接近上限」；popover 底部加「打开完整面板」；补 `:focus-visible` 焦点环 |
+| P1-6 | 空态/错误态文案不一致（加载是纯文字、错误只有一行 message） | token-usage-sidebar 的「未测量」明确文案 | 统一三态组件：skeleton / 虚线空态 / 错误卡（图标 + message + 重试） |
+
+### P2（可选增强）
+
+- 卡片头加折叠按钮（记住 `localStorage`），窄屏默认折叠「工具与提示词」；
+- `prefers-reduced-motion` 下关闭过渡；
+- 数值 hover tooltip 给精确 token 数（卡片显示 compact 值）；
+- 概览条加「上一轮增量」标记（`+320` 这类，参考 dsh-context 的 `+320` badge）。
+
+## 3. 视觉 token 对齐（参考 dsh-context 的实现方式）
+
+dsh-context 的客户端样式大量使用 DSH 主题变量与过渡变量（统计：`--dsw-alias-label-secondary` 116 次、`--ds-transition-duration`/`--ds-ease-in-out` 各 59 次、`font-variant-numeric: tabular-nums` 35 次）。建议本插件同样对齐：
+
+- 状态色：`--dsw-alias-state-success-primary` / `--dsw-alias-state-warn-primary` / `--dsw-alias-state-error-primary`（替代目前写死的 ratio 颜色）
+- 品牌色：`--dsw-alias-brand-primary`
+- 动效：`transition: background-color var(--ds-transition-duration, .2s) var(--ds-ease-in-out, ease-in-out)`
+- 基础面：`bg-layer-1/2`、`border-l1/l2`、`interactive-bg-hover`（现有已用，保留）
+- 数字：所有百分比/token 数字加 `font-variant-numeric: tabular-nums`
+- 圆角/间距：卡片 12px、卡内 gap 10px、区块间距 12px（保持现状）
+
+## 4. 建议落地顺序与验收
+
+| 阶段 | 内容 | 预计 |
+| --- | --- | --- |
+| P0 | 卡片高度 bug、空态/加载态、图例对齐、状态 badge | ~1 小时 |
+| P1 | 概览卡 hero 布局、控制卡精简、配置卡单位/反馈、列表筛选、Dock 细节 | ~2–3 小时 |
+| P2 | 折叠、动效、tooltip、增量 badge | ~1 小时 |
+
+验收方式（与之前一致）：headless Edge 截图对比 + DOM/console 断言，覆盖
+
+- 空会话 / 有历史会话 / 接近上限三态；
+- 1400px / 900px / 600px 三档宽度；
+- 明暗主题各一张截图；
+- `static` / `smoke` 测试保持全过。
+
+## 5. 需要你确认的选项
+
+1. 概览卡用**环形图**（更像 dsh-context）还是保持**分段横条**（更紧凑）？
+2. 「工具与提示词」默认展开还是默认折叠（内容多时）？
+3. Dock 弹层底部是否加「打开完整面板」跳转按钮？
+4. P1 里的列表搜索/筛选要不要做（会增加 UI 复杂度）？

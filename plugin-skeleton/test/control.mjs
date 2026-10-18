@@ -73,7 +73,6 @@ class MockCompaction extends Service {
   async compactIfNeeded(agent, trigger, signal) {
     this.calls.push({ kind: 'compactIfNeeded', agent, trigger, signal })
     if (this.fail) throw this.fail
-    if (this.shrinkTo !== null && this.meter) this.meter.tokens = this.shrinkTo
     return this.result
   }
 }
@@ -136,7 +135,7 @@ check('exports apply function', typeof controlPlugin.apply === 'function')
   compaction.shrinkTo = 50000
   root.emit('agent/status', { agent, status: 'idle' })
   await tick()
-  check('idle 超出上下文调用 compactIfNeeded(context-overflow)', compaction.calls.length === 1 && compaction.calls[0].kind === 'compactIfNeeded' && compaction.calls[0].trigger === 'context-overflow', JSON.stringify(compaction.calls.map((c) => `${c.kind}:${c.trigger}`)))
+  check('idle 超出上下文调用 compactNow', compaction.calls.length === 1 && compaction.calls[0].kind === 'compactNow', JSON.stringify(compaction.calls.map((c) => c.kind)))
   check('超出上下文时按上下文触发（默认 0 = 跟随/兜底）', state.control.last?.before === 180000 && state.control.last?.after === 50000, JSON.stringify(state.control.last))
 
   meter.tokens = 180000

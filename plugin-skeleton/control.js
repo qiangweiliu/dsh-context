@@ -316,15 +316,23 @@ export function apply(ctx, config) {
             if (!throttle(agent)) return
             // 事件回调必须同步返回：压缩异步进行，失败只记日志，绝不影响轮次。
             const retryEnforce = async () => {
+              const budget = budgetOf(agent)
+              const first = measure(agent)
+              if (!first || first.totalTokens <= budget) return
               for (let attempt = 0; ; attempt += 1) {
                 try {
-                  return await enforce(agent, 'idle')
+                  // 复用引擎的 compactIfNeeded；context-overflow 触发绕过引擎内部阈值，
+                  // 由本插件的上下文上限决定是否触发，等价于把阈值映射成插件预算。
+                  const result = await compaction.compactIfNeeded(agent, 'context-overflow', new AbortController().signal)
+                  const after = measure(agent)
+                  recordCompaction(sessionIdOf(agent), first.totalTokens, after ? after.totalTokens : first.totalTokens)
+                  if (result === null || !after || after.totalTokens <= budget) return
+                  if (attempt + 1 >= Math.max(1, config.maxAttempts)) return
                 } catch (error) {
                   const message = error instanceof Error ? error.message : String(error)
-                  const retryable = /idle agent|queued work|waking queued/i.test(message)
-                  if (!retryable || attempt >= 2) throw error
+                  if (attempt >= 2) throw error
                   log('info', `idle compaction retry ${attempt + 1}: ${message}`)
-                  await new Promise((resolve) => setTimeout(resolve, 600))
+                  await new Promise((resolve) => setTimeout(resolve, 800))
                 }
               }
             }

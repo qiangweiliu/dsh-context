@@ -30,6 +30,7 @@ window.__ModuleLoader__.load({
       ctxBrand: 'ctx',
       title: 'Context length',
       pageTitle: 'ctx — context length control',
+      versionLabel: 'Plugin version',
       description: 'Monitors this session’s context usage and edits the plugin’s global context limit.',
       budget: 'Context limit',
       used: 'Measured',
@@ -124,6 +125,7 @@ window.__ModuleLoader__.load({
       ctxBrand: 'ctx',
       title: '上下文长度',
       pageTitle: 'ctx —— 上下文长度控制',
+      versionLabel: '插件版本',
       description: '监控当前会话的上下文占用，并编辑插件的全局上下文配置。',
       budget: '上下文',
       used: '实测用量',
@@ -402,7 +404,9 @@ window.__ModuleLoader__.load({
       page: { height: '100%', minHeight: 0, overflow: 'auto', background: 'var(--dsw-alias-bg-base)', color: 'var(--dsw-alias-label-primary)' },
       pageInner: { maxWidth: '1040px', margin: '0 auto', padding: '24px clamp(16px, 4vw, 40px) 48px', display: 'flex', flexDirection: 'column', gap: '14px' },
       root: { display: 'flex', flexDirection: 'column', gap: '12px' },
+      titleRow: { display: 'flex', alignItems: 'center', gap: '10px', flexWrap: 'wrap' },
       title: { margin: 0, fontSize: '22px', fontWeight: 600, lineHeight: '30px', letterSpacing: '-0.01em' },
+      versionChip: { display: 'inline-flex', alignItems: 'center', borderRadius: '999px', border: '0.5px solid var(--dsw-alias-border-l1)', background: 'var(--dsw-alias-bg-layer-1)', padding: '1px 8px', fontSize: '11.5px', lineHeight: '18px', color: 'var(--dsw-alias-label-tertiary)', fontVariantNumeric: 'tabular-nums' },
       subtitle: { margin: 0, fontSize: '12px', lineHeight: 1.6, color: 'var(--dsw-alias-label-tertiary)' },
       cols: { display: 'flex', flexWrap: 'wrap', gap: '12px', alignItems: 'stretch' },
       card: {
@@ -1304,7 +1308,18 @@ window.__ModuleLoader__.load({
       const latest = measurements.length > 0 ? measurements[0] : null
 
       const children = [
-        h('h2', { key: 'title', style: styles.title }, props.title || t('title')),
+        h(
+          'div',
+          { key: 'titleRow', style: styles.titleRow },
+          h('h2', { style: styles.title }, props.title || t('title')),
+          data && data.version
+            ? h(
+                'span',
+                { style: styles.versionChip, title: `${t('versionLabel')}: ${data.version}`, 'data-ctx-version': String(data.version) },
+                `v${data.version}`,
+              )
+            : null,
+        ),
         h('p', { key: 'subtitle', style: styles.subtitle }, t('description')),
       ]
 

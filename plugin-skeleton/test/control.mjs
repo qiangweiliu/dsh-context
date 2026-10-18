@@ -160,9 +160,16 @@ check('exports apply function', typeof controlPlugin.apply === 'function')
 
 // ── 2b. triggerAt：阈值参与自动压缩触发（默认 1 = 到上限才触发） ──────────────
 {
-  const { root, fiber, meter, compaction, agent } = await mount({ mode: 'idle', cooldownMs: 0, maxContextTokens: 100000 })
+  const { root, fiber, meter, compaction, agent } = await mount({ mode: 'idle', cooldownMs: 0, maxContextTokens: 100000, keepTokens: 1000 })
   compaction.shrinkTo = 40000
   state.setDefaultTriggerAt(0.5)
+  meter.nodes = [
+    { seq: 1, tokens: 3000 },
+    { seq: 2, tokens: 15000 },
+    { seq: 3, tokens: 15000 },
+    { seq: 4, tokens: 27000 },
+  ]
+  agent.session = { id: 'control-session', eventAt: (seq) => ({ type: seq === 1 ? 'system/message' : 'user/message' }) }
 
   meter.tokens = 60000
   await root.waterfall('agent/pre-step', { agent, signal: new AbortController().signal }, () => 'inner-reached')
@@ -178,6 +185,50 @@ check('exports apply function', typeof controlPlugin.apply === 'function')
   await root.waterfall('agent/pre-step', { agent, signal: new AbortController().signal }, () => 'inner-reached')
   check('triggerAt=1 时 120% 仍压缩', compaction.calls.length >= 1, compaction.calls.length)
 
+  await fiber.dispose()
+  await root.fiber.dispose()
+}
+
+// ── 2c. targetAt 闭环：引擎压一次没到目标，继续范围压缩到目标以下 ──────────────
+{
+  const { root, fiber, meter, compaction, agent } = await mount({ mode: 'idle', cooldownMs: 0, maxContextTokens: 100000, keepTokens: 1000, maxAttempts: 2 })
+  state.setDefaultTargetAt(0.6)
+  meter.tokens = 120000
+  meter.nodes = [
+    { seq: 1, tokens: 2000 },
+    { seq: 2, tokens: 30000 },
+    { seq: 3, tokens: 30000 },
+    { seq: 4, tokens: 30000 },
+    { seq: 5, tokens: 28000 },
+  ]
+  agent.session = { id: 'control-session', eventAt: (seq) => ({ type: seq === 1 ? 'system/message' : 'user/message' }) }
+  compaction.compactIfNeeded = async (targetAgent, trigger, signal) => {
+    compaction.calls.push({ kind: 'compactIfNeeded', agent: targetAgent, trigger, signal })
+    meter.tokens = 80000
+    return compaction.result
+  }
+  compaction.compactRegion = async (start, end, targetAgent, signal) => {
+    compaction.calls.push({ kind: 'compactRegion', start, end, agent: targetAgent, signal })
+    meter.tokens = 50000
+    return compaction.result
+  }
+  await root.waterfall('agent/pre-step', { agent, signal: new AbortController().signal }, () => 'inner-reached')
+  check('targetAt 闭环：引擎后仍高于目标会继续 compactRegion', compaction.calls.map((c) => c.kind).join(',') === 'compactIfNeeded,compactRegion', JSON.stringify(compaction.calls.map((c) => c.kind)))
+  check('targetAt 闭环：最终压到目标以下（120k → 50k）', state.control.last?.before === 120000 && state.control.last?.after === 50000, JSON.stringify(state.control.last))
+  check('targetAt 闭环：压缩中状态已复位', state.control.compacting === false, String(state.control.compacting))
+  await fiber.dispose()
+  await root.fiber.dispose()
+}
+
+// ── 2d. 预压缩无历史：静默跳过，不写失败/lastError ────────────────────────────
+{
+  const { root, fiber, meter, compaction, agent } = await mount({ mode: 'idle', cooldownMs: 0, maxContextTokens: 100000 })
+  state.setDefaultTriggerAt(0.5)
+  const beforeLogs = state.listCompactionLog().length
+  meter.tokens = 60000
+  await root.waterfall('agent/pre-step', { agent, signal: new AbortController().signal }, () => 'inner-reached')
+  check('预压缩无历史时不调用压缩服务', compaction.calls.length === 0, JSON.stringify(compaction.calls.map((c) => c.kind)))
+  check('预压缩无历史时不写 lastError / failure 日志', state.control.lastError === null && state.listCompactionLog().length === beforeLogs, JSON.stringify({ lastError: state.control.lastError, added: state.listCompactionLog().length - beforeLogs }))
   await fiber.dispose()
   await root.fiber.dispose()
 }
@@ -237,7 +288,7 @@ check('exports apply function', typeof controlPlugin.apply === 'function')
   await root.waterfall('agent/pre-step', { agent, signal: new AbortController().signal }, () => 'inner-reached')
   const region = compaction.calls.find((c) => c.kind === 'compactRegion')
   check('compactRegion 跳过 system 从消息节点起', Boolean(region) && region.start === 2, JSON.stringify(compaction.calls.map((c) => [c.kind, c.start, c.end])))
-  check('compactRegion 保留最近 keepTokens（end=3）', Boolean(region) && region.end === 3, JSON.stringify(region))
+  check('compactRegion 只压到够得着 target 的最小前缀（end=4）', Boolean(region) && region.end === 4, JSON.stringify(region))
   check('范围压缩后记录 before/after', state.control.last?.before === 120000 && state.control.last?.after === 50000, JSON.stringify(state.control.last))
   check('范围压缩不写 lastError', state.control.lastError === null, JSON.stringify(state.control.lastError))
   await fiber.dispose()

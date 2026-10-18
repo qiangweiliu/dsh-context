@@ -45,6 +45,7 @@ import {
   listSessionBudgets,
   setDefaultBudget,
   setDefaultTriggerAt,
+  setDefaultTargetAt,
   setSessionBudget,
   clearSessionBudget,
 } from './state.js'
@@ -53,7 +54,7 @@ import {
 export const inject = ['commands', 'tokenMeter']
 
 /** 与 package.json 的 version 保持一致（只用于状态接口的自述）。 */
-const PLUGIN_VERSION = '0.14.17'
+const PLUGIN_VERSION = '0.14.18'
 
 /** 浏览器半侧 client.js 拉的只读状态接口；两处路径必须一致。 */
 const STATUS_PATH = '/api/ctx-mon-and-con/status'
@@ -70,6 +71,8 @@ const DEFAULT_CONFIG = {
   errorAt: 0.9,
   // 自动压缩的触发比例（0–1；1 = 到上下限才触发，0.75 = 到警告阈值就预压缩）。
   triggerAt: 1,
+  // 压缩目标比例（0–1；压缩到该比例以下就停止，默认 0.6 = 压到 60% 左右）。
+  targetAt: 0.6,
   // 全局禁用的工具名（从每个请求的 tools 里摘掉，schema token 一并省掉）。
   disabledTools: [],
   // 全局提示词覆盖：section name -> 替换文本；空对象表示全部用原文。
@@ -81,7 +84,7 @@ const DEFAULT_CONFIG = {
 }
 
 const CONFIG_KEYS = Object.keys(DEFAULT_CONFIG)
-const NUMERIC_KEYS = ['contextWindowTokens', 'warnAt', 'errorAt', 'triggerAt']
+const NUMERIC_KEYS = ['contextWindowTokens', 'warnAt', 'errorAt', 'triggerAt', 'targetAt']
 
 /**
  * 手写的 Standard Schema（零依赖）。
@@ -155,6 +158,12 @@ function validateConfig(input) {
   for (const key of ['warnAt', 'errorAt', 'triggerAt']) {
     const value = config[key]
     if (!(value > 0 && value <= 1)) issues.push({ message: 'expected a number in (0, 1]', path: [key] })
+  }
+  if (!(config.targetAt > 0 && config.targetAt < 1)) {
+    issues.push({ message: 'expected a number in (0, 1)', path: ['targetAt'] })
+  }
+  if (!(config.targetAt < config.triggerAt)) {
+    issues.push({ message: 'targetAt must be smaller than triggerAt', path: ['targetAt'] })
   }
   if (!(config.warnAt < config.errorAt)) {
     issues.push({ message: 'warnAt must be smaller than errorAt', path: ['warnAt'] })
@@ -346,6 +355,7 @@ export function apply(ctx, config) {
   // 全局默认上下文写进共享状态：控制半侧（control.js）在没有会话覆盖时用它。
   setDefaultBudget(config.contextWindowTokens)
   setDefaultTriggerAt(config.triggerAt)
+  setDefaultTargetAt(config.targetAt)
   setGlobalPromptOverrides(config.promptOverrides)
   setGlobalDisabledTools(config.disabledTools)
 
@@ -521,6 +531,7 @@ export function apply(ctx, config) {
       lastCompactionAt: controlState.at,
       lastError: controlState.lastError,
       lastCompaction: controlState.last,
+      compacting: controlState.compacting,
       log: listCompactionLog().slice(-50),
       compactionVisible: visible,
       presetRow: 'ctx-mon-and-con/control',
@@ -648,10 +659,12 @@ export function apply(ctx, config) {
       sessionId,
       used,
       budget,
+      compacting: controlState.compacting,
       breakdown: breakdownOf(session),
       warnAt: config.warnAt,
       errorAt: config.errorAt,
       triggerAt: config.triggerAt,
+      targetAt: config.targetAt,
       ratio: typeof used === 'number' && budget > 0 ? used / budget : null,
     })
   }
@@ -803,6 +816,7 @@ export function apply(ctx, config) {
         warnAt: config.warnAt,
         errorAt: config.errorAt,
         triggerAt: config.triggerAt,
+      targetAt: config.targetAt,
         source: 'default',
       },
       sessionBudgets: listSessionBudgets(),
@@ -885,9 +899,16 @@ export function apply(ctx, config) {
       if (typeof input[key] !== 'number' || !(input[key] > 0 && input[key] <= 1)) return null
       ratios[key] = input[key]
     }
+    if (input.targetAt !== undefined) {
+      if (typeof input.targetAt !== 'number' || !(input.targetAt > 0 && input.targetAt < 1)) return null
+      ratios.targetAt = input.targetAt
+    }
     const warn = ratios.warnAt ?? config.warnAt
     const error = ratios.errorAt ?? config.errorAt
+    const trigger = ratios.triggerAt ?? config.triggerAt
+    const target = ratios.targetAt ?? config.targetAt
     if (!(warn < error)) return null
+    if (!(target < trigger)) return null
     return { ...patch, ...ratios }
   }
 

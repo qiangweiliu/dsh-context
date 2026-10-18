@@ -23,6 +23,9 @@ let defaultBudget
 /** 自动压缩触发比例（0–1；1 = 到上下限才触发）；宿主半侧 apply 时写入。 */
 let defaultTriggerAt = 1
 
+/** 自动压缩的目标比例（0–1；压到该比例以下就停）；宿主半侧 apply 时写入。 */
+let defaultTargetAt = 0.6
+
 /** sessionId -> token 预算 */
 const overrides = new Map()
 
@@ -40,6 +43,8 @@ export const control = {
   last: null,
   /** 最近一次自动压缩失败的原因（null 表示无）。 */
   lastError: null,
+  /** 当前是否正在执行压缩（面板据此显示“压缩中”）。 */
+  compacting: false,
 }
 
 /** 宿主半侧写入全局默认预算。 */
@@ -61,6 +66,22 @@ export function setDefaultTriggerAt(value) {
 /** 读取自动压缩触发比例（默认 1）。 */
 export function getDefaultTriggerAt() {
   return defaultTriggerAt
+}
+
+/** 宿主半侧写入压缩目标比例（非法值忽略，保持默认 0.6）。 */
+export function setDefaultTargetAt(value) {
+  const number = Number(value)
+  if (Number.isFinite(number) && number > 0 && number < 1) defaultTargetAt = number
+}
+
+/** 读取压缩目标比例（默认 0.6）。 */
+export function getDefaultTargetAt() {
+  return defaultTargetAt
+}
+
+/** 控制半侧标记/清除“压缩中”状态。 */
+export function setCompacting(value) {
+  control.compacting = Boolean(value)
 }
 
 /** 写入某个会话的临时预算覆盖。 */
@@ -190,6 +211,7 @@ export function subscribeCompactionLog(listener) {
 export function setControlActive(active, mode) {
   control.active = Boolean(active)
   control.mode = active ? (mode ?? null) : null
+  if (!active) control.compacting = false
 }
 
 // ── 工具 / 提示词开关（当前会话，内存态；重启清空） ────────────────────────

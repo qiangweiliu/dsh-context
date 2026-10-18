@@ -160,7 +160,7 @@ if (selector === 'none') {
   })()`)
 } else if (selector === 'configtrigger') {
   const result = await evaluate(`(async () => {
-    const response = await fetch('/api/ctx-mon-and-con/status/config', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ contextWindowTokens: 10000, warnAt: 0.5, errorAt: 0.6, triggerAt: 0.5 }) })
+    const response = await fetch('/api/ctx-mon-and-con/status/config', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ contextWindowTokens: 10000, warnAt: 0.5, errorAt: 0.6, triggerAt: 0.5, targetAt: 0.3 }) })
     return JSON.stringify({ status: response.status, body: (await response.text()).slice(0, 200) })
   })()`)
   console.log('config-trigger', result)
@@ -174,7 +174,7 @@ if (selector === 'none') {
       return JSON.stringify({ status: response.status, body: (await response.text()).slice(0, 200) })
     })()`)
   }
-  console.log('config-post', await postConfig({ contextWindowTokens: 10000, warnAt: 0.5, errorAt: 0.6, triggerAt: 1 }))
+  console.log('config-post', await postConfig({ contextWindowTokens: 10000, warnAt: 0.5, errorAt: 0.6, triggerAt: 1, targetAt: 0.6 }))
   await sleep(6000)
   await send('Page.reload')
   await sleep(4000)
@@ -201,7 +201,7 @@ if (selector === 'none') {
   console.log('runtime-errors', JSON.stringify(runtimeErrors.slice(0, 5)))
 } else if (selector === 'configrestore') {
   const restored = await evaluate(`(async () => {
-    const response = await fetch('/api/ctx-mon-and-con/status/config', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ contextWindowTokens: 128000, warnAt: 0.75, errorAt: 0.9, triggerAt: 1 }) })
+    const response = await fetch('/api/ctx-mon-and-con/status/config', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ contextWindowTokens: 128000, warnAt: 0.75, errorAt: 0.9, triggerAt: 1, targetAt: 0.6 }) })
     return JSON.stringify({ status: response.status, body: (await response.text()).slice(0, 200) })
   })()`)
   console.log('config-restore', restored)

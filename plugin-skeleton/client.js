@@ -45,8 +45,12 @@ window.__ModuleLoader__.load({
       triggerAt: 'Trigger at',
       triggerLabel: 'Trigger ratio',
       invalidTrigger: 'Trigger ratio must be in (0, 1].',
-      triggerHint: 'Auto-compaction triggers when usage reaches this share of the budget (1 = only at the limit; 0.75 = pre-compress at the warn ratio).'
-      ,
+      triggerHint: 'Auto-compaction triggers when usage reaches this share of the budget (1 = only at the limit; 0.75 = pre-compress at the warn ratio).',
+      targetAt: 'Target at',
+      targetLabel: 'Target ratio',
+      invalidTarget: 'Target ratio must be in (0, 1) and below the trigger ratio.',
+      compacting: 'Compacting…',
+      compactingHint: 'Compaction is running; the next request may wait a moment.',
       recent: 'Recent /ctx measurements',
       loading: 'Loading…',
       refresh: 'Refresh',
@@ -158,8 +162,12 @@ window.__ModuleLoader__.load({
       triggerAt: '触发阈值',
       triggerLabel: '触发比例',
       invalidTrigger: '触发比例必须在 (0, 1] 之间。',
-      triggerHint: '用量达到预算的这个比例时自动压缩（1 = 到上限才触发；0.75 = 到警告比例就预压缩）。'
-      ,
+      triggerHint: '用量达到预算的这个比例时自动压缩（1 = 到上限才触发；0.75 = 到警告比例就预压缩）。',
+      targetAt: '目标阈值',
+      targetLabel: '目标比例',
+      invalidTarget: '目标比例必须在 (0, 1) 之间，且小于触发比例。',
+      compacting: '压缩中…',
+      compactingHint: '正在压缩历史；下一次请求可能会等待片刻。',
       recent: '最近的 /ctx 测量',
       loading: '加载中…',
       refresh: '刷新',
@@ -342,7 +350,7 @@ window.__ModuleLoader__.load({
     function StatusBadge(props) {
       const t = props.t
       const state = props.state || 'ok'
-      const label = state === 'error' ? t('statusError') : state === 'warn' ? t('statusWarn') : t('statusOk')
+      const label = props.label || (state === 'error' ? t('statusError') : state === 'warn' ? t('statusWarn') : t('statusOk'))
       const style = state === 'error' ? styles.badgeError : state === 'warn' ? styles.badgeWarn : styles.badgeOk
       return h('span', { style: { ...styles.badge, ...style }, 'data-ctx-status': state }, h('i', { style: { ...styles.dot, width: '6px', height: '6px', borderRadius: '999px', background: 'currentColor' } }), label)
     }
@@ -903,7 +911,8 @@ window.__ModuleLoader__.load({
       const color = ratioColor(ratio, warnAt, errorAt)
       const state = ratioState(ratio, warnAt, errorAt)
       const categories = breakdownCategories(t, data && data.breakdown)
-      const label = percent === null ? `${t('ctxBrand')} —` : `${t('ctxBrand')} ${percent}%`
+      const compacting = Boolean(data && data.compacting)
+      const label = compacting ? `${t('ctxBrand')} ${t('compacting')}` : percent === null ? `${t('ctxBrand')} —` : `${t('ctxBrand')} ${percent}%`
 
       return h(
         'span',
@@ -979,6 +988,7 @@ window.__ModuleLoader__.load({
       const warnAt = live && typeof live.warnAt === 'number' ? live.warnAt : typeof budget.warnAt === 'number' ? budget.warnAt : 0.75
       const errorAt = live && typeof live.errorAt === 'number' ? live.errorAt : typeof budget.errorAt === 'number' ? budget.errorAt : 0.9
       const triggerAt = live && typeof live.triggerAt === 'number' ? live.triggerAt : typeof budget.triggerAt === 'number' ? budget.triggerAt : 1
+      const targetAt = live && typeof live.targetAt === 'number' ? live.targetAt : typeof budget.targetAt === 'number' ? budget.targetAt : 0.6
       const color = ratioColor(ratio, warnAt, errorAt)
       const state = ratioState(ratio, warnAt, errorAt)
       const remaining = used !== null && budgetTokens > 0 ? Math.max(0, budgetTokens - used) : null
@@ -1033,6 +1043,7 @@ window.__ModuleLoader__.load({
           h('span', { style: { ...styles.thresholdChip, color: 'var(--dsw-alias-state-warn-primary)' } }, `${t('warnAt')} ${formatPercent(warnAt, 0)}`),
           h('span', { style: { ...styles.thresholdChip, color: 'var(--dsw-alias-state-error-primary)' } }, `${t('errorAt')} ${formatPercent(errorAt, 0)}`),
           h('span', { style: { ...styles.thresholdChip, color: triggerAt < 1 ? 'var(--dsw-alias-state-warn-primary)' : 'var(--dsw-alias-label-tertiary)' } }, `${t('triggerAt')} ${formatPercent(triggerAt, 0)}`),
+          h('span', { style: { ...styles.thresholdChip, color: 'var(--dsw-alias-label-tertiary)' } }, `${t('targetAt')} ${formatPercent(targetAt, 0)}`),
         ),
         h('p', { style: styles.text }, t('hint')),
       )
@@ -1514,10 +1525,12 @@ window.__ModuleLoader__.load({
           id: 'control',
           t,
           action: control.active
-            ? h(StatusBadge, { t, state: 'ok' })
+            ? control.compacting
+              ? h(StatusBadge, { t, state: 'warn', label: t('compacting') })
+              : h(StatusBadge, { t, state: 'ok' })
             : h('span', { style: { ...styles.badge, color: 'var(--dsw-alias-label-tertiary)', borderColor: 'var(--dsw-alias-border-l2)' } }, t('controlOff')),
         },
-        h('p', { style: styles.text }, control.active ? t('controlReady') : t('controlMissing')),
+        h('p', { style: styles.text }, control.active ? (control.compacting ? t('compactingHint') : t('controlReady')) : t('controlMissing')),
         control.active && control.lastCompaction
           ? h(
               'div',
@@ -1606,7 +1619,7 @@ window.__ModuleLoader__.load({
       const t = props.t
       const budget = props.budget || {}
       const editable = Boolean(props.editable)
-      const [draft, setDraft] = react.useState({ tokens: '', warn: '', error: '', trigger: '' })
+      const [draft, setDraft] = react.useState({ tokens: '', warn: '', error: '', trigger: '', target: '' })
       const [result, setResult] = react.useState({ kind: 'idle' })
 
       react.useEffect(() => {
@@ -1615,14 +1628,16 @@ window.__ModuleLoader__.load({
           warn: budget.warnAt === undefined ? '' : String(budget.warnAt),
           error: budget.errorAt === undefined ? '' : String(budget.errorAt),
           trigger: budget.triggerAt === undefined ? '' : String(budget.triggerAt),
+          target: budget.targetAt === undefined ? '' : String(budget.targetAt),
         })
-      }, [budget.tokens, budget.warnAt, budget.errorAt, budget.triggerAt])
+      }, [budget.tokens, budget.warnAt, budget.errorAt, budget.triggerAt, budget.targetAt])
 
       const save = () => {
         const tokens = Number(draft.tokens)
         const warn = Number(draft.warn)
         const error = Number(draft.error)
         const trigger = Number(draft.trigger)
+        const target = Number(draft.target)
         if (!Number.isInteger(tokens) || tokens <= 0) {
           setResult({ kind: 'error', message: t('invalidTokens') })
           return
@@ -1635,11 +1650,15 @@ window.__ModuleLoader__.load({
           setResult({ kind: 'error', message: t('invalidTrigger') })
           return
         }
+        if (!(target > 0 && target < 1) || !(target < trigger)) {
+          setResult({ kind: 'error', message: t('invalidTarget') })
+          return
+        }
         setResult({ kind: 'saving' })
         fetch(`${STATUS_PATH}/config`, {
           method: 'POST',
           headers: { 'content-type': 'application/json' },
-          body: JSON.stringify({ contextWindowTokens: tokens, warnAt: warn, errorAt: error, triggerAt: trigger }),
+          body: JSON.stringify({ contextWindowTokens: tokens, warnAt: warn, errorAt: error, triggerAt: trigger, targetAt: target }),
         })
           .then(async (response) => {
             const payload = await response.json().catch(() => ({}))
@@ -1717,6 +1736,17 @@ window.__ModuleLoader__.load({
                   h('span', { style: styles.fieldUnit }, '0–1'),
                 ),
                 h('input', { style: styles.input, type: 'number', min: 0.01, max: 1, step: 0.01, value: draft.trigger, disabled, onChange: (event) => setDraft({ ...draft, trigger: event.target.value }) }),
+              ),
+              h(
+                'label',
+                { style: styles.field },
+                h(
+                  'span',
+                  { style: styles.fieldLabelRow },
+                  h('span', { style: styles.label }, t('targetLabel')),
+                  h('span', { style: styles.fieldUnit }, '0–1'),
+                ),
+                h('input', { style: styles.input, type: 'number', min: 0.01, max: 0.99, step: 0.01, value: draft.target, disabled, onChange: (event) => setDraft({ ...draft, target: event.target.value }) }),
               ),
             )
           : null,

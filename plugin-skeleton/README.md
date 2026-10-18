@@ -232,14 +232,14 @@ dsh plugin --profile web add ctx-mon-and-con
 
 | `mode` | 行为 |
 | --- | --- |
-| `idle`（默认） | 每个 `agent/pre-step` 检查用量（受 `cooldownMs` 节流）：超过触发线时先 `compactIfNeeded(agent,'pressure')`；若没降到上限内，再对较早消息调 `compactRegion` 兜底（保留 `keepTokens`，默认预算 25%）。不做多轮 `maxAttempts` 重试 |
+| `idle`（默认） | 每个 `agent/pre-step` 检查用量（受 `cooldownMs` 节流）：超过触发线时先 `compactIfNeeded(agent,'pressure')`；没到目标线再对“最小可压前缀”调 `compactRegion`，最多 `maxAttempts` 轮，直到压到目标线或没有进展。没有可安全压缩的历史时静默跳过（预压缩场景不再写 failure） |
 | `pre-step` | 每个 step 边界只调 `compactIfNeeded(agent,'pressure',signal)`，不做范围压缩兜底（适合把 `compaction-basic.auto` 关掉后接管） |
 | `notify` | 只在 `agent/status === 'idle'` 时测量并写日志，不动作 |
 | `off` | 完全不启用 |
 
-**触发线** = 上下文上限 × `Config.triggerAt`（0–1，默认 1）。例如 `triggerAt: 0.75` 表示用量到警告比例就预压缩；`warnAt` / `errorAt` 只负责标记和颜色，不参与触发。
+**触发线** = 上下文上限 × `Config.triggerAt`（0–1，默认 1）；**目标线** = 上下文上限 × `Config.targetAt`（0–1，默认 0.6）。例如 `triggerAt: 0.85 / targetAt: 0.5` 表示到 85% 开始压、压到 50% 左右停，避免压完还贴着上限反复触发。`warnAt` / `errorAt` 只负责标记和颜色，不参与触发。
 
-压缩目标是「**降到上下文以下即可**」：复用引擎自己的选区逻辑，不自己算范围、不写 `surfaceOp`、不碰影子价。另外注册 `/ctx-compact`：立刻对该会话做一次 idle 压缩（同样要求 agent 空闲，不受 `triggerAt` 限制，按 `maxAttempts` 重试）。
+压缩目标是「**压到目标线以下即可**」：复用引擎自己的选区逻辑，不自己算范围、不写 `surfaceOp`、不碰影子价。压缩进行时控制卡/ Dock 显示「压缩中」。另外注册 `/ctx-compact`：立刻对该会话做一次压缩（要求 agent 空闲，不受 `triggerAt` 限制，按 `maxAttempts` 重试）。
 
 ```yaml
 # 设置 → Agent preset（或在 profile patch 的 preset 配置里）加一行：
@@ -248,7 +248,7 @@ dsh plugin --profile web add ctx-mon-and-con
   config:
     mode: idle          # off | notify | idle | pre-step
     cooldownMs: 60000   # 两次自动压缩最小间隔（idle/pre-step）
-    maxAttempts: 2      # 仅 /ctx-compact 手动压实仍超上限时最多连续压几次
+    maxAttempts: 2      # idle 内最多几轮范围压缩；/ctx-compact 也用它
     # maxContextTokens: 100000  # 0（默认）= 跟随宿主默认与会话覆盖
 ```
 
@@ -361,8 +361,8 @@ bash /mnt/c/<repo>/scripts/wsl-uninstall.sh web    # 卸载并核对残留
    node test/static.mjs        # 40/40：导出形状、Config 校验、exports 解析、locale、client mock、control 形状
    node --check index.js; node --check control.js; node --check client.js
    node test/prepare-deps.mjs  # 可选：从 app.asar 解出 cordis，第一次需要
-   node test/smoke.mjs         # 46/46：真实 Cordis 里加载、/ctx 与 reset、状态路由、压缩记录落盘、卸载清理
-   node test/control.mjs       # 45/45：上下文来源、triggerAt 触发、idle/pre-step/notify、命令、状态回写、卸载
+   node test/smoke.mjs         # 47/47：真实 Cordis 里加载、/ctx 与 reset、状态路由、压缩记录落盘、卸载清理
+   node test/control.mjs       # 50/50：上下文来源、trigger/target 闭环、预检跳过、idle/pre-step/notify、命令、状态回写、卸载
    ```
 
 2. **确认 bundle 层生效**：
@@ -386,6 +386,7 @@ bash /mnt/c/<repo>/scripts/wsl-uninstall.sh web    # 卸载并核对残留
        warnAt: 0.7
        errorAt: 0.85
        triggerAt: 0.85   # 到 85% 就预压缩；默认 1 = 到上限才触发
+       targetAt: 0.5     # 压到 50% 左右停；默认 0.6
    ```
 
 ## 卸载

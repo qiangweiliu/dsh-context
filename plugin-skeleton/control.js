@@ -36,6 +36,7 @@
 
 import {
   budgetFor,
+  getDefaultTargetAt,
   getDefaultTriggerAt,
   getSessionDisabledPrompts,
   getSessionDisabledTools,
@@ -48,6 +49,7 @@ import {
   recordControlError,
   recordInventory,
   recordSyncDebug,
+  setCompacting,
   setControlActive,
 } from './state.js'
 
@@ -260,6 +262,72 @@ export function apply(ctx, config) {
     return typeof ratio === 'number' && ratio > 0 && ratio <= 1 ? budget * ratio : budget
   }
 
+  /** 压缩目标线：上下文上限 × targetAt（默认 0.6；压到这条线以下就停）。 */
+  const targetTokensOf = (budget) => {
+    const ratio = getDefaultTargetAt()
+    return typeof ratio === 'number' && ratio > 0 && ratio < 1 ? budget * ratio : budget * 0.6
+  }
+
+  /**
+   * 选出“最小可压前缀”：只压到够得着 target 的较早消息，最近 keepTokens / 25% 预算不碰。
+   * 返回 null 表示没有足够可安全压缩的历史（调用方据此跳过，而不是记失败）。
+   */
+  const planRegion = (agent, measurement, budget, target) => {
+    const nodes = Array.isArray(measurement?.nodes) ? measurement.nodes : []
+    const tokensOf = (node) => Number(node.tokens ?? node.heuristicTokens ?? 0)
+    const typeOf = (node) => {
+      try {
+        const event = agent?.session && typeof agent.session.eventAt === 'function' ? agent.session.eventAt(node.seq) : undefined
+        return event?.type
+      } catch {
+        return undefined
+      }
+    }
+    // 跳过 system，只压较早的 user/assistant 消息（tool 结果也属于可压历史）。
+    const messageNodes = nodes.filter((node, index) => {
+      if (index === 0) return false
+      const type = typeOf(node)
+      if (type === undefined) return true
+      return type === 'user/message' || type === 'assistant/message' || type === 'tool/result'
+    })
+    if (messageNodes.length < 2) return null
+    const keepFloor = config.keepTokens > 0 ? config.keepTokens : Math.max(1, Math.floor(budget * 0.25))
+    // 最近 keepFloor tokens 作为“不动区”，只在它之前选可压范围。
+    let reserve = 0
+    let keepFrom = messageNodes.length
+    let floorMet = false
+    for (let index = messageNodes.length - 1; index >= 0; index -= 1) {
+      reserve += tokensOf(messageNodes[index])
+      if (reserve >= keepFloor) {
+        keepFrom = index
+        floorMet = true
+        break
+      }
+    }
+    if (!floorMet) return null
+    const candidates = messageNodes.slice(0, keepFrom)
+    if (candidates.length < 2) return null
+    const needed = Math.max(0, Number(measurement.totalTokens) - target)
+    let accumulated = 0
+    let cut = 0
+    for (let index = 0; index < candidates.length; index += 1) {
+      accumulated += tokensOf(candidates[index])
+      if (accumulated >= needed) {
+        cut = index + 1
+        break
+      }
+    }
+    // 可压历史不够达到 target：只压能压的部分（仍受 keepFloor 限制）。
+    if (cut === 0) cut = candidates.length
+    // compactRegion 至少要覆盖 2 个节点，避免把单条消息切碎。
+    cut = Math.max(2, cut)
+    const selected = candidates.slice(0, Math.min(cut, candidates.length))
+    if (selected.length < 2) return null
+    const selectedTokens = selected.reduce((sum, node) => sum + tokensOf(node), 0)
+    if (selectedTokens < Math.max(1000, Math.min(keepFloor, needed))) return null
+    return { start: selected[0].seq, end: selected[selected.length - 1].seq, tokens: selectedTokens }
+  }
+
   /** 测量；任何异常都返回 null，绝不打断轮次。 */
   const measure = (agent) => {
     const session = agent?.session
@@ -310,6 +378,7 @@ export function apply(ctx, config) {
      */
     const enforce = async (agent, trigger) => {
       const budget = budgetOf(agent)
+      const target = targetTokensOf(budget)
       const first = measure(agent)
       const before = first ? first.totalTokens : 0
       if (!first || before <= budget) return { before, after: before, rounds: 0, result: null }
@@ -317,14 +386,19 @@ export function apply(ctx, config) {
       let after = before
       let result = null
       let rounds = 0
-      for (let attempt = 1; attempt <= config.maxAttempts; attempt += 1) {
-        const signal = new AbortController().signal
-        result = await compaction.compactNow(agent, signal)
-        rounds += 1
-        const current = measure(agent)
-        after = current ? current.totalTokens : after
-        if (!result) break
-        if (after <= budget) break
+      setCompacting(true)
+      try {
+        for (let attempt = 1; attempt <= config.maxAttempts; attempt += 1) {
+          const signal = new AbortController().signal
+          result = await compaction.compactNow(agent, signal)
+          rounds += 1
+          const current = measure(agent)
+          after = current ? current.totalTokens : after
+          if (!result) break
+          if (after <= target) break
+        }
+      } finally {
+        setCompacting(false)
       }
       recordCompaction(sessionIdOf(agent), before, after, result?.shadowedTokenCount)
       const compacted = after < before
@@ -353,68 +427,64 @@ export function apply(ctx, config) {
               const first = measure(agent)
               const budget = budgetOf(agent)
               if (!first || first.totalTokens <= triggerTokensOf(budget)) return next()
+              const target = targetTokensOf(budget)
+              const planned = planRegion(agent, first, budget, target)
+              // 预压缩（triggerAt < 1）且没有可安全压缩的历史：静默跳过，不写 failure / lastError。
+              if (!planned && first.totalTokens <= budget) {
+                log('info', `pre-compaction skipped at ${formatTokens(first.totalTokens)}: no compactable history`)
+                return next()
+              }
               if (!throttle(agent)) return next()
+              setCompacting(true)
+              const before = first.totalTokens
               let after = first
+              let result = null
+              let rounds = 0
               try {
-                const result = await compaction.compactIfNeeded(agent, 'pressure', signal)
-                after = measure(agent) ?? after
-                if (result !== null && after.totalTokens <= budget) {
-                  recordCompaction(sessionIdOf(agent), first.totalTokens, after.totalTokens)
-                  logCompaction({ outcome: 'success', trigger: 'idle', sessionId: sessionIdOf(agent), before: first.totalTokens, after: after.totalTokens, budget, rounds: 0 })
-                  return next()
-                }
-              } catch (error) {
-                logCompactionFailure('idle', error instanceof Error ? error.message : String(error), { sessionId: sessionIdOf(agent), before: first.totalTokens, budget })
-              }
-              // 引擎阈值未到或仍超预算：只压缩较早历史，保留最近 keepTokens，避免影响当前任务。
-              const keepTokens = config.keepTokens > 0 ? config.keepTokens : Math.max(1, Math.floor(budget * 0.25))
-              const nodes = Array.isArray(first.nodes) ? first.nodes : []
-              const tokensOf = (node) => Number(node.tokens ?? node.heuristicTokens ?? 0)
-              const typeOf = (node) => {
+                // 1) 先让引擎按自己的阈值压一次；引擎没动作就落到范围压缩兜底。
                 try {
-                  const event = agent?.session && typeof agent.session.eventAt === 'function' ? agent.session.eventAt(node.seq) : undefined
-                  return event?.type
-                } catch {
-                  return undefined
-                }
-              }
-              // 从消息节点起选范围：跳过 system，只压较早的 user/assistant 消息，保留最近 keepTokens。
-              const messageNodes = nodes.filter((node, index) => {
-                if (index === 0) return false
-                const type = typeOf(node)
-                if (type === undefined) return true
-                return type === 'user/message' || type === 'assistant/message' || type === 'tool/result'
-              })
-              let accumulated = 0
-              let cut = messageNodes.length
-              for (let index = messageNodes.length - 1; index >= 0; index -= 1) {
-                accumulated += tokensOf(messageNodes[index])
-                if (accumulated >= keepTokens) {
-                  cut = index
-                  break
-                }
-              }
-              const compactable = messageNodes.slice(0, Math.max(0, cut - 1))
-              const compactableTokens = compactable.reduce((sum, node) => sum + tokensOf(node), 0)
-              if (compactable.length >= 2 && compactableTokens >= Math.max(1000, keepTokens)) {
-                try {
-                  await compaction.compactRegion(compactable[0].seq, compactable[compactable.length - 1].seq, agent, signal)
+                  result = await compaction.compactIfNeeded(agent, 'pressure', signal)
                   after = measure(agent) ?? after
+                  rounds += 1
                 } catch (error) {
-                  logCompactionFailure('idle', error instanceof Error ? error.message : String(error), { sessionId: sessionIdOf(agent), before: first.totalTokens, budget })
+                  if (signal?.aborted) return next()
+                  log('warn', `idle engine compaction failed: ${error instanceof Error ? error.message : String(error)}`)
+                  after = measure(agent) ?? after
                 }
-              }
-              if (after.totalTokens >= first.totalTokens) {
-                const reason = first.totalTokens <= budget
-                  ? `达到预压缩阈值但用量未降低（${formatTokens(first.totalTokens)} → ${formatTokens(after.totalTokens)}）；当前没有可安全压缩的历史`
-                  : `压缩后用量未降低（${formatTokens(first.totalTokens)} → ${formatTokens(after.totalTokens)}，上限 ${formatTokens(budget)}）；当前预算可能低于系统提示+工具定义的基础开销，或没有可安全压缩的历史`
-                logCompactionFailure('idle', reason, { sessionId: sessionIdOf(agent), before: first.totalTokens, after: after.totalTokens, budget })
-              } else {
-                recordCompaction(sessionIdOf(agent), first.totalTokens, after.totalTokens)
-                logCompaction({ outcome: 'success', trigger: 'idle', sessionId: sessionIdOf(agent), before: first.totalTokens, after: after.totalTokens, budget })
+                // 2) 没到 target 就继续压“最小可压前缀”，最多 maxAttempts 轮；无进展即停。
+                for (let round = 0; round < config.maxAttempts; round += 1) {
+                  if (signal?.aborted) return next()
+                  if (after.totalTokens <= target) break
+                  const planNow = planRegion(agent, after, budget, target)
+                  if (!planNow) break
+                  try {
+                    await compaction.compactRegion(planNow.start, planNow.end, agent, signal)
+                  } catch (error) {
+                    if (signal?.aborted) return next()
+                    log('warn', `idle region compaction failed: ${error instanceof Error ? error.message : String(error)}`)
+                    break
+                  }
+                  rounds += 1
+                  const current = measure(agent) ?? after
+                  const progressed = current.totalTokens < after.totalTokens
+                  after = current
+                  if (!progressed) break
+                }
+                if (after.totalTokens < before) {
+                  recordCompaction(sessionIdOf(agent), before, after.totalTokens)
+                  logCompaction({ outcome: 'success', trigger: 'idle', sessionId: sessionIdOf(agent), before, after: after.totalTokens, budget, rounds, shadowed: result?.shadowedTokenCount })
+                  if (after.totalTokens > target) log('warn', `idle: still above target ${formatTokens(target)} after ${rounds} round(s)`)
+                } else {
+                  const reason = before <= budget
+                    ? `达到预压缩阈值但用量未降低（${formatTokens(before)} → ${formatTokens(after.totalTokens)}）；当前没有可安全压缩的历史`
+                    : `压缩后用量未降低（${formatTokens(before)} → ${formatTokens(after.totalTokens)}，上限 ${formatTokens(budget)}）；当前预算可能低于系统提示+工具定义的基础开销，或没有可安全压缩的历史`
+                  logCompactionFailure('idle', reason, { sessionId: sessionIdOf(agent), before, after: after.totalTokens, budget })
+                }
+              } finally {
+                setCompacting(false)
               }
             } catch (error) {
-              logCompactionFailure('idle', error instanceof Error ? error.message : String(error), { sessionId: sessionIdOf(agent) })
+              if (!signal?.aborted) logCompactionFailure('idle', error instanceof Error ? error.message : String(error), { sessionId: sessionIdOf(agent) })
             }
             return next()
           }),
@@ -448,13 +518,18 @@ export function apply(ctx, config) {
               if (!throttle(agent)) return next()
               log('info', `over trigger at step: ${formatTokens(measurement.totalTokens)} > ${formatTokens(triggerTokensOf(budget))} (budget ${formatTokens(budget)})`)
               // 复用引擎的阈值/选区/事务，只由我们决定触发时机。
-              const before = measurement.totalTokens
-              const result = await compaction.compactIfNeeded(agent, 'pressure', signal)
-              const current = measure(agent)
-              const after = current ? current.totalTokens : before
-              recordCompaction(sessionIdOf(agent), before, after, result?.shadowedTokenCount)
-              logCompaction({ outcome: after < before ? 'success' : 'failure', trigger: 'step', sessionId: sessionIdOf(agent), before, after, budget, rounds: 1, shadowed: result?.shadowedTokenCount, message: after < before ? null : `step 压缩后用量未降低（${formatTokens(before)} → ${formatTokens(after)}，上限 ${formatTokens(budget)}）` })
-              log('info', `step compaction: ${describeResult(result)}`)
+              setCompacting(true)
+              try {
+                const before = measurement.totalTokens
+                const result = await compaction.compactIfNeeded(agent, 'pressure', signal)
+                const current = measure(agent)
+                const after = current ? current.totalTokens : before
+                recordCompaction(sessionIdOf(agent), before, after, result?.shadowedTokenCount)
+                logCompaction({ outcome: after < before ? 'success' : 'failure', trigger: 'step', sessionId: sessionIdOf(agent), before, after, budget, rounds: 1, shadowed: result?.shadowedTokenCount, message: after < before ? null : `step 压缩后用量未降低（${formatTokens(before)} → ${formatTokens(after)}，上限 ${formatTokens(budget)}）` })
+                log('info', `step compaction: ${describeResult(result)}`)
+              } finally {
+                setCompacting(false)
+              }
             } catch (error) {
               if (!signal?.aborted) {
                 logCompactionFailure('step', error instanceof Error ? error.message : String(error), { sessionId: sessionIdOf(agent) })

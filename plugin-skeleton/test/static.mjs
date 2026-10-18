@@ -63,6 +63,12 @@ const triggerValid = validate({ triggerAt: 0.75 })
 check('triggerAt 接受 (0, 1] 内的值', !triggerValid.issues && triggerValid.value?.triggerAt === 0.75, JSON.stringify(triggerValid))
 const triggerInvalid = validate({ triggerAt: 1.5 })
 check('triggerAt 超出 (0, 1] 被拒绝', Array.isArray(triggerInvalid.issues) && triggerInvalid.issues.length > 0, JSON.stringify(triggerInvalid.issues))
+const targetDefault = validate({})
+check('targetAt 默认 0.6', targetDefault.value?.targetAt === 0.6, JSON.stringify(targetDefault.value?.targetAt))
+const targetInvalid = validate({ targetAt: 1 })
+check('targetAt 必须小于 1', Array.isArray(targetInvalid.issues) && targetInvalid.issues.length > 0, JSON.stringify(targetInvalid.issues))
+const targetAboveTrigger = validate({ triggerAt: 0.8, targetAt: 0.9 })
+check('targetAt >= triggerAt 被拒绝', Array.isArray(targetAboveTrigger.issues) && targetAboveTrigger.issues.length > 0, JSON.stringify(targetAboveTrigger.issues))
 
 // ── 3. 包资源解析（宿主 readPluginMeta / client-modules 都走 ESM 解析器）──
 const require = createRequire(new URL('../package.json', import.meta.url))

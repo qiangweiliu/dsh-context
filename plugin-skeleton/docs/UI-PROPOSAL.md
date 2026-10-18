@@ -151,7 +151,7 @@ dsh-context 的客户端样式大量使用 DSH 主题变量与过渡变量（统
 | P0 加载/错误/空态/重试 | 各 tab 的 skeleton、错误 banner、retry；空态文案 | 截图与 static 测试 |
 | P1 宿主聚合 | `/status/analytics`、`/status/session-detail`；`sessionQuery` + `metrics.js` 纯折叠 | `test/metrics.mjs` 17/17 |
 | P1 KPI 带 | 会话/tokens/缓存命中/费用估算/工具调用/活跃时长/压缩次数 | `docs/ui/0.15-overview.png` |
-| P1 每日图 + 会话卡 | 7/30 天每日 tokens、活跃度热力；搜索/排序/展开/点击看趋势 | 同上 |
+| P1 每日图 + 会话卡 | 7/30 天每日 tokens、活跃度热力；搜索/排序/展开/点击看趋势/打开会话 | 同上 |
 | P1 设置合并 | 控制 + 全局配置 + 工具与提示词集中到设置 tab | `docs/ui/0.15-settings.png` |
 | P2 热力 + 事件时间线 | 已做活动热力与压缩时间线；上下文浏览/drilldown/agent 网络未做 | 见下方局限 |
 | 可维护性 | 新增宿主 `metrics.js`；折叠/聚合有纯函数测试；CSS token 与复用组件 | `test/metrics.mjs` |
@@ -160,6 +160,6 @@ dsh-context 的客户端样式大量使用 DSH 主题变量与过渡变量（统
 
 - 费用只对已知 DeepSeek 模型估算；当前 WSL 的 `agnes-3.0-flash` 无价格，显示 `—` 而不是编一个数字。
 - 跨会话只扫描最近 40 个会话（界面标注覆盖率）；全量扫描会随会话增长变慢。
-- 点击会话卡在页内看趋势，未跳转对话主视图；没有找到公开的客户端切会话 API，未用 DOM 点击 hack。
+- 点击会话卡在页内看趋势；「打开会话」用标题匹配左侧会话列表做 DOM 桥接（没有公开的客户端切会话 API，匹配不到时静默不跳）。
 - 趋势图未叠加 target 虚线（只在图例显示预算），后续可加。
 - 上下文 composition 沿用原有实测数据，没有对历史会话逐条重算 tokenMeter（会非常慢）。

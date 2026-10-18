@@ -166,6 +166,7 @@ window.__ModuleLoader__.load({
       sortRecent: 'Newest',
       sortTokens: 'Tokens',
       selectSession: 'View trend',
+      openSession: 'Open chat',
       trendTitle: 'Request context trend',
       trendPrompt: 'Prompt',
       trendOutput: 'Output',
@@ -336,6 +337,7 @@ window.__ModuleLoader__.load({
       sortRecent: '最近',
       sortTokens: 'Tokens',
       selectSession: '查看趋势',
+      openSession: '打开会话',
       trendTitle: '请求上下文趋势',
       trendPrompt: '请求',
       trendOutput: '输出',
@@ -728,6 +730,7 @@ window.__ModuleLoader__.load({
       eventMain: { flex: '1 1 auto', minWidth: 0, fontSize: '11.5px', color: 'var(--dsw-alias-label-secondary)', wordBreak: 'break-word' },
       eventAside: { flex: 'none', fontSize: '10.5px', color: 'var(--dsw-alias-label-tertiary)', fontVariantNumeric: 'tabular-nums', whiteSpace: 'nowrap' },
       searchInput: { width: '100%', boxSizing: 'border-box', border: '0.5px solid var(--dsw-alias-border-l2)', borderRadius: '8px', background: 'var(--dsw-alias-bg-base)', color: 'inherit', padding: '5px 9px', fontSize: '12px' },
+      linkAction: { marginLeft: 'auto', fontSize: '10.5px', color: 'var(--dsw-alias-label-tertiary)', cursor: 'pointer', textDecoration: 'underline', textUnderlineOffset: '2px' },
       banner: { display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap', padding: '6px 10px', borderRadius: '8px', background: 'var(--dsw-alias-bg-layer-2)', fontSize: '11.5px', color: 'var(--dsw-alias-label-secondary)' },
     })
 
@@ -1978,6 +1981,27 @@ window.__ModuleLoader__.load({
       )
     }
 
+    /**
+     * 没有公开的「切换主视图会话」客户端 API；按标题找到左侧会话列表按钮并点击。
+     * 只在 sidebar 容器里找，避免点到对话标题；找不到时静默返回 false。
+     */
+    function openSessionInSidebar(title) {
+      if (!title || typeof document === 'undefined') return false
+      const norm = (value) => String(value || '').replace(/\s+/g, ' ').trim()
+      const containers = Array.from(document.querySelectorAll('aside, nav, [class*="sidebar"], [class*="Sidebar"]'))
+      for (const container of containers) {
+        const target = Array.from(container.querySelectorAll('button, [role="button"], a')).find((element) => {
+          const text = norm(element.textContent)
+          return text === title || (text.startsWith(title) && text.length <= title.length + 24)
+        })
+        if (target) {
+          target.click()
+          return true
+        }
+      }
+      return false
+    }
+
     function SessionCards(props) {
       const t = props.t
       const sessions = Array.isArray(props.sessions) ? props.sessions : []
@@ -2011,6 +2035,14 @@ window.__ModuleLoader__.load({
               h('span', null, `${formatTokens(item.requests)} ${t('requestsLabel')}`),
               item.compactions > 0 ? h('span', null, `${formatTokens(item.compactions)}×` ) : null,
             ),
+            h('span', {
+              role: 'button',
+              tabIndex: 0,
+              style: styles.linkAction,
+              onClick: (event) => { event.preventDefault(); event.stopPropagation(); if (props.onOpen) props.onOpen(item) },
+              onKeyDown: (event) => { if (event.key === 'Enter' || event.key === ' ') { event.preventDefault(); event.stopPropagation(); if (props.onOpen) props.onOpen(item) } },
+              'data-ctx-session-open': item.id,
+            }, `${t('openSession')} ↗`),
           ),
         )),
         filtered.length > 12 ? h('button', { type: 'button', style: styles.button, onClick: () => setExpanded((value) => !value), 'data-ctx-session-more': '1' }, expanded ? t('showLess') : t('showMore')) : null,
@@ -2185,7 +2217,7 @@ window.__ModuleLoader__.load({
           ))
         }
         children.push(h(OverviewCard, { key: 'overview', t, budget, latest, live, liveAt: liveState.at, controlActive: Boolean(control.active) }))
-        children.push(h(SessionCards, { key: 'sessions', t, sessions: analytics ? analytics.sessions : [], selected: detailSession, onSelect: (id) => { setSelected(id); setTab('trend') } }))
+        children.push(h(SessionCards, { key: 'sessions', t, sessions: analytics ? analytics.sessions : [], selected: detailSession, onSelect: (id) => { setSelected(id); setTab('trend') }, onOpen: (item) => { openSessionInSidebar(item.title || shortSessionId(item.id)) } }))
         if (analytics && Array.isArray(analytics.warnings) && analytics.warnings.length > 0) {
           children.push(h('div', { key: 'warnings', style: styles.banner, title: analytics.warnings.join(' | ') }, `${t('coverage').replace('{scanned}', analytics.coverage.scanned).replace('{total}', analytics.coverage.total)} · ${t('readFailures').replace('{count}', String(analytics.warnings.length))}`))
         }

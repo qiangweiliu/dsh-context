@@ -301,7 +301,62 @@ export function apply(ctx, config) {
       return { before, after, rounds, result }
     }
 
-    if (config.mode === 'idle' || config.mode === 'notify') {
+    if (config.mode === 'idle') {
+      sub.effect(
+        () =>
+          ctx.on('agent/pre-step', async ({ agent, signal }, next) => {
+            try {
+              if (signal?.aborted) return next()
+              const first = measure(agent)
+              const budget = budgetOf(agent)
+              if (!first || first.totalTokens <= budget) return next()
+              if (!throttle(agent)) return next()
+              let after = first
+              try {
+                const result = await compaction.compactIfNeeded(agent, 'pressure', signal)
+                after = measure(agent) ?? after
+                if (result !== null && after.totalTokens <= budget) {
+                  recordCompaction(sessionIdOf(agent), first.totalTokens, after.totalTokens)
+                  return next()
+                }
+              } catch (error) {
+                recordControlError(error instanceof Error ? error.message : String(error))
+              }
+              // 引擎阈值未到或仍超预算：只压缩较早历史，保留最近 keepTokens，避免影响当前任务。
+              const keepTokens = config.keepTokens > 0 ? config.keepTokens : Math.max(1, Math.floor(budget * 0.25))
+              const nodes = Array.isArray(first.nodes) ? first.nodes : []
+              let accumulated = 0
+              let cut = nodes.length
+              for (let index = nodes.length - 1; index >= 0; index -= 1) {
+                accumulated += Number(nodes[index].tokens ?? nodes[index].heuristicTokens ?? 0)
+                if (accumulated >= keepTokens) {
+                  cut = index
+                  break
+                }
+              }
+              if (cut > 0) {
+                try {
+                  await compaction.compactRegion(nodes[0].seq, nodes[cut - 1].seq, agent, signal)
+                  after = measure(agent) ?? after
+                } catch (error) {
+                  recordControlError(error instanceof Error ? error.message : String(error))
+                }
+              }
+              if (after.totalTokens >= first.totalTokens) {
+                recordControlError(`上下文上限（${formatTokens(budget)}）低于系统提示+工具定义的基础开销（约 ${formatTokens(first.totalTokens)}），无法再压缩；请调高上限`)
+              } else {
+                recordCompaction(sessionIdOf(agent), first.totalTokens, after.totalTokens)
+              }
+            } catch (error) {
+              recordControlError(error instanceof Error ? error.message : String(error))
+            }
+            return next()
+          }),
+        'ctx-mon-and-con-control: budget enforcement before request (idle mode)',
+      )
+    }
+
+    if (config.mode === 'notify') {
       sub.effect(
         () =>
           ctx.on('agent/status', ({ agent, status }) => {

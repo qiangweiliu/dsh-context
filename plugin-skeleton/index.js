@@ -49,7 +49,7 @@ import {
 export const inject = ['commands', 'tokenMeter']
 
 /** 与 package.json 的 version 保持一致（只用于状态接口的自述）。 */
-const PLUGIN_VERSION = '0.13.7'
+const PLUGIN_VERSION = '0.14.0'
 
 /** 浏览器半侧 client.js 拉的只读状态接口；两处路径必须一致。 */
 const STATUS_PATH = '/api/ctx-mon-and-con/status'
@@ -68,6 +68,8 @@ const DEFAULT_CONFIG = {
   disabledTools: [],
   // 全局提示词覆盖：section name -> 替换文本；空对象表示全部用原文。
   promptOverrides: {},
+  // 压缩时保留的最近 tokens（0 = 用插件预算的 25%）。
+  keepTokens: 0,
   // 是否在启动时自动把控制行补挂进 agent preset（面板手动停用后置 false）。
   autoMountControl: true,
 }
@@ -86,7 +88,7 @@ function validateConfig(input) {
   if (typeof raw !== 'object' || raw === null || Array.isArray(raw)) {
     return { issues: [{ message: 'config must be an object' }] }
   }
-  const config = { ...DEFAULT_CONFIG, disabledTools: [], promptOverrides: {}, autoMountControl: true }
+  const config = { ...DEFAULT_CONFIG, disabledTools: [], promptOverrides: {}, autoMountControl: true, keepTokens: 0 }
   for (const key of NUMERIC_KEYS) {
     const value = raw[key]
     if (value === undefined) continue
@@ -130,12 +132,16 @@ function validateConfig(input) {
       config.promptOverrides = overrides
     }
   }
+  if (raw.keepTokens !== undefined) {
+    if (!Number.isInteger(raw.keepTokens) || raw.keepTokens < 0) issues.push({ message: 'expected a non-negative integer', path: ['keepTokens'] })
+    else config.keepTokens = raw.keepTokens
+  }
   if (raw.autoMountControl !== undefined) {
     if (typeof raw.autoMountControl !== 'boolean') issues.push({ message: 'expected a boolean', path: ['autoMountControl'] })
     else config.autoMountControl = raw.autoMountControl
   }
   for (const key of Object.keys(raw)) {
-    if (!CONFIG_KEYS.includes(key) && key !== 'disabledTools' && key !== 'promptOverrides' && key !== 'autoMountControl') issues.push({ message: 'unknown config key', path: [key] })
+    if (!CONFIG_KEYS.includes(key) && key !== 'disabledTools' && key !== 'promptOverrides' && key !== 'autoMountControl' && key !== 'keepTokens') issues.push({ message: 'unknown config key', path: [key] })
   }
   if (!Number.isInteger(config.contextWindowTokens) || config.contextWindowTokens <= 0) {
     issues.push({ message: 'expected a positive integer', path: ['contextWindowTokens'] })

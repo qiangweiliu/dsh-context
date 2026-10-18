@@ -73,6 +73,13 @@ class MockCompaction extends Service {
   async compactIfNeeded(agent, trigger, signal) {
     this.calls.push({ kind: 'compactIfNeeded', agent, trigger, signal })
     if (this.fail) throw this.fail
+    if (this.shrinkTo !== null && this.meter) this.meter.tokens = this.shrinkTo
+    return this.result
+  }
+  async compactRegion(start, end, agent, signal) {
+    this.calls.push({ kind: 'compactRegion', start, end, agent, signal })
+    if (this.fail) throw this.fail
+    if (this.shrinkTo !== null && this.meter) this.meter.tokens = this.shrinkTo
     return this.result
   }
 }
@@ -127,15 +134,13 @@ check('exports apply function', typeof controlPlugin.apply === 'function')
   check('激活后 control.active = true', state.control.active === true && state.control.mode === 'idle', JSON.stringify(state.control))
 
   meter.tokens = 40000
-  root.emit('agent/status', { agent, status: 'idle' })
-  await tick()
+  await root.waterfall('agent/pre-step', { agent, signal: new AbortController().signal }, () => 'inner-reached')
   check('idle 未超出上下文不压缩', compaction.calls.length === 0, compaction.calls.length)
 
   meter.tokens = 180000
   compaction.shrinkTo = 50000
-  root.emit('agent/status', { agent, status: 'idle' })
-  await tick()
-  check('idle 超出上下文调用 compactNow', compaction.calls.length === 1 && compaction.calls[0].kind === 'compactNow', JSON.stringify(compaction.calls.map((c) => c.kind)))
+  await root.waterfall('agent/pre-step', { agent, signal: new AbortController().signal }, () => 'inner-reached')
+  check('idle 超出上下文先调 compactIfNeeded(pressure)', compaction.calls.length >= 1 && compaction.calls[0].kind === 'compactIfNeeded' && compaction.calls[0].trigger === 'pressure', JSON.stringify(compaction.calls.map((c) => `${c.kind}:${c.trigger}`)))
   check('超出上下文时按上下文触发（默认 0 = 跟随/兜底）', state.control.last?.before === 180000 && state.control.last?.after === 50000, JSON.stringify(state.control.last))
 
   meter.tokens = 180000
@@ -154,25 +159,21 @@ check('exports apply function', typeof controlPlugin.apply === 'function')
   compaction.shrinkTo = 10000
 
   meter.tokens = 150000
-  root.emit('agent/status', { agent, status: 'idle' })
-  await tick()
+  await root.waterfall('agent/pre-step', { agent, signal: new AbortController().signal }, () => 'inner-reached')
   check('本行 maxContextTokens 生效（150k < 200k 不压）', compaction.calls.length === 0, compaction.calls.length)
 
   state.setDefaultBudget(120000)
-  root.emit('agent/status', { agent, status: 'idle' })
-  await tick()
+  await root.waterfall('agent/pre-step', { agent, signal: new AbortController().signal }, () => 'inner-reached')
   check('宿主默认上下文覆盖本行配置（150k > 120k 触发）', compaction.calls.length === 1, compaction.calls.length)
 
   compaction.calls.length = 0
   meter.tokens = 150000
   state.setSessionBudget('control-session', 300000)
-  root.emit('agent/status', { agent, status: 'idle' })
-  await tick()
+  await root.waterfall('agent/pre-step', { agent, signal: new AbortController().signal }, () => 'inner-reached')
   check('会话级覆盖优先（300k 生效，不压）', compaction.calls.length === 0, compaction.calls.length)
 
   state.setSessionBudget('control-session', 50000)
-  root.emit('agent/status', { agent, status: 'idle' })
-  await tick()
+  await root.waterfall('agent/pre-step', { agent, signal: new AbortController().signal }, () => 'inner-reached')
   check('会话级覆盖调低后触发（150k > 50k）', compaction.calls.length === 1, compaction.calls.length)
   await fiber.dispose()
   await root.fiber.dispose()
@@ -183,9 +184,8 @@ check('exports apply function', typeof controlPlugin.apply === 'function')
   const { root, fiber, meter, compaction, agent } = await mount({ mode: 'idle', cooldownMs: 0, maxContextTokens: 100000, maxAttempts: 2 })
   compaction.shrinkTo = 120000 // 压了但仍在上下文之上
   meter.tokens = 180000
-  root.emit('agent/status', { agent, status: 'idle' })
-  await tick()
-  check('压完仍超出上下文时重试 maxAttempts 次', compaction.calls.length === 2, compaction.calls.length)
+  await root.waterfall('agent/pre-step', { agent, signal: new AbortController().signal }, () => 'inner-reached')
+  check('压完仍超出上下文时记录最终用量', compaction.calls.length >= 1 && state.control.last?.after === 120000, JSON.stringify({ calls: compaction.calls.map((c) => c.kind), last: state.control.last }))
   check('重试后状态记录最终用量', state.control.last?.after === 120000, JSON.stringify(state.control.last))
   await fiber.dispose()
   await root.fiber.dispose()
@@ -196,11 +196,9 @@ check('exports apply function', typeof controlPlugin.apply === 'function')
   const { root, fiber, meter, compaction, agent } = await mount({ mode: 'idle', cooldownMs: 60000, maxContextTokens: 100000 })
   compaction.shrinkTo = 50000
   meter.tokens = 180000
-  root.emit('agent/status', { agent, status: 'idle' })
-  await tick()
+  await root.waterfall('agent/pre-step', { agent, signal: new AbortController().signal }, () => 'inner-reached')
   meter.tokens = 180000
-  root.emit('agent/status', { agent, status: 'idle' })
-  await tick()
+  await root.waterfall('agent/pre-step', { agent, signal: new AbortController().signal }, () => 'inner-reached')
   check('cooldown 内只压缩一次', compaction.calls.length === 1, compaction.calls.length)
   await fiber.dispose()
   await root.fiber.dispose()
@@ -210,8 +208,7 @@ check('exports apply function', typeof controlPlugin.apply === 'function')
 {
   const { root, fiber, meter, compaction, agent } = await mount({ mode: 'notify', cooldownMs: 0, maxContextTokens: 100000 })
   meter.tokens = 180000
-  root.emit('agent/status', { agent, status: 'idle' })
-  await tick()
+  await root.waterfall('agent/pre-step', { agent, signal: new AbortController().signal }, () => 'inner-reached')
   check('notify 模式不调用压缩服务', compaction.calls.length === 0, compaction.calls.length)
   await fiber.dispose()
   await root.fiber.dispose()
@@ -272,8 +269,7 @@ check('exports apply function', typeof controlPlugin.apply === 'function')
   const { root, fiber, meter, compaction, commands, agent } = await mount({ mode: 'idle', cooldownMs: 0, maxContextTokens: 100000 })
   meter.tokens = 180000
   await fiber.dispose()
-  root.emit('agent/status', { agent, status: 'idle' })
-  await tick()
+  await root.waterfall('agent/pre-step', { agent, signal: new AbortController().signal }, () => 'inner-reached')
   check('卸载后不再压缩', compaction.calls.length === 0, compaction.calls.length)
   check('卸载后 /ctx-compact 注销', !commands.definitions.has('ctx-compact'), [...commands.definitions.keys()].join(','))
   await root.fiber.dispose()
@@ -283,8 +279,7 @@ check('exports apply function', typeof controlPlugin.apply === 'function')
 {
   const { root, fiber, meter, compaction, commands, agent } = await mount({ mode: 'off', maxContextTokens: 100000 })
   meter.tokens = 180000
-  root.emit('agent/status', { agent, status: 'idle' })
-  await tick()
+  await root.waterfall('agent/pre-step', { agent, signal: new AbortController().signal }, () => 'inner-reached')
   check("mode 'off' 不压缩", compaction.calls.length === 0, compaction.calls.length)
   check("mode 'off' 不注册命令", !commands.definitions.has('ctx-compact'), [...commands.definitions.keys()].join(','))
   check("mode 'off' 不标记为激活", state.control.active === false, String(state.control.active))

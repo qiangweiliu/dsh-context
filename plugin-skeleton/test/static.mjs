@@ -183,6 +183,7 @@ const balanceEntry = client.slotRegistrations.find((entry) => entry.definition.i
 check('client 注册 DSH 余额 dock 胶囊', balanceEntry.name === 'conversation.composer.dock' && balanceEntry.order > dockEntry.order, JSON.stringify(balanceEntry))
 check('余额胶囊使用 data-ctx-balance 标记', clientSource.includes("'data-ctx-balance': '1'"))
 check('余额弹层使用 data-ctx-balance-panel 标记', clientSource.includes("'data-ctx-balance-panel': '1'"))
+check('余额胶囊默认关闭、开关可持久化', clientSource.includes("ctx-mon-and-con:balance-enabled:v1") && clientSource.includes("'data-ctx-balance-toggle': '1'"))
 check('sidebar.panellist 图标组件是函数', typeof bySlot('sidebar.panellist').component === 'function', typeof bySlot('sidebar.panellist').component)
 
 const stateModule = await import(new URL('../state.js', import.meta.url).href)

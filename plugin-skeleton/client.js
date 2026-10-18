@@ -100,6 +100,10 @@ window.__ModuleLoader__.load({
       balanceUnavailable: 'Balance unavailable',
       balanceRefresh: 'DSH account balance; click to refresh',
       balanceLoading: 'Loading balance…',
+      balanceToggleTitle: 'Balance capsule',
+      balanceToggleHint: 'Off by default. Your choice is saved locally and restored after restarting DSH.',
+      balanceEnable: 'Enable',
+      balanceDisable: 'Disable',
       synced: 'synced',
       inventoryTitle: 'Tools & prompt sections',
       inventoryTools: 'Tools',
@@ -281,6 +285,10 @@ window.__ModuleLoader__.load({
       balanceUnavailable: '余额不可用',
       balanceRefresh: 'DSH 账户余额，点击刷新',
       balanceLoading: '正在读取余额…',
+      balanceToggleTitle: '余额胶囊',
+      balanceToggleHint: '默认关闭；开启状态保存在本机，重启 DSH 后保留。',
+      balanceEnable: '开启',
+      balanceDisable: '关闭',
       synced: '已同步',
       inventoryTitle: '工具与提示词',
       inventoryTools: '工具',
@@ -1019,6 +1027,43 @@ window.__ModuleLoader__.load({
       return value
     }
 
+    // ── 余额胶囊显示偏好：默认关闭，本机持久化 ───────────────────────────
+    const BALANCE_ENABLED_KEY = 'ctx-mon-and-con:balance-enabled:v1'
+    const balanceEnabledSubscribers = new Set()
+    function readBalanceEnabled() {
+      try {
+        if (typeof window === 'undefined' || !window.localStorage) return false
+        return window.localStorage.getItem(BALANCE_ENABLED_KEY) === '1'
+      } catch {
+        return false
+      }
+    }
+    function setBalanceEnabled(value) {
+      try {
+        if (typeof window !== 'undefined' && window.localStorage) {
+          window.localStorage.setItem(BALANCE_ENABLED_KEY, value ? '1' : '0')
+        }
+      } catch {}
+      for (const subscriber of balanceEnabledSubscribers) subscriber(Boolean(value))
+    }
+    function useBalanceEnabled() {
+      const [enabled, setEnabled] = react.useState(readBalanceEnabled)
+      react.useEffect(() => {
+        const sync = (value) => setEnabled(value === undefined ? readBalanceEnabled() : Boolean(value))
+        balanceEnabledSubscribers.add(sync)
+        sync()
+        const onStorage = (event) => {
+          if (event.key === BALANCE_ENABLED_KEY) sync()
+        }
+        window.addEventListener('storage', onStorage)
+        return () => {
+          balanceEnabledSubscribers.delete(sync)
+          window.removeEventListener('storage', onStorage)
+        }
+      }, [])
+      return enabled
+    }
+
     /** 余额弹层：充值/赠金分项 + 构成条，布局对齐内置 ContextMeter 面板。 */
     function BalancePanel(props) {
       const t = props.t
@@ -1080,6 +1125,7 @@ window.__ModuleLoader__.load({
     function BalanceDock(props) {
       const t = props.t
       const remote = useAccountRemote()
+      const balanceEnabled = useBalanceEnabled()
       const [snapshot, setSnapshot] = react.useState(undefined)
       const [failed, setFailed] = react.useState(false)
       const { open, setOpen, rootRef } = useDockPopover()
@@ -1087,7 +1133,7 @@ window.__ModuleLoader__.load({
       const usageTick = useUsageActivity()
 
       const read = react.useCallback(() => {
-        if (!remote) return undefined
+        if (!remote || !balanceEnabled) return undefined
         let cancelled = false
         remote.getBalance(props.meta()).then((result) => {
           if (cancelled) return
@@ -1106,7 +1152,7 @@ window.__ModuleLoader__.load({
         return () => {
           cancelled = true
         }
-      }, [remote, props.meta])
+      }, [remote, props.meta, balanceEnabled])
 
       react.useEffect(() => read(), [read])
       react.useEffect(() => {
@@ -1131,7 +1177,7 @@ window.__ModuleLoader__.load({
         if (open) read()
       }, [open, read])
 
-      if (!remote) return null
+      if (!remote || !balanceEnabled) return null
       const ready = Boolean(snapshot && snapshot.status === 'ready')
       const total = ready ? (walletSummary(snapshot) || '—') : '—'
       const topped = ready ? ((snapshot.value || []).map((wallet) => formatWalletAmount(wallet.balance, wallet.currency)).join(' / ') || '—') : null
@@ -2110,6 +2156,33 @@ window.__ModuleLoader__.load({
       )
     }
 
+    /** 余额胶囊显示开关：默认关闭，偏好保存在 localStorage。 */
+    function BalanceDisplayCard(props) {
+      const t = props.t
+      const enabled = useBalanceEnabled()
+      return h(
+        Card,
+        { title: t('balanceToggleTitle'), id: 'balance-display', t, style: styles.cardFill },
+        h('p', { style: styles.text }, t('balanceToggleHint')),
+        h(
+          'div',
+          { style: styles.actionRow },
+          h(
+            'button',
+            {
+              type: 'button',
+              style: { ...styles.filterToggle, ...(enabled ? styles.filterToggleOn : null) },
+              'aria-pressed': enabled,
+              'data-ctx-balance-toggle': '1',
+              'data-ctx-balance-enabled': enabled ? '1' : '0',
+              onClick: () => setBalanceEnabled(!enabled),
+            },
+            enabled ? t('balanceDisable') : t('balanceEnable'),
+          ),
+        ),
+      )
+    }
+
     function ConfigSection(props) {
       const t = props.t
       const budget = props.budget || {}
@@ -2561,6 +2634,7 @@ window.__ModuleLoader__.load({
         children.push(h('div', { key: 'settings', style: styles.cols },
           h(ControlSection, { t, control, onToggled: load }),
           h(ConfigSection, { t, budget, editable: Boolean(data.configEditable), onSaved: load }),
+          h(BalanceDisplayCard, { key: 'balance-display', t }),
         ))
         children.push(h(InventoryCard, { key: 'inventory', t, data: invState.data, loading: invState.data === null && invState.error === null, error: invState.data === null ? invState.error : null, reload: reloadInv, sessionId: activeSession }))
       }

@@ -1,6 +1,6 @@
 # UI 优化提案（同类插件调研 + 改动方案）
 
-> 状态：**待确认**，未改代码。确认选哪几项后我再实现（保持现有卡片风格，小步优化）。
+> 状态：**P0/P1 已实施**，版本 `ctx-mon-and-con@0.14.14`；用户已确认：概览卡用环形图、内容多时默认折叠、Dock 加「打开完整面板」、只做「仅看已启用」筛选（搜索后置）。
 >
 > 调研日期：2026-10-18；参考版本：`ctx-mon-and-con@0.14.13`
 
@@ -81,9 +81,35 @@ dsh-context 的客户端样式大量使用 DSH 主题变量与过渡变量（统
 - 明暗主题各一张截图；
 - `static` / `smoke` 测试保持全过。
 
-## 5. 需要你确认的选项
+## 5. 已确认的选项（2026-10-18）
 
-1. 概览卡用**环形图**（更像 dsh-context）还是保持**分段横条**（更紧凑）？
-2. 「工具与提示词」默认展开还是默认折叠（内容多时）？
-3. Dock 弹层底部是否加「打开完整面板」跳转按钮？
-4. P1 里的列表搜索/筛选要不要做（会增加 UI 复杂度）？
+1. 概览卡用**环形图**（大号进度环 + 中心百分比 + 右侧 KPI 小格）。
+2. 「工具与提示词」内容多（> 6 项）时**默认折叠**，内容少时自动展开。
+3. Dock 弹层底部加「**打开完整面板**」按钮，点击跳到侧栏 ctx 页。
+4. 列表只做「**仅看已启用**」筛选，搜索后置。
+
+## 6. 实施记录（v0.14.14）
+
+| 改动 | 文件位置 |
+| --- | --- |
+| 修掉卡片被纵向 flex-basis 撑高的布局 bug（概览/工具卡不再有大片空白） | `client.js` `styles.card` / `styles.cardFill` |
+| 概览卡 hero：104px 环形图 + 中心百分比 + 已用/上限/剩余 KPI + 8px 分段条 + 2×2/4 列图例（右对齐数值） | `BigRing` / `LegendGrid` / `OverviewCard` |
+| 顶部状态 badge（正常/警告/超限），阈值 chip 用 `state-warn/error` 语义色 | `StatusBadge` / `styles.badge*` / `styles.thresholdChip` |
+| 控制卡压缩成「状态 badge + 一行说明 + 最近压缩小卡 + 按钮行」，未启用用中性 badge | `ControlSection` |
+| 全局配置卡：字段加单位（tokens / 0–1）、显示来源（`来源: default`）、保存/错误行内反馈、主按钮样式 | `ConfigSection` / `styles.fieldLabelRow` / `styles.buttonPrimary` |
+| 工具与提示词：加载 skeleton、错误态（重试）、空态虚线框；「仅看已启用」筛选 + 启用/总数；≤6 项自动展开 | `InventoryCard` / `useLive` |
+| Dock：警告/超限状态进 tooltip，弹层底部加「打开完整面板」 | `CtxDock` / `openCtxPanelPage` |
+| 修正 `--dsw-alias-state-warning-primary` → 实际存在的 `--dsw-alias-state-warn-primary`（原先阈值颜色不生效） | `ratioColor` |
+
+实施后截图：
+
+- 有真实用量：`docs/ui/current-panel-session.png`（本文件下方）
+- 空会话：`docs/ui/current-panel-empty.png`
+- Dock 弹层：`docs/ui/current-dock-popover.png`
+
+![实施后的 ctx 面板（有真实用量）](ui/current-panel-session.png)
+
+![实施后的空态](ui/current-panel-empty.png)
+
+![Dock 弹层（底部新增「打开完整面板」）](ui/current-dock-popover.png)
+

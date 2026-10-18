@@ -76,6 +76,7 @@ window.__ModuleLoader__.load({
       invalidTokens: 'Context limit must be a positive integer.',
       invalidRatios: 'Thresholds must be in (0, 1] and warn must be below error.',
       defaultBudget: 'Default context limit (tokens)',
+      defaultBudgetShort: 'Default limit',
       warnLabel: 'Warn ratio',
       errorLabel: 'Error ratio',
       meterAria: 'ctx context limit',
@@ -85,6 +86,10 @@ window.__ModuleLoader__.load({
       inventoryPrompts: 'Prompt sections',
       inventoryEmpty: 'No request yet in this session. Send one message, then reopen this page.',
       inventoryRisk: 'Disabling removes the item from the next request. The model may behave unexpectedly; you can restore everything here.',
+      onlyEnabled: 'Enabled only',
+      noneEnabled: 'No enabled items.',
+      inventoryLoadFailed: 'Could not load tools / prompt sections',
+      openPanel: 'Open full panel',
       sessionSwitch: 'session',
       globalSwitch: 'global',
       confirmDisable: 'Disable on next request?',
@@ -171,15 +176,20 @@ window.__ModuleLoader__.load({
       invalidTokens: '上下文必须是正整数。',
       invalidRatios: '阈值必须在 (0, 1] 之间，且警告阈值要小于超限阈值。',
       defaultBudget: '默认上下文（tokens）',
+      defaultBudgetShort: '默认上限',
       warnLabel: '警告比例',
       errorLabel: '超限比例',
       meterAria: 'ctx 上下文',
       synced: '已同步',
       inventoryTitle: '工具与提示词',
       inventoryTools: '工具',
-      inventoryPrompts: '提示词 section',
+      inventoryPrompts: '提示词',
       inventoryEmpty: '本会话还没有发起过请求。先发一条消息，再回来打开本页。',
       inventoryRisk: '关闭后该项会从下一次请求里移除，模型行为可能异常；可以在这里一键恢复。',
+      onlyEnabled: '仅看已启用',
+      noneEnabled: '没有启用的项。',
+      inventoryLoadFailed: '加载工具 / 提示词失败',
+      openPanel: '打开完整面板',
       sessionSwitch: '会话',
       globalSwitch: '全局',
       confirmDisable: '确认从下一次请求移除？',
@@ -284,8 +294,24 @@ window.__ModuleLoader__.load({
     function ratioColor(ratio) {
       if (ratio === null || ratio === undefined) return 'var(--dsw-alias-label-tertiary)'
       if (ratio >= 0.9) return 'var(--dsw-alias-state-error-primary)'
-      if (ratio >= 0.75) return 'var(--dsw-alias-state-warning-primary)'
+      if (ratio >= 0.75) return 'var(--dsw-alias-state-warn-primary)'
       return 'var(--dsw-alias-brand-primary)'
+    }
+
+    /** ok / warn / error —— 与 ratioColor 的阈值一致，用于状态 badge 与文字。 */
+    function ratioState(ratio) {
+      if (ratio === null || ratio === undefined) return 'ok'
+      if (ratio >= 0.9) return 'error'
+      if (ratio >= 0.75) return 'warn'
+      return 'ok'
+    }
+
+    function StatusBadge(props) {
+      const t = props.t
+      const state = props.state || 'ok'
+      const label = state === 'error' ? t('statusError') : state === 'warn' ? t('statusWarn') : t('statusOk')
+      const style = state === 'error' ? styles.badgeError : state === 'warn' ? styles.badgeWarn : styles.badgeOk
+      return h('span', { style: { ...styles.badge, ...style }, 'data-ctx-status': state }, h('i', { style: { ...styles.dot, width: '6px', height: '6px', borderRadius: '999px', background: 'currentColor' } }), label)
     }
 
     // ── 上下文构成四色（前三色沿用内置 HUD，第 4 色用主题 accent） ─────────────
@@ -408,9 +434,8 @@ window.__ModuleLoader__.load({
       title: { margin: 0, fontSize: '22px', fontWeight: 600, lineHeight: '30px', letterSpacing: '-0.01em' },
       versionChip: { display: 'inline-flex', alignItems: 'center', borderRadius: '999px', border: '0.5px solid var(--dsw-alias-border-l1)', background: 'var(--dsw-alias-bg-layer-1)', padding: '1px 8px', fontSize: '11.5px', lineHeight: '18px', color: 'var(--dsw-alias-label-tertiary)', fontVariantNumeric: 'tabular-nums' },
       subtitle: { margin: 0, fontSize: '12px', lineHeight: 1.6, color: 'var(--dsw-alias-label-tertiary)' },
-      cols: { display: 'flex', flexWrap: 'wrap', gap: '12px', alignItems: 'stretch' },
+      cols: { display: 'flex', flexWrap: 'wrap', gap: '12px', alignItems: 'flex-start' },
       card: {
-        flex: '1 1 320px',
         minWidth: 'min(260px, 100%)',
         boxSizing: 'border-box',
         background: 'var(--dsw-alias-bg-layer-1)',
@@ -421,6 +446,7 @@ window.__ModuleLoader__.load({
         flexDirection: 'column',
         gap: '10px',
       },
+      cardFill: { flex: '1 1 320px', minWidth: 'min(260px, 100%)' },
       cardHead: { display: 'flex', alignItems: 'center', gap: '8px' },
       cardTitle: { margin: 0, fontSize: '13px', fontWeight: 600, color: 'var(--dsw-alias-label-primary)' },
       cardSub: { marginLeft: 'auto', fontSize: '11.5px', color: 'var(--dsw-alias-label-tertiary)', fontVariantNumeric: 'tabular-nums' },
@@ -428,7 +454,7 @@ window.__ModuleLoader__.load({
       chip: { display: 'inline-flex', alignItems: 'center', gap: '5px', borderRadius: '6px', background: 'var(--dsw-alias-interactive-bg-hover)', padding: '1px 6px', fontSize: '12px', color: 'var(--dsw-alias-label-secondary)', minWidth: 0 },
       chipStrong: { fontWeight: 600, color: 'var(--dsw-alias-label-primary)', fontVariantNumeric: 'tabular-nums', fontSize: '12.5px' },
       dot: { width: '8px', height: '8px', borderRadius: '2px', display: 'inline-block' },
-      bar: { background: 'var(--dsw-alias-interactive-bg-hover)', borderRadius: '999px', height: '4px', display: 'flex', overflow: 'hidden' },
+      bar: { background: 'var(--dsw-alias-interactive-bg-hover)', borderRadius: '999px', height: '8px', display: 'flex', overflow: 'hidden' },
       barFill: { borderRadius: '999px', height: '100%', minWidth: '2px' },
       barSegment: { height: '100%', minWidth: '2px' },
       row: { display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: '12px', fontSize: '12.5px' },
@@ -448,10 +474,48 @@ window.__ModuleLoader__.load({
       promptEditor: { width: '100%', boxSizing: 'border-box', minHeight: '120px', resize: 'vertical', padding: '8px 10px', borderRadius: '8px', background: 'var(--dsw-alias-bg-layer-2)', border: '0.5px solid var(--dsw-alias-border-l1)', fontFamily: 'ui-monospace, SFMono-Regular, Menlo, monospace', fontSize: '11.5px', lineHeight: 1.55, color: 'var(--dsw-alias-label-primary)' },
       error: { margin: 0, fontSize: '12px', lineHeight: 1.6, color: 'var(--dsw-alias-state-error-primary)' },
       button: { alignSelf: 'flex-start', border: '0.5px solid var(--dsw-alias-border-l2)', background: 'transparent', color: 'inherit', borderRadius: '8px', padding: '4px 10px', fontSize: '12.5px', cursor: 'pointer' },
+      buttonPrimary: { background: 'var(--dsw-alias-button-primary-fill, var(--dsw-alias-brand-primary))', border: '0.5px solid transparent', color: 'var(--dsw-alias-label-primary-foreground, #fff)', fontWeight: 500 },
       field: { display: 'flex', flexDirection: 'column', gap: '4px', fontSize: '12px', minWidth: 0 },
       configGrid: { display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(150px, 1fr))', gap: '10px 12px' },
       label: { color: 'var(--dsw-alias-label-secondary)' },
       input: { width: '100%', boxSizing: 'border-box', border: '0.5px solid var(--dsw-alias-border-l2)', borderRadius: '8px', background: 'var(--dsw-alias-bg-base)', color: 'inherit', padding: '5px 9px', fontSize: '12.5px' },
+      // ── 概览 hero / 环形图 / KPI / 图例 ───────────────────────────────────
+      heroBody: { display: 'flex', alignItems: 'center', gap: '18px', flexWrap: 'wrap' },
+      ringWrap: { position: 'relative', width: '104px', height: '104px', flex: 'none' },
+      ringSvg: { width: '104px', height: '104px', transform: 'rotate(-90deg)' },
+      ringCenter: { position: 'absolute', inset: 0, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: '1px' },
+      ringPercent: { fontSize: '21px', fontWeight: 600, lineHeight: '25px', fontVariantNumeric: 'tabular-nums' },
+      ringLabel: { fontSize: '10.5px', color: 'var(--dsw-alias-label-tertiary)' },
+      kpiGrid: { display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(104px, 1fr))', gap: '8px', flex: '1 1 260px', minWidth: '210px' },
+      kpi: { display: 'flex', flexDirection: 'column', gap: '2px', padding: '8px 10px', borderRadius: '8px', background: 'var(--dsw-alias-bg-layer-2)', minWidth: 0 },
+      kpiLabel: { fontSize: '10.5px', lineHeight: '15px', color: 'var(--dsw-alias-label-tertiary)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' },
+      kpiValue: { fontSize: '15px', lineHeight: '21px', fontWeight: 600, fontVariantNumeric: 'tabular-nums' },
+      kpiSub: { fontSize: '10.5px', lineHeight: '15px', color: 'var(--dsw-alias-label-tertiary)', fontVariantNumeric: 'tabular-nums' },
+      legend: { display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(150px, 1fr))', gap: '5px 14px', margin: '2px 0 0', padding: 0 },
+      legendItem: { display: 'flex', alignItems: 'center', gap: '7px', minWidth: 0, fontSize: '12px', color: 'var(--dsw-alias-label-secondary)' },
+      legendName: { whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' },
+      legendValue: { marginLeft: 'auto', fontVariantNumeric: 'tabular-nums', fontWeight: 500, color: 'var(--dsw-alias-label-primary)', whiteSpace: 'nowrap' },
+      // ── 状态 badge / 阈值 chip ───────────────────────────────────────────
+      badge: { display: 'inline-flex', alignItems: 'center', gap: '5px', borderRadius: '999px', padding: '1px 8px', fontSize: '11px', fontWeight: 600, lineHeight: '18px', border: '0.5px solid transparent', whiteSpace: 'nowrap' },
+      badgeOk: { color: 'var(--dsw-alias-state-success-primary)', borderColor: 'var(--dsw-alias-state-success-primary)' },
+      badgeWarn: { color: 'var(--dsw-alias-state-warn-primary)', borderColor: 'var(--dsw-alias-state-warn-primary)' },
+      badgeError: { color: 'var(--dsw-alias-state-error-primary)', borderColor: 'var(--dsw-alias-state-error-primary)' },
+      thresholds: { display: 'flex', flexWrap: 'wrap', gap: '6px' },
+      thresholdChip: { display: 'inline-flex', alignItems: 'center', gap: '4px', fontSize: '11.5px', lineHeight: '18px', color: 'var(--dsw-alias-label-tertiary)', background: 'var(--dsw-alias-interactive-bg-hover)', borderRadius: '6px', padding: '0 7px', fontVariantNumeric: 'tabular-nums' },
+      // ── 加载 / 空态 / 错误态 ─────────────────────────────────────────────
+      skeletonStack: { display: 'flex', flexDirection: 'column', gap: '8px', padding: '2px 0' },
+      skeleton: { height: '12px', borderRadius: '6px', background: 'var(--dsw-alias-interactive-bg-hover)' },
+      emptyState: { display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: '8px', padding: '18px 12px', border: '1px dashed var(--dsw-alias-border-l2)', borderRadius: '10px', textAlign: 'center' },
+      // ── 工具与提示词：筛选 / 行 ──────────────────────────────────────────
+      filterRow: { display: 'flex', alignItems: 'center', gap: '6px', flexWrap: 'wrap' },
+      filterCount: { fontSize: '11.5px', color: 'var(--dsw-alias-label-tertiary)', fontVariantNumeric: 'tabular-nums' },
+      filterToggle: { display: 'inline-flex', alignItems: 'center', gap: '5px', border: '0.5px solid var(--dsw-alias-border-l2)', background: 'transparent', borderRadius: '999px', padding: '1px 9px', fontSize: '11.5px', lineHeight: '18px', cursor: 'pointer', color: 'var(--dsw-alias-label-secondary)' },
+      filterToggleOn: { background: 'var(--dsw-alias-interactive-bg-hover)', color: 'var(--dsw-alias-label-primary)' },
+      // ── 配置卡：字段行 / 反馈 ────────────────────────────────────────────
+      fieldLabelRow: { display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '6px' },
+      fieldUnit: { fontSize: '10.5px', color: 'var(--dsw-alias-label-tertiary)', fontVariantNumeric: 'tabular-nums' },
+      actionRow: { display: 'flex', alignItems: 'center', gap: '10px', flexWrap: 'wrap' },
+      successText: { margin: 0, fontSize: '12px', lineHeight: 1.6, color: 'var(--dsw-alias-state-success-primary)' },
     }
 
     // ── 基础视觉组件 ────────────────────────────────────────────────────────
@@ -474,6 +538,58 @@ window.__ModuleLoader__.load({
           strokeDasharray: `${(circumference * percent) / 100} ${circumference}`,
           transform: 'rotate(-90 7 7)',
         }),
+      )
+    }
+
+    /** 大号环形图：外圈背景 + 进度弧，中心显示百分比/已用。 */
+    function BigRing(props) {
+      const percent = Math.max(0, Math.min(100, Number(props.percent) || 0))
+      const radius = 46
+      const circumference = 2 * Math.PI * radius
+      return h(
+        'div',
+        { style: styles.ringWrap, 'data-ctx-ring': String(Math.round(percent)) },
+        h(
+          'svg',
+          { viewBox: '0 0 104 104', width: 104, height: 104, style: styles.ringSvg, 'aria-hidden': true },
+          h('circle', { cx: 52, cy: 52, r: radius, fill: 'none', stroke: 'var(--dsw-alias-interactive-bg-hover)', strokeWidth: 9 }),
+          h('circle', {
+            cx: 52,
+            cy: 52,
+            r: radius,
+            fill: 'none',
+            stroke: props.color || 'var(--dsw-alias-brand-primary)',
+            strokeWidth: 9,
+            strokeLinecap: 'round',
+            strokeDasharray: `${(circumference * percent) / 100} ${circumference}`,
+            style: { transition: 'stroke-dasharray .6s cubic-bezier(.22,.61,.36,1), stroke .2s ease' },
+          }),
+        ),
+        h(
+          'div',
+          { style: styles.ringCenter },
+          h('span', { style: { ...styles.ringPercent, color: props.color } }, percent === null ? '—' : `${Math.round(percent)}%`),
+          h('span', { style: styles.ringLabel }, props.label || ''),
+        ),
+      )
+    }
+
+    /** 四色图例：色点 + 名称 + 右对齐的数值/占比。 */
+    function LegendGrid(props) {
+      const categories = Array.isArray(props.categories) ? props.categories : []
+      if (categories.length === 0) return null
+      return h(
+        'div',
+        { style: styles.legend },
+        categories.map((row) =>
+          h(
+            'div',
+            { key: row.key, style: styles.legendItem, 'data-ctx-legend': row.key, title: `${row.label} · ${formatTokens(row.tokens)} ${props.tokensLabel || ''}` },
+            h('i', { style: { ...styles.dot, background: row.color } }),
+            h('span', { style: styles.legendName }, row.label),
+            h('span', { style: styles.legendValue }, `${compactTokens(row.tokens)} · ${formatPercent(row.share)}`),
+          ),
+        ),
       )
     }
 
@@ -582,14 +698,18 @@ window.__ModuleLoader__.load({
 
     /** 打开页面时同步一次 /live；重新可见/窗口聚焦或点刷新时再同步，不做定时轮询。 */
     function useLive(path, refreshKey) {
-      const [state, setState] = react.useState({ data: null, at: null })
+      const [state, setState] = react.useState({ data: null, at: null, error: null })
       const reload = react.useCallback(() => {
         fetch(path, { headers: { accept: 'application/json' } })
-          .then((response) => (response.ok ? response.json() : null))
-          .then((payload) => {
-            if (payload && payload.ok) setState({ data: payload, at: new Date().toISOString() })
+          .then((response) => {
+            if (!response.ok) throw new Error(`HTTP ${response.status}`)
+            return response.json()
           })
-          .catch(() => {})
+          .then((payload) => {
+            if (payload && payload.ok) setState({ data: payload, at: new Date().toISOString(), error: null })
+            else throw new Error('invalid payload')
+          })
+          .catch((error) => setState((previous) => ({ ...previous, error: String((error && error.message) || error) })))
       }, [path])
       react.useEffect(() => {
         reload()
@@ -607,6 +727,23 @@ window.__ModuleLoader__.load({
     }
 
     // ── 输入框下方指示器：与内置 ContextMeter 同排版，点击弹出小明细 ────────
+    /** 从 dock 弹层跳到完整 ctx 页面（点侧栏同名入口）。 */
+    function openCtxPanelPage() {
+      try {
+        const candidates = Array.from(document.querySelectorAll('button, [role="button"], a'))
+        const target = candidates.find((element) => {
+          const label = (element.getAttribute('aria-label') || '').trim()
+          const text = (element.textContent || '').replace(/\s+/g, ' ').trim()
+          return label === 'ctx' || text === 'ctx'
+        })
+        if (target) {
+          target.click()
+          return true
+        }
+      } catch {}
+      return false
+    }
+
     function CtxDock(props) {
       const t = props.t
       const selectedSession = useCurrentSession()
@@ -689,7 +826,7 @@ window.__ModuleLoader__.load({
             'aria-haspopup': 'dialog',
             'aria-expanded': open,
             'aria-label': `${t('meterAria')}${percent === null ? '' : ` ${percent}%`}`,
-            title: used !== null && budget !== null ? `${formatTokens(used)} / ${formatTokens(budget)} ${t('tokens')}` : t('meterAria'),
+            title: used !== null && budget !== null ? `${formatTokens(used)} / ${formatTokens(budget)} ${t('tokens')}${ratioState(ratio) === 'error' ? ` · ${t('statusError')}` : ratioState(ratio) === 'warn' ? ` · ${t('statusWarn')}` : ''}` : t('meterAria'),
             'data-ctx-dock': '1',
             onClick: () => setOpen(!open),
             onMouseEnter: () => setHovered(true),
@@ -723,6 +860,15 @@ window.__ModuleLoader__.load({
                 ),
                 h('div', { style: meter.row }, h('dt', null, t('control')), h('dd', { style: meter.figures }, props.controlActive ? t('controlOn') : t('controlOff'))),
                 h('p', { style: { margin: '6px 0 0', fontSize: '11px', opacity: 0.7 } }, t('compositionHint')),
+                h(
+                  'div',
+                  { style: { marginTop: '8px', paddingTop: '8px', borderTop: '0.5px solid var(--dsw-alias-border-l1)', display: 'flex', justifyContent: 'flex-end' } },
+                  h(
+                    'button',
+                    { type: 'button', style: styles.copyBtn, 'data-ctx-open-panel': '1', onClick: () => { setOpen(false); openCtxPanelPage() } },
+                    t('openPanel'),
+                  ),
+                ),
               ),
             )
           : null,
@@ -741,31 +887,33 @@ window.__ModuleLoader__.load({
       const budgetTokens = liveBudget !== null ? liveBudget : budget.tokens
       const ratio = used !== null && budgetTokens > 0 ? used / budgetTokens : null
       const color = ratioColor(ratio)
+      const state = ratioState(ratio)
+      const remaining = used !== null && budgetTokens > 0 ? Math.max(0, budgetTokens - used) : null
       const breakdown = (live && live.breakdown) || (liveUsed === null && latest ? latest.breakdown : null)
       const categories = breakdownCategories(t, breakdown)
       const sub = live ? `${t('synced')} ${formatTime(props.liveAt)}` : latest ? formatTime(latest.at) : undefined
       return h(
         Card,
-        { title: t('budget'), sub },
+        { title: t('budget'), sub, action: h(StatusBadge, { t, state }) },
         h(
           'div',
-          { style: { display: 'flex', alignItems: 'baseline', gap: '8px' } },
-          h('span', { style: { fontSize: '24px', fontWeight: 600, fontVariantNumeric: 'tabular-nums', lineHeight: '32px', color } }, ratio === null ? '—' : formatPercent(ratio)),
-          h('span', { style: { ...styles.cardSub, marginLeft: 0 } }, `${compactTokens(used)} / ${compactTokens(budgetTokens)} ${t('tokens')}`),
+          { style: styles.heroBody },
+          h(BigRing, { percent: ratio === null ? 0 : ratio * 100, color, label: t('ratio') }),
+          h(
+            'div',
+            { style: styles.kpiGrid },
+            h('div', { style: styles.kpi }, h('span', { style: styles.kpiLabel }, t('used')), h('span', { style: styles.kpiValue }, compactTokens(used)), h('span', { style: styles.kpiSub }, `${t('tokens')} · ${formatPercent(ratio, 0)}`)),
+            h('div', { style: styles.kpi }, h('span', { style: styles.kpiLabel }, t('budget')), h('span', { style: styles.kpiValue }, compactTokens(budgetTokens)), h('span', { style: styles.kpiSub }, t('tokens'))),
+            h('div', { style: styles.kpi }, h('span', { style: styles.kpiLabel }, t('remaining')), h('span', { style: styles.kpiValue }, compactTokens(remaining)), h('span', { style: styles.kpiSub }, t('tokens'))),
+          ),
         ),
         h(SegmentedBar, { usedRatio: ratio ?? 0, categories }),
-        categories.length > 0
-          ? h(
-              'div',
-              { style: styles.chipRow },
-              categories.map((row) => h(StatChip, { key: row.key, dataKey: row.key, label: row.label, value: `${compactTokens(row.tokens)} · ${formatPercent(row.share)}`, dot: row.color })),
-            )
-          : null,
+        h(LegendGrid, { categories, tokensLabel: t('tokens') }),
         h(
           'div',
-          { style: styles.chipRow },
-          h(StatChip, { label: t('warnAt'), value: formatPercent(budget.warnAt, 0) }),
-          h(StatChip, { label: t('errorAt'), value: formatPercent(budget.errorAt, 0) }),
+          { style: styles.thresholds },
+          h('span', { style: { ...styles.thresholdChip, color: 'var(--dsw-alias-state-warn-primary)' } }, `${t('warnAt')} ${formatPercent(budget.warnAt, 0)}`),
+          h('span', { style: { ...styles.thresholdChip, color: 'var(--dsw-alias-state-error-primary)' } }, `${t('errorAt')} ${formatPercent(budget.errorAt, 0)}`),
         ),
         h('p', { style: styles.text }, t('hint')),
       )
@@ -783,6 +931,8 @@ window.__ModuleLoader__.load({
       const disabledSessionPrompts = Array.isArray(data.disabledSessionPrompts) ? data.disabledSessionPrompts : []
       const disabledGlobalTools = Array.isArray(data.disabledTools) ? data.disabledTools : []
       const [open, setOpen] = react.useState({ tools: false, prompts: false })
+      const [onlyEnabled, setOnlyEnabled] = react.useState(false)
+      const autoOpenRef = react.useRef(false)
       const [expanded, setExpanded] = react.useState({})
       const [copied, setCopied] = react.useState(null)
       const [pending, setPending] = react.useState(null)
@@ -977,6 +1127,21 @@ window.__ModuleLoader__.load({
         if (!sections.some((section) => section.name === name)) sections.push({ name, tokens: null, text: '' })
       }
 
+      const enabledToolName = (name) => !disabledSessionTools.includes(name) && !disabledGlobalTools.includes(name)
+      const enabledPromptName = (name) => !disabledSessionPrompts.includes(name)
+      const enabledTools = tools.filter((tool) => enabledToolName(tool.name))
+      const enabledSections = sections.filter((section) => enabledPromptName(section.name))
+      const visibleTools = onlyEnabled ? enabledTools : tools
+      const visibleSections = onlyEnabled ? enabledSections : sections
+
+      // 内容少时默认展开，内容多时默认折叠；用户手动点过之后不再自动改变。
+      react.useEffect(() => {
+        if (autoOpenRef.current || !inventory) return
+        autoOpenRef.current = true
+        setOpen({ tools: tools.length > 0 && tools.length <= 6, prompts: sections.length > 0 && sections.length <= 6 })
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+      }, [inventory])
+
       const toolRow = (tool) => {
         const key = `tool:${tool.name}`
         const schemaText = tool.parameters ? JSON.stringify(tool.parameters, null, 2) : ''
@@ -1087,24 +1252,77 @@ window.__ModuleLoader__.load({
         )
       }
 
-      const empty = tools.length === 0 && sections.length === 0
+      const loading = Boolean(props.loading) && !inventory
+      const loadError = props.error ? String(props.error) : null
+      const empty = !loading && !loadError && tools.length === 0 && sections.length === 0
+      const refreshButton = h('button', { type: 'button', style: styles.button, onClick: props.reload }, t('refresh'))
+      if (loading) {
+        return h(
+          Card,
+          { title: t('inventoryTitle') },
+          h(
+            'div',
+            { style: styles.skeletonStack, 'data-ctx-inventory-loading': '1' },
+            h('div', { style: { ...styles.skeleton, width: '46%' } }),
+            h('div', { style: { ...styles.skeleton, width: '72%' } }),
+            h('div', { style: { ...styles.skeleton, width: '58%' } }),
+          ),
+        )
+      }
+      if (loadError) {
+        return h(
+          Card,
+          { title: t('inventoryTitle') },
+          h(
+            'div',
+            { style: styles.emptyState, 'data-ctx-inventory-error': '1' },
+            h('p', { style: styles.error }, `${t('inventoryLoadFailed')}: ${loadError}`),
+            refreshButton,
+          ),
+        )
+      }
       return h(
         Card,
         { title: t('inventoryTitle'), sub: data.sessionId ? String(data.sessionId).slice(0, 8) : undefined },
-        empty ? h('p', { style: styles.emptyText }, t('inventoryEmpty')) : null,
+        empty
+          ? h(
+              'div',
+              { style: styles.emptyState, 'data-ctx-inventory-empty': '1' },
+              h('p', { style: styles.emptyText }, t('inventoryEmpty')),
+              refreshButton,
+            )
+          : null,
         !empty
           ? h(
               'div',
-              { style: { display: 'flex', flexDirection: 'column', gap: '12px' } },
+              { style: { display: 'flex', flexDirection: 'column', gap: '10px' } },
+              h(
+                'div',
+                { style: styles.filterRow },
+                h('span', { style: styles.filterCount }, `${t('inventoryTools')} ${enabledTools.length}/${tools.length}`),
+                h('span', { style: styles.filterCount }, `${t('inventoryPrompts')} ${enabledSections.length}/${sections.length}`),
+                h(
+                  'button',
+                  {
+                    type: 'button',
+                    style: { ...styles.filterToggle, ...(onlyEnabled ? styles.filterToggleOn : null) },
+                    'data-ctx-only-enabled': String(onlyEnabled),
+                    'aria-pressed': onlyEnabled,
+                    onClick: () => setOnlyEnabled(!onlyEnabled),
+                  },
+                  onlyEnabled ? '✓ ' : '',
+                  t('onlyEnabled'),
+                ),
+              ),
               h(
                 'div',
                 { style: styles.inventorySection },
                 h(
                   'button',
                   { type: 'button', style: styles.sectionHead, 'data-ctx-section': 'tools', onClick: () => setOpen({ ...open, tools: !open.tools }) },
-                  chevron(open.tools), t('inventoryTools'), h('span', { style: styles.cardSub }, String(tools.length)),
+                  chevron(open.tools), t('inventoryTools'), h('span', { style: styles.cardSub }, onlyEnabled ? `${visibleTools.length}/${tools.length}` : String(tools.length)),
                 ),
-                open.tools ? h('ul', { style: styles.inventoryList }, tools.map(toolRow)) : null,
+                open.tools ? (visibleTools.length === 0 ? h('p', { style: styles.emptyText }, t('noneEnabled')) : h('ul', { style: styles.inventoryList }, visibleTools.map(toolRow))) : null,
               ),
               h(
                 'div',
@@ -1112,9 +1330,9 @@ window.__ModuleLoader__.load({
                 h(
                   'button',
                   { type: 'button', style: styles.sectionHead, 'data-ctx-section': 'prompts', onClick: () => setOpen({ ...open, prompts: !open.prompts }) },
-                  chevron(open.prompts), t('inventoryPrompts'), h('span', { style: styles.cardSub }, String(sections.length)),
+                  chevron(open.prompts), t('inventoryPrompts'), h('span', { style: styles.cardSub }, onlyEnabled ? `${visibleSections.length}/${sections.length}` : String(sections.length)),
                 ),
-                open.prompts ? h('ul', { style: styles.inventoryList }, sections.map(promptRow)) : null,
+                open.prompts ? (visibleSections.length === 0 ? h('p', { style: styles.emptyText }, t('noneEnabled')) : h('ul', { style: styles.inventoryList }, visibleSections.map(promptRow))) : null,
               ),
               h('p', { style: styles.text }, t('inventoryRisk')),
               restorePending
@@ -1128,7 +1346,6 @@ window.__ModuleLoader__.load({
                 : h('button', { type: 'button', style: styles.button, 'data-ctx-restore-all': '1', onClick: () => setRestorePending(true) }, t('restoreAll')),
             )
           : null,
-        h('button', { key: 'reload', type: 'button', style: styles.button, onClick: props.reload }, t('refresh')),
       )
     }
 
@@ -1172,29 +1389,38 @@ window.__ModuleLoader__.load({
         Card,
         {
           title: t('control'),
-          sub: control.active ? t('controlOn') : t('controlOff'),
+          style: styles.cardFill,
+          action: control.active
+            ? h(StatusBadge, { t, state: 'ok' })
+            : h('span', { style: { ...styles.badge, color: 'var(--dsw-alias-label-tertiary)', borderColor: 'var(--dsw-alias-border-l2)' } }, t('controlOff')),
         },
         h('p', { style: styles.text }, control.active ? t('controlReady') : t('controlMissing')),
         control.active && control.lastCompaction
           ? h(
-              'p',
-              { style: styles.text },
-              `${t('controlLast')}: ${compactTokens(control.lastCompaction.before)} → ${compactTokens(control.lastCompaction.after)} ${t('tokens')} · ${formatTime(control.lastCompactionAt)}`,
+              'div',
+              { style: styles.kpi },
+              h('span', { style: styles.kpiLabel }, t('controlLast')),
+              h('span', { style: styles.kpiValue }, `${compactTokens(control.lastCompaction.before)} → ${compactTokens(control.lastCompaction.after)}`),
+              h('span', { style: styles.kpiSub }, `${t('tokens')} · ${formatTime(control.lastCompactionAt)}`),
             )
           : null,
         control.lastError
           ? h('p', { style: styles.error, 'data-ctx-lasterror': '1' }, `${t('controlError')}: ${control.lastError}`)
           : null,
-        control.presetMountable ? h('p', { style: styles.text }, t('controlPresetHint')) : null,
-        control.presetMountable
-          ? h(
-              'button',
-              { type: 'button', style: styles.button, disabled: state.kind === 'saving', onClick: () => toggle(!control.active) },
-              state.kind === 'saving' ? t('controlBusy') : control.active ? t('controlDisable') : t('controlEnable'),
-            )
-          : null,
-        state.kind === 'error' ? h('p', { style: styles.error }, state.message) : null,
-        state.kind === 'notice' ? h('p', { style: styles.text }, state.message) : null,
+        control.presetMountable ? h('p', { style: { ...styles.text, color: 'var(--dsw-alias-label-tertiary)', fontSize: '11.5px' } }, t('controlPresetHint')) : null,
+        h(
+          'div',
+          { style: styles.actionRow },
+          control.presetMountable
+            ? h(
+                'button',
+                { type: 'button', style: { ...styles.button, ...(control.active ? null : styles.buttonPrimary) }, disabled: state.kind === 'saving', onClick: () => toggle(!control.active) },
+                state.kind === 'saving' ? t('controlBusy') : control.active ? t('controlDisable') : t('controlEnable'),
+              )
+            : null,
+          state.kind === 'error' ? h('p', { style: styles.error }, state.message) : null,
+          state.kind === 'notice' ? h('p', { style: styles.successText }, state.message) : null,
+        ),
       )
     }
 
@@ -1256,9 +1482,10 @@ window.__ModuleLoader__.load({
       }
 
       const disabled = !editable || result.kind === 'saving'
+      const source = typeof budget.source === 'string' && budget.source !== '' ? budget.source : null
       return h(
         Card,
-        { title: t('configTitle'), sub: editable ? undefined : t('configUnavailable') },
+        { title: t('configTitle'), style: styles.cardFill, sub: editable ? undefined : t('configUnavailable') },
         editable
           ? h(
               'div',
@@ -1266,27 +1493,49 @@ window.__ModuleLoader__.load({
               h(
                 'label',
                 { style: styles.field },
-                h('span', { style: styles.label }, t('defaultBudget')),
+                h(
+                  'span',
+                  { style: styles.fieldLabelRow },
+                  h('span', { style: styles.label }, t('defaultBudgetShort')),
+                  h('span', { style: styles.fieldUnit }, t('tokens')),
+                ),
                 h('input', { style: styles.input, type: 'number', min: 1, step: 1000, value: draft.tokens, disabled, onChange: (event) => setDraft({ ...draft, tokens: event.target.value }) }),
               ),
               h(
                 'label',
                 { style: styles.field },
-                h('span', { style: styles.label }, t('warnLabel')),
+                h(
+                  'span',
+                  { style: styles.fieldLabelRow },
+                  h('span', { style: styles.label }, t('warnLabel')),
+                  h('span', { style: styles.fieldUnit }, '0–1'),
+                ),
                 h('input', { style: styles.input, type: 'number', min: 0.01, max: 1, step: 0.01, value: draft.warn, disabled, onChange: (event) => setDraft({ ...draft, warn: event.target.value }) }),
               ),
               h(
                 'label',
                 { style: styles.field },
-                h('span', { style: styles.label }, t('errorLabel')),
+                h(
+                  'span',
+                  { style: styles.fieldLabelRow },
+                  h('span', { style: styles.label }, t('errorLabel')),
+                  h('span', { style: styles.fieldUnit }, '0–1'),
+                ),
                 h('input', { style: styles.input, type: 'number', min: 0.01, max: 1, step: 0.01, value: draft.error, disabled, onChange: (event) => setDraft({ ...draft, error: event.target.value }) }),
               ),
             )
           : null,
+        source ? h('p', { style: { ...styles.cardSub, marginLeft: 0 } }, `${t('source')}: ${source}`) : null,
         h('p', { style: styles.text }, t('configHint')),
-        result.kind === 'saved' ? h('p', { style: styles.text }, t('saved')) : null,
-        result.kind === 'error' ? h('p', { style: styles.error }, result.message) : null,
-        editable ? h('button', { type: 'button', style: styles.button, onClick: save, disabled }, result.kind === 'saving' ? t('saving') : t('save')) : null,
+        h(
+          'div',
+          { style: styles.actionRow },
+          editable
+            ? h('button', { type: 'button', style: { ...styles.button, ...styles.buttonPrimary }, onClick: save, disabled }, result.kind === 'saving' ? t('saving') : t('save'))
+            : null,
+          result.kind === 'saved' ? h('p', { style: styles.successText, 'data-ctx-config-saved': '1' }, t('saved')) : null,
+          result.kind === 'error' ? h('p', { style: styles.error }, result.message) : null,
+        ),
       )
     }
 
@@ -1324,17 +1573,45 @@ window.__ModuleLoader__.load({
       ]
 
       if (state.phase === 'loading') {
-        children.push(h('p', { key: 'loading', style: styles.text }, t('loading')))
+        children.push(
+          h(
+            'div',
+            { key: 'loading', style: styles.card },
+            h(
+              'div',
+              { style: styles.skeletonStack },
+              h('div', { style: { ...styles.skeleton, width: '38%', height: '14px' } }),
+              h('div', { style: { ...styles.skeleton, width: '100%', height: '84px' } }),
+              h('div', { style: { ...styles.skeleton, width: '64%' } }),
+            ),
+          ),
+        )
       } else if (state.phase === 'error') {
-        children.push(h('p', { key: 'error', style: styles.error }, `${t('error')}: ${state.message}`))
-        children.push(h('button', { key: 'retry', type: 'button', style: styles.button, onClick: load }, t('retry')))
+        children.push(
+          h(
+            'div',
+            { key: 'error', style: styles.emptyState },
+            h('p', { style: styles.error }, `${t('error')}: ${state.message}`),
+            h('button', { type: 'button', style: styles.button, onClick: load }, t('retry')),
+          ),
+        )
       } else {
         // 概览卡占满一行；控制卡 + 全局配置卡并排两列。
         children.push(h(OverviewCard, { key: 'overview', t, budget, latest, live, liveAt: liveState.at, controlActive: Boolean(control.active) }))
         children.push(
           h('div', { key: 'cols', style: styles.cols }, h(ControlSection, { t, control, onToggled: load }), h(ConfigSection, { t, budget, editable: Boolean(data.configEditable), onSaved: load })),
         )
-        children.push(h(InventoryCard, { key: 'inventory', t, data: invState.data, reload: reloadInv, sessionId: activeSession }))
+        children.push(
+          h(InventoryCard, {
+            key: 'inventory',
+            t,
+            data: invState.data,
+            loading: invState.data === null && invState.error === null,
+            error: invState.data === null ? invState.error : null,
+            reload: reloadInv,
+            sessionId: activeSession,
+          }),
+        )
         children.push(h('button', { key: 'refresh', type: 'button', style: styles.button, onClick: () => { load(); reloadLive(); reloadInv() } }, t('refresh')))
       }
       return h('div', { style: styles.root, 'data-ctx-panel': '1' }, children)

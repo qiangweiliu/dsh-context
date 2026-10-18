@@ -1,7 +1,7 @@
 # 验收证据（ctx-mon-and-con）
 
 - 仓库：<https://github.com/qiangweiliu/dsh-context>（插件目录 `plugin-skeleton/`）
-- 版本：`0.14.13`（本文件随 manifest 兼容性声明一起提交）
+- 版本：`0.14.14`（本文件随 manifest 兼容性声明一起提交）
 - 采集日期：2026-10-18
 - 证据层级说明：`verified` = 本次固定源码上实际执行并记录结果；`partial` = 只在明确边界内验证；`unknown` = 未取得证据。**这些证据不构成独立安全审计，也不替代商城的专项审阅。**
 
@@ -34,7 +34,7 @@ ok   - bundles 含该包: true
 ok   - dependencies 含该包: true
 ok   - node_modules/ctx-mon-and-con 存在（link -> /home/wu/dsh-plugins/ctx-mon-and-con）
 ok   - --dump-config 出现该行（5 处）
-安装完成：ctx-mon-and-con@0.14.13 已进入 profile web
+安装完成：ctx-mon-and-con@0.14.14 已进入 profile web
 ```
 
 ## E3. 启动与 UI（verified，web profile）
@@ -45,7 +45,7 @@ ok   - --dump-config 出现该行（5 处）
 GET /api/ctx-mon-and-con/status
 {
   "plugin": "ctx-mon-and-con",
-  "version": "0.14.13",
+  "version": "0.14.14",
   "budget": { "tokens": 128000, "warnAt": 0.75, "errorAt": 0.9, "source": "default" },
   "control": { "active": true, "mode": "idle", "presetMounted": true, "lastError": null }
 }
@@ -56,9 +56,9 @@ GET /api/ctx-mon-and-con/status
 ```json
 {
   "ok": true,
-  "version": "v0.14.13",
+  "version": "v0.14.14",
   "title": "上下文监控",
-  "chipTitleAttr": "插件版本: 0.14.13",
+  "chipTitleAttr": "插件版本: 0.14.14",
   "panelPresent": true,
   "errors": []
 }
@@ -84,9 +84,9 @@ ok   - --dump-config 不再出现该行
 
 ## E5. Windows 桌面真实 profile（partial）
 
-- 安装组合已注册：`profiles/desktop/package.json` 的 `dependencies` 含 `"ctx-mon-and-con": "link:C:/Users/40410/Desktop/context/plugin-skeleton"`，`dsh.profile.bundles` 含 `ctx-mon-and-con`；已安装副本版本 `0.14.13`。
+- 安装组合已注册：`profiles/desktop/package.json` 的 `dependencies` 含 `"ctx-mon-and-con": "link:C:/Users/40410/Desktop/context/plugin-skeleton"`，`dsh.profile.bundles` 含 `ctx-mon-and-con`；已安装副本版本 `0.14.14`。
 - 桌面版不允许 CLI 管理该 profile（`profile "desktop" is managed exclusively by the Electron application`），由 Electron 启动时加载；历史运行实例已验证：status 路由 HTTP 200、`version` 与已安装副本一致、`control.active: true`、`presetMounted: true`，并真实执行过压缩（一次记录：before `215229` → after `80639`，`lastError: null`）。
-- **当前运行实例是旧版本（0.14.11），0.14.13 需重启桌面版后生效**；重启后应出现「上下文监控 / v0.14.13」与 `data-ctx-version` 标签。
+- **当前运行实例是旧版本（0.14.11），0.14.14 需重启桌面版后生效**；重启后应出现「上下文监控 / v0.14.14」与 `data-ctx-version` 标签。
 
 ## E6. 权限静态审计（partial）
 
@@ -103,6 +103,16 @@ npm 运行依赖：无；生命周期脚本：无
 ```
 
 完整权限矩阵与失败边界见 [PERMISSIONS.md](PERMISSIONS.md)。
+
+## E7. UI 优化验证（partial，2026-10-18）
+
+- 版本：`0.14.14`（WSL profile web 安装后由 headless Edge + CDP 截图验证）。
+- 修复：概览卡/工具卡不再被纵向 `flex-basis` 撑到 ~320px 高；空态/加载态改为高度自适应；阈值颜色变量改为真实存在的 `--dsw-alias-state-warn-primary`。
+- 概览卡改为环形图 + 已用/上限/剩余 KPI + 8px 分段条 + 右对齐图例；顶部状态 badge（正常/警告/超限）。
+- 工具与提示词：≤6 项自动展开、>6 项默认折叠；「仅看已启用」筛选；加载 skeleton / 空态虚线框 / 错误重试。
+- Dock 弹层底部新增「打开完整面板」，点击跳到侧栏 ctx 页（弹层内已验证按钮存在并可点）。
+- 截图：`docs/ui/current-panel-session.png`（1400px，6% 真实用量）、`docs/ui/current-panel-empty.png`、`docs/ui/current-dock-popover.png`、`docs/ui/current-panel-900.png`（900px 宽度）。
+- 未覆盖：浅色主题截图、600px 宽度、Firefox/Safari；桌面运行实例需重启后才加载 `0.14.14`（当前仍是 0.14.11）。
 
 ## 已知限制（unknown）
 

@@ -1,7 +1,7 @@
 # 验收证据（ctx-mon-and-con）
 
 - 仓库：<https://github.com/qiangweiliu/dsh-context>（插件目录 `plugin-skeleton/`）
-- 版本：`0.14.15`（本文件随 manifest 兼容性声明一起提交）
+- 版本：`0.14.16`（本文件随 manifest 兼容性声明一起提交）
 - 采集日期：2026-10-18
 - 证据层级说明：`verified` = 本次固定源码上实际执行并记录结果；`partial` = 只在明确边界内验证；`unknown` = 未取得证据。**这些证据不构成独立安全审计，也不替代商城的专项审阅。**
 
@@ -34,7 +34,7 @@ ok   - bundles 含该包: true
 ok   - dependencies 含该包: true
 ok   - node_modules/ctx-mon-and-con 存在（link -> /home/wu/dsh-plugins/ctx-mon-and-con）
 ok   - --dump-config 出现该行（5 处）
-安装完成：ctx-mon-and-con@0.14.15 已进入 profile web
+安装完成：ctx-mon-and-con@0.14.16 已进入 profile web
 ```
 
 ## E3. 启动与 UI（verified，web profile）
@@ -45,7 +45,7 @@ ok   - --dump-config 出现该行（5 处）
 GET /api/ctx-mon-and-con/status
 {
   "plugin": "ctx-mon-and-con",
-  "version": "0.14.15",
+  "version": "0.14.16",
   "budget": { "tokens": 128000, "warnAt": 0.75, "errorAt": 0.9, "source": "default" },
   "control": { "active": true, "mode": "idle", "presetMounted": true, "lastError": null }
 }
@@ -56,9 +56,9 @@ GET /api/ctx-mon-and-con/status
 ```json
 {
   "ok": true,
-  "version": "v0.14.15",
+  "version": "v0.14.16",
   "title": "上下文监控",
-  "chipTitleAttr": "插件版本: 0.14.15",
+  "chipTitleAttr": "插件版本: 0.14.16",
   "panelPresent": true,
   "errors": []
 }
@@ -84,9 +84,9 @@ ok   - --dump-config 不再出现该行
 
 ## E5. Windows 桌面真实 profile（partial）
 
-- 安装组合已注册：`profiles/desktop/package.json` 的 `dependencies` 含 `"ctx-mon-and-con": "link:C:/Users/40410/Desktop/context/plugin-skeleton"`，`dsh.profile.bundles` 含 `ctx-mon-and-con`；已安装副本版本 `0.14.15`。
+- 安装组合已注册：`profiles/desktop/package.json` 的 `dependencies` 含 `"ctx-mon-and-con": "link:C:/Users/40410/Desktop/context/plugin-skeleton"`，`dsh.profile.bundles` 含 `ctx-mon-and-con`；已安装副本版本 `0.14.16`。
 - 桌面版不允许 CLI 管理该 profile（`profile "desktop" is managed exclusively by the Electron application`），由 Electron 启动时加载；历史运行实例已验证：status 路由 HTTP 200、`version` 与已安装副本一致、`control.active: true`、`presetMounted: true`，并真实执行过压缩（一次记录：before `215229` → after `80639`，`lastError: null`）。
-- **当前运行实例是旧版本（0.14.11），0.14.15 需重启桌面版后生效**；重启后应出现「上下文监控 / v0.14.15」与 `data-ctx-version` 标签。
+- **当前运行实例是旧版本（0.14.11），0.14.16 需重启桌面版后生效**；重启后应出现「上下文监控 / v0.14.16」与 `data-ctx-version` 标签。
 
 ## E6. 权限静态审计（partial）
 
@@ -106,14 +106,24 @@ npm 运行依赖：无；生命周期脚本：无
 
 ## E7. UI 优化验证（partial，2026-10-18）
 
-- 版本：`0.14.15`（WSL profile web 安装后由 headless Edge + CDP 截图验证）。
+- 版本：`0.14.16`（WSL profile web 安装后由 headless Edge + CDP 截图验证）。
 - 修复：概览卡/工具卡不再被纵向 `flex-basis` 撑到 ~320px 高；空态/加载态改为高度自适应；阈值颜色变量改为真实存在的 `--dsw-alias-state-warn-primary`。
 - 概览卡改为环形图 + 已用/上限/剩余 KPI + 8px 分段条 + 右对齐图例；顶部状态 badge（正常/警告/超限）。
 - 工具与提示词：≤6 项自动展开、>6 项默认折叠；「仅看已启用」筛选；加载 skeleton / 空态虚线框 / 错误重试。
 - Dock 弹层底部新增「打开完整面板」，点击跳到侧栏 ctx 页（弹层内已验证按钮存在并可点）。
 - P2：卡片头折叠按钮 + `localStorage` 记忆，刷新后 `data-ctx-collapsed="1"`、`stored={"inventory":true}`（CDP 实测）；`prefers-reduced-motion: reduce` 模拟下注入的 `<style>` 生效，环形图 `transition-duration` 变为 `1e-05s`；KPI/图例/环形图均带精确 token `title`；新增「较上次同步」增量 KPI（同会话两次刷新的差值）。
 - 截图：`docs/ui/current-panel-session.png`（1400px 暗色，6% 真实用量）、`docs/ui/current-panel-empty.png`、`docs/ui/current-panel-light.png`（浅色主题：移除 body `data-ds-dark-theme` 与内联 `--dsw-*` 后截图）、`docs/ui/current-panel-900.png`、`docs/ui/current-panel-600.png`（600px 窄屏：hero 自动换行、卡片单列）、`docs/ui/current-panel-collapsed.png`、`docs/ui/current-dock-popover.png`。
-- 未覆盖：Firefox/Safari（本机未安装 Firefox，WebKit 不可用）；浅色主题用「切换 `data-ds-theme-source` + 移除 body 暗色 token」模拟，未走 app 设置里的主题偏好切换；桌面运行实例需重启后才加载 `0.14.15`（当前仍是 0.14.11）。
+- 未覆盖：Firefox/Safari（本机未安装 Firefox，WebKit 不可用）；浅色主题用「切换 `data-ds-theme-source` + 移除 body 暗色 token」模拟，未走 app 设置里的主题偏好切换；桌面运行实例需重启后才加载 `0.14.16`（当前仍是 0.14.11）。
+
+## E8. 压缩记录（成功 / 失败日志）验证（partial，2026-10-18）
+
+- 版本：`0.14.16`。
+- 事件源：`control.js` 在 `enforce`（manual/idle）、`compactIfNeeded` / `compactRegion`（idle/step）的成功与失败分支调用 `recordCompactionEvent`；失败同时保留 `lastError`。`state.js` 内存最多 200 条，`index.js` 订阅后追加 JSONL。
+- 测试：`control 42/42`（新增 success-idle 日志、failure-含原因、manual-success 3 条断言）；`smoke 46/46`（新增 status.control.log 数组、临时 HOME 下 JSONL 落盘、status 返回刚写入记录 3 条断言）；`static 49/49`（state 导出接口 + client 可折叠容器）。
+- 持久化：`~/.dsh/ctx-mon-and-con/compaction-log.jsonl`；宿主 apply 时 hydrate，`subscribeCompactionLog` 追加；超过 512KB 只保留最近 400 行。
+- UI：控制卡底部「压缩记录 N」默认折叠；展开后每条记录独占一个块（结果 badge、时间、before→after、轮次、trigger、session 短 id），失败原因另起一行、长文案自动换行，不会把多条记录挤在同一行。
+- 截图：`docs/ui/current-compaction-log.png`（暗色）、`docs/ui/current-compaction-log-light.png`（浅色）；用 3 条种子记录验证「重启后从 JSONL hydrate」的渲染。
+- 未覆盖：真实压缩事件的写盘只在测试 harness（临时 HOME）中验证；WSL 运行实例当前未触发真实压缩，故 UI 截图里的 3 条为种子数据。
 
 ## 已知限制（unknown）
 

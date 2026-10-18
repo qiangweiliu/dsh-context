@@ -16,7 +16,7 @@
 export const name = 'ctx-mon-and-con'
 
 /** 与 control.js 共享的进程内状态（同一包内相对 import，不涉及 npm 依赖）。 */
-import { copyFileSync, existsSync, mkdirSync, readFileSync, readdirSync, realpathSync, statSync, unlinkSync, writeFileSync } from 'node:fs'
+import { appendFileSync, copyFileSync, existsSync, mkdirSync, readFileSync, readdirSync, realpathSync, statSync, unlinkSync, writeFileSync } from 'node:fs'
 import { homedir } from 'node:os'
 import { dirname, join } from 'node:path'
 
@@ -26,6 +26,9 @@ import {
   clearSessionPromptText,
   getAutoMountControl,
   hydrateSessionToggles,
+  hydrateCompactionLog,
+  listCompactionLog,
+  subscribeCompactionLog,
   setGlobalDisabledTools,
   setGlobalPromptOverrides,
   getAppliedTools,
@@ -49,7 +52,7 @@ import {
 export const inject = ['commands', 'tokenMeter']
 
 /** 与 package.json 的 version 保持一致（只用于状态接口的自述）。 */
-const PLUGIN_VERSION = '0.14.15'
+const PLUGIN_VERSION = '0.14.16'
 
 /** 浏览器半侧 client.js 拉的只读状态接口；两处路径必须一致。 */
 const STATUS_PATH = '/api/ctx-mon-and-con/status'
@@ -364,6 +367,45 @@ export function apply(ctx, config) {
     }
   }
   loadSessionToggles()
+
+  // 压缩记录持久化：~/.dsh/ctx-mon-and-con/compaction-log.jsonl（JSONL，内存最多 200 条）。
+  const COMPACTION_LOG_PATH = join(homedir(), '.dsh', 'ctx-mon-and-con', 'compaction-log.jsonl')
+  const COMPACTION_LOG_MAX_BYTES = 512 * 1024
+  const COMPACTION_LOG_KEEP_LINES = 400
+  const loadCompactionLog = () => {
+    try {
+      if (!existsSync(COMPACTION_LOG_PATH)) return
+      const lines = readFileSync(COMPACTION_LOG_PATH, 'utf8').split('\n').filter((line) => line.trim().length > 0)
+      const entries = []
+      for (const line of lines.slice(-200)) {
+        try {
+          entries.push(JSON.parse(line))
+        } catch {}
+      }
+      hydrateCompactionLog(entries)
+    } catch (error) {
+      const logger = ctx.logger
+      if (typeof logger?.warn === 'function') logger.warn('ctx-mon-and-con: could not load compaction log: ' + (error instanceof Error ? error.message : String(error)))
+    }
+  }
+  loadCompactionLog()
+  ctx.effect(() => {
+    const unsubscribe = subscribeCompactionLog((entry) => {
+      try {
+        mkdirSync(dirname(COMPACTION_LOG_PATH), { recursive: true })
+        appendFileSync(COMPACTION_LOG_PATH, JSON.stringify(entry) + '\n', 'utf8')
+        // 体积过大时只保留最近 N 行，避免长期运行无限增长。
+        if (statSync(COMPACTION_LOG_PATH).size > COMPACTION_LOG_MAX_BYTES) {
+          const lines = readFileSync(COMPACTION_LOG_PATH, 'utf8').split('\n').filter((line) => line.trim().length > 0).slice(-COMPACTION_LOG_KEEP_LINES)
+          writeFileSync(COMPACTION_LOG_PATH, lines.join('\n') + '\n', 'utf8')
+        }
+      } catch (error) {
+        const logger = ctx.logger
+        if (typeof logger?.warn === 'function') logger.warn('ctx-mon-and-con: could not append compaction log: ' + (error instanceof Error ? error.message : String(error)))
+      }
+    })
+    return () => unsubscribe()
+  }, 'ctx-mon-and-con: compaction log persistence')
   const inFlight = new Set()
   // 浏览器状态接口的数据源：按 session id 保留最近 MAX_MEASUREMENTS 条。
   const measurements = new Map()
@@ -475,6 +517,7 @@ export function apply(ctx, config) {
       lastCompactionAt: controlState.at,
       lastError: controlState.lastError,
       lastCompaction: controlState.last,
+      log: listCompactionLog().slice(-50),
       compactionVisible: visible,
       presetRow: 'ctx-mon-and-con/control',
       ...presetMountState(),

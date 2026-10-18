@@ -94,6 +94,84 @@ export function recordCompaction(sessionId, before, after, shadowed) {
   control.last = { before, after, shadowed }
 }
 
+// ── 压缩记录（成功 / 失败）：内存环形缓冲 + 宿主半侧落盘 ──────────────────
+//
+// 控制半侧在压缩发生时调用 recordCompactionEvent；宿主半侧（index.js）订阅
+// 同一份状态并追加到 ~/.dsh/ctx-mon-and-con/compaction-log.jsonl，面板从
+// status 接口读取最近 50 条。持久化放在宿主半侧，测试 import state.js 时不会写盘。
+
+/** 内存里最多保留多少条压缩记录（面板只展示最近 50 条）。 */
+const COMPACTION_LOG_MAX = 200
+
+/** 压缩记录（按时间正序，最新在末尾）。 */
+const compactionLog = []
+
+/** 订阅压缩记录写入（宿主半侧用来落盘）。 */
+const compactionLogListeners = new Set()
+
+const numberOrNull = (value) => (typeof value === 'number' && Number.isFinite(value) ? value : null)
+const integerOrNull = (value) => (Number.isInteger(value) && value >= 0 ? value : null)
+
+/** 记录一条压缩结果（成功或失败），返回写入的条目。 */
+export function recordCompactionEvent(event) {
+  const source = event && typeof event === 'object' ? event : {}
+  const entry = {
+    id: `${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 8)}`,
+    at: new Date().toISOString(),
+    outcome: source.outcome === 'failure' ? 'failure' : 'success',
+    trigger: typeof source.trigger === 'string' && source.trigger.length > 0 ? source.trigger : null,
+    sessionId: typeof source.sessionId === 'string' && source.sessionId.length > 0 ? source.sessionId : null,
+    before: numberOrNull(source.before),
+    after: numberOrNull(source.after),
+    budget: numberOrNull(source.budget),
+    rounds: integerOrNull(source.rounds),
+    shadowed: numberOrNull(source.shadowed),
+    message: typeof source.message === 'string' && source.message.length > 0 ? source.message : null,
+  }
+  compactionLog.push(entry)
+  while (compactionLog.length > COMPACTION_LOG_MAX) compactionLog.shift()
+  for (const listener of compactionLogListeners) {
+    try {
+      listener(entry)
+    } catch {}
+  }
+  return entry
+}
+
+/** 列出内存中的压缩记录（按时间正序）。 */
+export function listCompactionLog() {
+  return compactionLog.slice()
+}
+
+/** 宿主半侧启动时从磁盘回填（按时间正序的 JSON 对象数组）。 */
+export function hydrateCompactionLog(entries) {
+  compactionLog.length = 0
+  if (!Array.isArray(entries)) return
+  for (const entry of entries.slice(-COMPACTION_LOG_MAX)) {
+    if (!entry || typeof entry !== 'object') continue
+    compactionLog.push({
+      id: typeof entry.id === 'string' ? entry.id : `${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 8)}`,
+      at: typeof entry.at === 'string' ? entry.at : new Date().toISOString(),
+      outcome: entry.outcome === 'failure' ? 'failure' : 'success',
+      trigger: typeof entry.trigger === 'string' && entry.trigger.length > 0 ? entry.trigger : null,
+      sessionId: typeof entry.sessionId === 'string' && entry.sessionId.length > 0 ? entry.sessionId : null,
+      before: numberOrNull(entry.before),
+      after: numberOrNull(entry.after),
+      budget: numberOrNull(entry.budget),
+      rounds: integerOrNull(entry.rounds),
+      shadowed: numberOrNull(entry.shadowed),
+      message: typeof entry.message === 'string' && entry.message.length > 0 ? entry.message : null,
+    })
+  }
+}
+
+/** 订阅压缩记录写入；返回取消订阅函数。 */
+export function subscribeCompactionLog(listener) {
+  if (typeof listener !== 'function') return () => {}
+  compactionLogListeners.add(listener)
+  return () => compactionLogListeners.delete(listener)
+}
+
 /** 控制半侧激活/卸载时更新状态。 */
 export function setControlActive(active, mode) {
   control.active = Boolean(active)

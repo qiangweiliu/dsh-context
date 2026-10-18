@@ -210,6 +210,10 @@ check('client 注册 composer dock 指示器', dockEntry.name === 'conversation.
 check('dock 指示器组件是函数', typeof bySlot('conversation.composer.dock').component === 'function', typeof bySlot('conversation.composer.dock').component)
 check('sidebar.panellist 图标组件是函数', typeof bySlot('sidebar.panellist').component === 'function', typeof bySlot('sidebar.panellist').component)
 
+const stateModule = await import(new URL('../state.js', import.meta.url).href)
+check('state 导出压缩记录接口', ['recordCompactionEvent', 'listCompactionLog', 'hydrateCompactionLog', 'subscribeCompactionLog'].every((name) => typeof stateModule[name] === 'function'))
+check('client 含可折叠压缩记录容器', clientSource.includes('data-ctx-compact-log') && clientSource.includes('data-ctx-log-toggle'))
+
 const failed = checks.filter((entry) => !entry.ok)
 console.log(`\n[static] ${checks.length - failed.length}/${checks.length} 项通过`)
 if (failed.length > 0) {

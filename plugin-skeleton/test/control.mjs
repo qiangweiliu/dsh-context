@@ -145,6 +145,7 @@ check('exports apply function', typeof controlPlugin.apply === 'function')
   await root.waterfall('agent/pre-step', { agent, signal: new AbortController().signal }, () => 'inner-reached')
   check('idle 超出上下文先调 compactIfNeeded(pressure)', compaction.calls.length >= 1 && compaction.calls[0].kind === 'compactIfNeeded' && compaction.calls[0].trigger === 'pressure', JSON.stringify(compaction.calls.map((c) => `${c.kind}:${c.trigger}`)))
   check('超出上下文时按上下文触发（默认 0 = 跟随/兜底）', state.control.last?.before === 180000 && state.control.last?.after === 50000, JSON.stringify(state.control.last))
+  check('成功压缩写入 success 日志（idle 触发）', state.listCompactionLog().some((entry) => entry.outcome === 'success' && entry.trigger === 'idle' && entry.before === 180000 && entry.after === 50000), JSON.stringify(state.listCompactionLog().slice(-2)))
 
   meter.tokens = 180000
   compaction.calls.length = 0
@@ -284,6 +285,7 @@ check('exports apply function', typeof controlPlugin.apply === 'function')
   compaction.fail = new Error('summary is not smaller than the shadowed content')
   const returned = await root.waterfall('agent/pre-step', { agent, signal: undefined }, () => 'inner-reached')
   check('压缩失败仍继续 waterfall', returned === 'inner-reached', String(returned))
+  check('失败压缩写入 failure 日志（含原因）', state.listCompactionLog().some((entry) => entry.outcome === 'failure' && typeof entry.message === 'string' && entry.message.includes('smaller')), JSON.stringify(state.listCompactionLog().slice(-2)))
   await fiber.dispose()
   await root.fiber.dispose()
 }
@@ -298,6 +300,7 @@ check('exports apply function', typeof controlPlugin.apply === 'function')
   const outcome = await definition.handler({ agent, signal: new AbortController().signal })
   check('/ctx-compact 成功输出前后用量', outcome.kind === 'success' && outcome.text.includes('150,000') && outcome.text.includes('50,000'), outcome.text)
   check('/ctx-compact 调用了 compactNow', compaction.calls.some((c) => c.kind === 'compactNow'), JSON.stringify(compaction.calls.map((c) => c.kind)))
+  check('手动压缩写入 success 日志（manual 触发）', state.listCompactionLog().some((entry) => entry.outcome === 'success' && entry.trigger === 'manual' && entry.before === 150000 && entry.after === 50000), JSON.stringify(state.listCompactionLog().slice(-2)))
 
   const idle = await definition.handler({ agent, signal: new AbortController().signal })
   check('/ctx-compact 未超出上下文时提示无需压缩', idle.kind === 'success' && /无需压缩/.test(idle.text), idle.text)

@@ -39,6 +39,7 @@ import {
   getGlobalPromptOverrides,
   recordAppliedTools,
   recordCompaction,
+  recordCompactionEvent,
   recordControlError,
   recordInventory,
   recordSyncDebug,
@@ -261,6 +262,17 @@ export function apply(ctx, config) {
     }
   }
 
+  /** 记录一次压缩结果（成功/失败）；失败同时更新 lastError。 */
+  const logCompaction = (event) => {
+    try {
+      recordCompactionEvent(event)
+    } catch {}
+  }
+  const logCompactionFailure = (trigger, message, extra) => {
+    recordControlError(message)
+    logCompaction({ outcome: 'failure', trigger, message, ...(extra || {}) })
+  }
+
   const throttle = (agent) => {
     const now = Date.now()
     const last = lastRun.get(agent) ?? 0
@@ -304,6 +316,18 @@ export function apply(ctx, config) {
         if (after <= budget) break
       }
       recordCompaction(sessionIdOf(agent), before, after, result?.shadowedTokenCount)
+      const compacted = after < before
+      logCompaction({
+        outcome: compacted ? 'success' : 'failure',
+        trigger,
+        sessionId: sessionIdOf(agent),
+        before,
+        after,
+        budget,
+        rounds,
+        shadowed: result?.shadowedTokenCount,
+        message: compacted ? null : `压缩后用量未降低（${formatTokens(before)} → ${formatTokens(after)}，上限 ${formatTokens(budget)}）`,
+      })
       log('info', `${trigger}: ${formatTokens(before)} → ${formatTokens(after)} in ${rounds} round(s) (budget ${formatTokens(budget)})`)
       if (after > budget) log('warn', `${trigger}: still above budget after ${rounds} round(s); nothing else safely compactable`)
       return { before, after, rounds, result }
@@ -325,10 +349,11 @@ export function apply(ctx, config) {
                 after = measure(agent) ?? after
                 if (result !== null && after.totalTokens <= budget) {
                   recordCompaction(sessionIdOf(agent), first.totalTokens, after.totalTokens)
+                  logCompaction({ outcome: 'success', trigger: 'idle', sessionId: sessionIdOf(agent), before: first.totalTokens, after: after.totalTokens, budget, rounds: 0 })
                   return next()
                 }
               } catch (error) {
-                recordControlError(error instanceof Error ? error.message : String(error))
+                logCompactionFailure('idle', error instanceof Error ? error.message : String(error), { sessionId: sessionIdOf(agent), before: first.totalTokens, budget })
               }
               // 引擎阈值未到或仍超预算：只压缩较早历史，保留最近 keepTokens，避免影响当前任务。
               const keepTokens = config.keepTokens > 0 ? config.keepTokens : Math.max(1, Math.floor(budget * 0.25))
@@ -365,16 +390,17 @@ export function apply(ctx, config) {
                   await compaction.compactRegion(compactable[0].seq, compactable[compactable.length - 1].seq, agent, signal)
                   after = measure(agent) ?? after
                 } catch (error) {
-                  recordControlError(error instanceof Error ? error.message : String(error))
+                  logCompactionFailure('idle', error instanceof Error ? error.message : String(error), { sessionId: sessionIdOf(agent), before: first.totalTokens, budget })
                 }
               }
               if (after.totalTokens >= first.totalTokens) {
-                recordControlError(`压缩后用量未降低（${formatTokens(first.totalTokens)} → ${formatTokens(after.totalTokens)}，上限 ${formatTokens(budget)}）；当前预算可能低于系统提示+工具定义的基础开销，或没有可安全压缩的历史`)
+                logCompactionFailure('idle', `压缩后用量未降低（${formatTokens(first.totalTokens)} → ${formatTokens(after.totalTokens)}，上限 ${formatTokens(budget)}）；当前预算可能低于系统提示+工具定义的基础开销，或没有可安全压缩的历史`, { sessionId: sessionIdOf(agent), before: first.totalTokens, after: after.totalTokens, budget })
               } else {
                 recordCompaction(sessionIdOf(agent), first.totalTokens, after.totalTokens)
+                logCompaction({ outcome: 'success', trigger: 'idle', sessionId: sessionIdOf(agent), before: first.totalTokens, after: after.totalTokens, budget })
               }
             } catch (error) {
-              recordControlError(error instanceof Error ? error.message : String(error))
+              logCompactionFailure('idle', error instanceof Error ? error.message : String(error), { sessionId: sessionIdOf(agent) })
             }
             return next()
           }),
@@ -413,7 +439,7 @@ export function apply(ctx, config) {
               .then(() => recordControlError(null))
               .catch((error) => {
                 const message = error instanceof Error ? error.message : String(error)
-                recordControlError(message)
+                logCompactionFailure('idle', message, { sessionId: sessionIdOf(agent) })
                 log('warn', `idle compaction failed: ${message}`)
               })
           }),
@@ -436,10 +462,15 @@ export function apply(ctx, config) {
               const before = measurement.totalTokens
               const result = await compaction.compactIfNeeded(agent, 'pressure', signal)
               const current = measure(agent)
-              recordCompaction(sessionIdOf(agent), before, current ? current.totalTokens : before, result?.shadowedTokenCount)
+              const after = current ? current.totalTokens : before
+              recordCompaction(sessionIdOf(agent), before, after, result?.shadowedTokenCount)
+              logCompaction({ outcome: after < before ? 'success' : 'failure', trigger: 'step', sessionId: sessionIdOf(agent), before, after, budget, rounds: 1, shadowed: result?.shadowedTokenCount, message: after < before ? null : `step 压缩后用量未降低（${formatTokens(before)} → ${formatTokens(after)}，上限 ${formatTokens(budget)}）` })
               log('info', `step compaction: ${describeResult(result)}`)
             } catch (error) {
-              if (!signal?.aborted) log('warn', `step compaction failed: ${error instanceof Error ? error.message : String(error)}`)
+              if (!signal?.aborted) {
+                logCompactionFailure('step', error instanceof Error ? error.message : String(error), { sessionId: sessionIdOf(agent) })
+                log('warn', `step compaction failed: ${error instanceof Error ? error.message : String(error)}`)
+              }
             }
             return next()
           }),
@@ -474,6 +505,7 @@ export function apply(ctx, config) {
                 }
               } catch (error) {
                 const message = error instanceof Error ? error.message : String(error)
+                logCompactionFailure('manual', message, { sessionId: sessionIdOf(agent) })
                 return { kind: 'error', text: `压缩失败：${message}（需要 agent 空闲，且会话里有可安全压缩的范围）` }
               }
             },

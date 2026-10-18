@@ -29,6 +29,7 @@ const ws = new WebSocket(page.webSocketDebuggerUrl)
 await new Promise((resolve, reject) => { ws.addEventListener('open', resolve, { once: true }); ws.addEventListener('error', reject, { once: true }) })
 let seq = 0
 const pending = new Map()
+const runtimeErrors = []
 ws.addEventListener('message', (event) => {
   const m = JSON.parse(event.data)
   if (m.id !== undefined) { const e = pending.get(m.id); if (e) { pending.delete(m.id); m.error ? e.reject(new Error(JSON.stringify(m.error))) : e.resolve(m.result) } }
@@ -122,6 +123,131 @@ if (selector === 'none') {
     if (trigger) trigger.click()
     await new Promise((r) => setTimeout(r, 1200))
   })()`)
+} else if (selector === 'lightlogview') {
+  await evaluate(`(async () => {
+    document.documentElement.setAttribute('data-ds-theme-source', 'light')
+    document.documentElement.style.colorScheme = 'light'
+    const body = document.body
+    body.removeAttribute('data-ds-dark-theme')
+    for (let index = body.style.length - 1; index >= 0; index -= 1) {
+      const name = body.style[index]
+      if (name.startsWith('--')) body.style.removeProperty(name)
+    }
+    const norm = (s) => (s || '').replace(/\\s+/g, ' ').trim()
+    const ctxBtn = Array.from(document.querySelectorAll('button')).find((b) => norm(b.getAttribute('aria-label')) === 'ctx' || norm(b.textContent) === 'ctx')
+    if (ctxBtn) ctxBtn.click()
+    await new Promise((r) => setTimeout(r, 1800))
+    const toggle = document.querySelector('[data-ctx-log-toggle]')
+    if (toggle) toggle.click()
+    await new Promise((r) => setTimeout(r, 700))
+  })()`)
+} else if (selector === 'logview') {
+  await evaluate(`(async () => {
+    const norm = (s) => (s || '').replace(/\\s+/g, ' ').trim()
+    const ctxBtn = Array.from(document.querySelectorAll('button')).find((b) => norm(b.getAttribute('aria-label')) === 'ctx' || norm(b.textContent) === 'ctx')
+    if (ctxBtn) ctxBtn.click()
+    await new Promise((r) => setTimeout(r, 1800))
+    const toggle = document.querySelector('[data-ctx-log-toggle]')
+    if (toggle) toggle.click()
+    await new Promise((r) => setTimeout(r, 700))
+  })()`)
+  const logState = await evaluate(`(() => {
+    const items = Array.from(document.querySelectorAll('[data-ctx-log-item]'))
+    return JSON.stringify({
+      count: items.length,
+      outcomes: items.map((el) => el.getAttribute('data-ctx-log-outcome')),
+      firstText: items[0] ? items[0].textContent.slice(0, 200) : null,
+    })
+  })()`)
+  console.log('compact-log', logState)
+} else if (selector === 'cmdcompaction') {
+  // 新建会话 -> hi -> /ctx 3000 -> /ctx-compact（Enter 发送），再看压缩记录
+  await evaluate(`(async () => {
+    const norm = (s) => (s || '').replace(/\\s+/g, ' ').trim()
+    const btn = Array.from(document.querySelectorAll('button')).find((b) => /新建会话/.test(norm(b.getAttribute('aria-label')) || '') || /新建会话/.test(norm(b.textContent)))
+    if (btn) btn.click()
+    await new Promise((r) => setTimeout(r, 1200))
+    const composer = document.querySelector('textarea, [contenteditable="true"]')
+    if (composer) composer.focus()
+  })()`)
+  const pressEnter = async () => {
+    await send('Input.dispatchKeyEvent', { type: 'keyDown', key: 'Enter', code: 'Enter', windowsVirtualKeyCode: 13, nativeVirtualKeyCode: 13 })
+    await send('Input.dispatchKeyEvent', { type: 'keyUp', key: 'Enter', code: 'Enter', windowsVirtualKeyCode: 13, nativeVirtualKeyCode: 13 })
+  }
+  await send('Input.insertText', { text: 'hi' })
+  await sleep(400)
+  await pressEnter()
+  await sleep(15000)
+  for (const command of ['/ctx 3000', '/ctx-compact']) {
+    await evaluate(`(() => { const c = document.querySelector('textarea, [contenteditable="true"]'); if (c) c.focus() })()`)
+    await send('Input.insertText', { text: command })
+    await sleep(700)
+    await pressEnter()
+    await sleep(command === '/ctx-compact' ? 9000 : 4000)
+  }
+  await evaluate(`(async () => {
+    const norm = (s) => (s || '').replace(/\\s+/g, ' ').trim()
+    const ctxBtn = Array.from(document.querySelectorAll('button')).find((b) => norm(b.getAttribute('aria-label')) === 'ctx' || norm(b.textContent) === 'ctx')
+    if (ctxBtn) ctxBtn.click()
+    await new Promise((r) => setTimeout(r, 1800))
+    const toggle = document.querySelector('[data-ctx-log-toggle]')
+    if (toggle) toggle.click()
+    await new Promise((r) => setTimeout(r, 700))
+  })()`)
+  const logState = await evaluate(`(() => {
+    const items = Array.from(document.querySelectorAll('[data-ctx-log-item]'))
+    return JSON.stringify({
+      count: items.length,
+      outcomes: items.map((el) => el.getAttribute('data-ctx-log-outcome')),
+      firstText: items[0] ? items[0].textContent.slice(0, 200) : null,
+    })
+  })()`)
+  console.log('compact-log', logState)
+  console.log('runtime-errors', JSON.stringify(runtimeErrors.slice(0, 5)))
+} else if (selector === 'logpopulate') {
+  // 新建会话 -> 发 hi -> /ctx 3000 -> /ctx-compact -> 打开日志并截图
+  await evaluate(`(async () => {
+    const norm = (s) => (s || '').replace(/\\s+/g, ' ').trim()
+    const btn = Array.from(document.querySelectorAll('button')).find((b) => /新建会话/.test(norm(b.getAttribute('aria-label')) || '') || /新建会话/.test(norm(b.textContent)))
+    if (btn) btn.click()
+    await new Promise((r) => setTimeout(r, 1200))
+    const composer = document.querySelector('textarea, [contenteditable="true"]')
+    if (composer) composer.focus()
+  })()`)
+  await send('Input.insertText', { text: 'hi' })
+  await sleep(500)
+  await evaluate(`(async () => {
+    const norm = (s) => (s || '').replace(/\\s+/g, ' ').trim()
+    const b = Array.from(document.querySelectorAll('button')).find((x) => /发送消息/.test(norm(x.getAttribute('aria-label')) || ''))
+    if (b) b.click()
+    await new Promise((r) => setTimeout(r, 300))
+  })()`)
+  await sleep(15000)
+  for (const command of ['/ctx 3000', '/ctx-compact']) {
+    await evaluate(`(() => { const c = document.querySelector('textarea, [contenteditable="true"]'); if (c) c.focus() })()`)
+    await send('Input.insertText', { text: command })
+    await sleep(400)
+    await evaluate(`(() => { const norm = (s) => (s || '').replace(/\\s+/g, ' ').trim(); const b = Array.from(document.querySelectorAll('button')).find((x) => /发送消息/.test(norm(x.getAttribute('aria-label')) || '')); if (b) b.click() })()`)
+    await sleep(command === '/ctx-compact' ? 9000 : 3500)
+  }
+  await evaluate(`(async () => {
+    const norm = (s) => (s || '').replace(/\\s+/g, ' ').trim()
+    const ctxBtn = Array.from(document.querySelectorAll('button')).find((b) => norm(b.getAttribute('aria-label')) === 'ctx' || norm(b.textContent) === 'ctx')
+    if (ctxBtn) ctxBtn.click()
+    await new Promise((r) => setTimeout(r, 1800))
+    const toggle = document.querySelector('[data-ctx-log-toggle]')
+    if (toggle) toggle.click()
+    await new Promise((r) => setTimeout(r, 700))
+  })()`)
+  const logState = await evaluate(`(() => {
+    const items = Array.from(document.querySelectorAll('[data-ctx-log-item]'))
+    return JSON.stringify({
+      count: items.length,
+      outcomes: items.map((el) => el.getAttribute('data-ctx-log-outcome')),
+      firstText: items[0] ? items[0].textContent.slice(0, 160) : null,
+    })
+  })()`)
+  console.log('compact-log', logState)
 } else if (selector === 'collapse') {
   await evaluate(`(async () => {
     const norm = (s) => (s || '').replace(/\\s+/g, ' ').trim()

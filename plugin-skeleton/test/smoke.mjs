@@ -18,9 +18,16 @@
  * 运行：node test/smoke.mjs
  * 前提：test/deps/dsh/node_modules/@deepseek-ai/{cordis,cosmokit} 存在。
  */
-import { existsSync, readFileSync } from 'node:fs'
+import { existsSync, mkdtempSync, readFileSync, rmSync } from 'node:fs'
 import { createRequire } from 'node:module'
+import { tmpdir } from 'node:os'
+import { join } from 'node:path'
 import { fileURLToPath } from 'node:url'
+
+// 测试用临时 HOME：plugin 的落盘只写临时目录，不碰真实用户 profile。
+const testHome = mkdtempSync(join(tmpdir(), 'ctx-smoke-home-'))
+process.env.HOME = testHome
+process.env.USERPROFILE = testHome
 
 const depsRoot = new URL('./deps/dsh/node_modules/@deepseek-ai/', import.meta.url)
 const cordisEntry = new URL('cordis/lib/index.js', depsRoot)
@@ -160,6 +167,18 @@ check('状态含上下文', statusPayload.budget?.tokens === 128000, JSON.string
 check('状态含最近测量', statusPayload.measurements?.[0]?.id === 'smoke-session', JSON.stringify(statusPayload.measurements))
 check('状态含会话上下文列表（reset 后为空）', Array.isArray(statusPayload.sessionBudgets) && statusPayload.sessionBudgets.length === 0, JSON.stringify(statusPayload.sessionBudgets))
 check('状态含控制状态（未挂控制行 = 未激活）', statusPayload.control?.active === false, JSON.stringify(statusPayload.control))
+check('状态含压缩记录数组', Array.isArray(statusPayload.control?.log), JSON.stringify(statusPayload.control?.log))
+
+// 压缩记录落盘：state 事件 -> 宿主订阅 -> JSONL 文件（写入临时 HOME）
+const stateModule = await import(new URL('../state.js', import.meta.url).href)
+stateModule.recordCompactionEvent({ outcome: 'success', trigger: 'manual', sessionId: 'smoke-session', before: 150000, after: 50000, budget: 128000, rounds: 1 })
+const compactionLogPath = join(testHome, '.dsh', 'ctx-mon-and-con', 'compaction-log.jsonl')
+const compactionLogLines = existsSync(compactionLogPath) ? readFileSync(compactionLogPath, 'utf8').trim().split('\n').filter(Boolean) : []
+check('压缩事件落盘 JSONL（宿主订阅）', compactionLogLines.length === 1 && JSON.parse(compactionLogLines[0]).outcome === 'success' && JSON.parse(compactionLogLines[0]).after === 50000, JSON.stringify(compactionLogLines))
+const logResponse = makeResponse()
+statusRoute?.handler({ method: 'GET' }, logResponse)
+const logPayload = logResponse.body ? JSON.parse(logResponse.body) : {}
+check('status 返回刚写入的压缩记录', Array.isArray(logPayload.control?.log) && logPayload.control.log.some((entry) => entry.outcome === 'success' && entry.after === 50000), JSON.stringify(logPayload.control?.log))
 const methodResponse = makeResponse()
 statusRoute?.handler({ method: 'POST' }, methodResponse)
 check('状态路由非 GET 返回 405', methodResponse.statusCode === 405, methodResponse.statusCode)
@@ -294,6 +313,10 @@ check('client 注册 settings.section', section.name === 'settings.section', JSO
 check('settings.section id/order/locale', section.id === 'ctx-mon-and-con' && typeof section.order === 'number' && section.locale === 'ctxMonAndCon', JSON.stringify(section))
 check('settings.section label 走中文词典', section.label?.() === '上下文长度', section.label?.())
 check('settings.section 组件是函数', typeof client.slotRegistrations[0]?.component === 'function', typeof client.slotRegistrations[0]?.component)
+
+try {
+  rmSync(testHome, { recursive: true, force: true })
+} catch {}
 
 const failed = checks.filter((item) => !item.ok)
 console.log(`\n[smoke] ${checks.length - failed.length}/${checks.length} 项通过`)

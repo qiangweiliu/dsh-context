@@ -1,6 +1,6 @@
 # UI 优化提案（同类插件调研 + 改动方案）
 
-> 状态：**P0/P1 已实施**，版本 `ctx-mon-and-con@0.14.15`；用户已确认：概览卡用环形图、内容多时默认折叠、Dock 加「打开完整面板」、只做「仅看已启用」筛选（搜索后置）。
+> 状态：**P0/P1 已实施**，版本 `ctx-mon-and-con@0.14.16`；用户已确认：概览卡用环形图、内容多时默认折叠、Dock 加「打开完整面板」、只做「仅看已启用」筛选（搜索后置）。
 >
 > 调研日期：2026-10-18；参考版本：`ctx-mon-and-con@0.14.13`
 
@@ -88,7 +88,7 @@ dsh-context 的客户端样式大量使用 DSH 主题变量与过渡变量（统
 3. Dock 弹层底部加「**打开完整面板**」按钮，点击跳到侧栏 ctx 页。
 4. 列表只做「**仅看已启用**」筛选，搜索后置。
 
-## 6. 实施记录（v0.14.15）
+## 6. 实施记录（v0.14.16）
 
 | 改动 | 文件位置 |
 | --- | --- |
@@ -104,6 +104,7 @@ dsh-context 的客户端样式大量使用 DSH 主题变量与过渡变量（统
 | P2：`prefers-reduced-motion: reduce` 时关闭面板与 dock 的过渡/动画（注入独立 `<style>`，不改宿主样式） | `apply`（reduced motion effect） |
 | P2：精确 token 数 tooltip（环形图、KPI、图例、dock 触发器） | `BigRing` / `OverviewCard` / `LegendGrid` |
 | P2：概览新增「较上次同步」增量 KPI（同会话内两次刷新的差值，切换会话时重置） | `OverviewCard` |
+| 控制卡新增可折叠「压缩记录」：成功/失败各占一行或多行、一条一块，失败原因单独换行；记录持久化到 JSONL | ControlSection / state.js / control.js / index.js |
 
 实施后截图：
 
@@ -123,4 +124,8 @@ dsh-context 的客户端样式大量使用 DSH 主题变量与过渡变量（统
 ![实施后的空态](ui/current-panel-empty.png)
 
 ![Dock 弹层（底部新增「打开完整面板」）](ui/current-dock-popover.png)
+
+![控制卡压缩记录（暗色）](ui/current-compaction-log.png)
+
+![控制卡压缩记录（浅色）](ui/current-compaction-log-light.png)
 

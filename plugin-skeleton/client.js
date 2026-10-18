@@ -59,6 +59,11 @@ window.__ModuleLoader__.load({
       controlReady: 'Control row is mounted in the agent preset; the context limit is enforced automatically.',
       controlMissing: 'Not active yet — mount ctx-mon-and-con/control inside the agent preset (Settings → Agent preset → compaction group).',
       controlLast: 'Last compaction',
+      compactLog: 'Compaction log',
+      compactSuccess: 'success',
+      compactFailure: 'failed',
+      compactNoLogs: 'No compaction records yet.',
+      roundsUnit: 'round(s)',
       controlEnable: 'Enable auto-compaction (writes the agent preset)',
       controlDisable: 'Disable auto-compaction (removes the preset row)',
       controlPresetHint: 'Writes one row into preset-standard; the preset config becomes a profile override.',
@@ -162,6 +167,11 @@ window.__ModuleLoader__.load({
       controlReady: '控制行已挂在 agent preset 内，超出上下文会自动压缩。',
       controlMissing: '尚未生效 —— 需要把 ctx-mon-and-con/control 加到 agent preset 的 compaction 组里（设置 → Agent preset → compaction group）。',
       controlLast: '最近一次压缩',
+      compactLog: '压缩记录',
+      compactSuccess: '成功',
+      compactFailure: '失败',
+      compactNoLogs: '还没有压缩记录。',
+      roundsUnit: '轮',
       controlEnable: '启用自动压缩（写入 agent preset）',
       controlDisable: '停用自动压缩（移除 preset 行）',
       controlPresetHint: '会往 preset-standard 里加一行；preset 配置会变成 profile 覆盖层。',
@@ -295,6 +305,13 @@ window.__ModuleLoader__.load({
       if (typeof iso !== 'string' || iso.length === 0) return '—'
       const date = new Date(iso)
       return Number.isNaN(date.getTime()) ? iso : date.toLocaleTimeString()
+    }
+
+    /** 会话 id 的短标签：去掉 "session-" 前缀，避免所有 id 都显示成 session-。 */
+    function shortSessionId(value) {
+      const text = String(value)
+      if (text.startsWith('session-')) return text.slice(8, 20)
+      return text.slice(0, 12)
     }
 
     function ratioColor(ratio) {
@@ -456,6 +473,16 @@ window.__ModuleLoader__.load({
       cardHead: { display: 'flex', alignItems: 'center', gap: '8px' },
       cardTitle: { margin: 0, fontSize: '13px', fontWeight: 600, color: 'var(--dsw-alias-label-primary)' },
       cardToggle: { display: 'inline-flex', alignItems: 'center', justifyContent: 'center', width: '18px', height: '18px', flex: 'none', border: 'none', background: 'transparent', color: 'var(--dsw-alias-label-tertiary)', padding: 0, borderRadius: '4px', cursor: 'pointer', fontSize: '14px', lineHeight: 1 },
+      // ── 压缩记录（控制卡内可折叠列表，一条一行） ────────────────────────
+      logBox: { display: 'flex', flexDirection: 'column', gap: '4px', marginTop: '2px', paddingTop: '8px', borderTop: '0.5px solid var(--dsw-alias-border-l1)' },
+      logToggle: { display: 'flex', alignItems: 'center', gap: '6px', alignSelf: 'stretch', background: 'transparent', border: 'none', padding: '2px 0', cursor: 'pointer', color: 'var(--dsw-alias-label-primary)', fontSize: '12.5px', fontWeight: 600, textAlign: 'left' },
+      logList: { listStyle: 'none', margin: 0, padding: 0, display: 'flex', flexDirection: 'column', maxHeight: '260px', overflow: 'auto' },
+      logItem: { display: 'flex', flexDirection: 'column', gap: '4px', padding: '8px 0', borderTop: '0.5px solid var(--dsw-alias-border-l1)' },
+      logLine: { display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap', minWidth: 0 },
+      logTime: { fontSize: '11px', color: 'var(--dsw-alias-label-tertiary)', fontVariantNumeric: 'tabular-nums', whiteSpace: 'nowrap' },
+      logMain: { flex: '1 1 auto', minWidth: 0, fontSize: '12px', color: 'var(--dsw-alias-label-secondary)', fontVariantNumeric: 'tabular-nums', wordBreak: 'break-word' },
+      logSession: { marginLeft: 'auto', fontFamily: 'ui-monospace, SFMono-Regular, Menlo, monospace', fontSize: '10.5px', color: 'var(--dsw-alias-label-tertiary)', whiteSpace: 'nowrap' },
+      logMessage: { margin: 0, fontSize: '11.5px', lineHeight: 1.55, color: 'var(--dsw-alias-label-secondary)', whiteSpace: 'pre-wrap', wordBreak: 'break-word' },
       cardSub: { marginLeft: 'auto', fontSize: '11.5px', color: 'var(--dsw-alias-label-tertiary)', fontVariantNumeric: 'tabular-nums' },
       chipRow: { display: 'flex', flexWrap: 'wrap', gap: '6px' },
       chip: { display: 'inline-flex', alignItems: 'center', gap: '5px', borderRadius: '6px', background: 'var(--dsw-alias-interactive-bg-hover)', padding: '1px 6px', fontSize: '12px', color: 'var(--dsw-alias-label-secondary)', minWidth: 0 },
@@ -1358,7 +1385,7 @@ window.__ModuleLoader__.load({
       }
       return h(
         Card,
-        { title: t('inventoryTitle'), sub: data.sessionId ? String(data.sessionId).slice(0, 8) : undefined, id: 'inventory', t },
+        { title: t('inventoryTitle'), sub: data.sessionId ? shortSessionId(data.sessionId) : undefined, id: 'inventory', t },
         empty
           ? h(
               'div',
@@ -1427,7 +1454,9 @@ window.__ModuleLoader__.load({
     function ControlSection(props) {
       const t = props.t
       const control = props.control || {}
+      const logs = Array.isArray(control.log) ? control.log : []
       const [state, setState] = react.useState({ kind: 'idle' })
+      const [logOpen, setLogOpen] = react.useState(false)
 
       const toggle = (enable) => {
         setState({ kind: 'saving' })
@@ -1497,6 +1526,61 @@ window.__ModuleLoader__.load({
             : null,
           state.kind === 'error' ? h('p', { style: styles.error }, state.message) : null,
           state.kind === 'notice' ? h('p', { style: styles.successText }, state.message) : null,
+        ),
+        h(
+          'div',
+          { style: styles.logBox, 'data-ctx-compact-log': '1' },
+          h(
+            'button',
+            {
+              type: 'button',
+              style: styles.logToggle,
+              'aria-expanded': logOpen,
+              'data-ctx-log-toggle': '1',
+              onClick: () => setLogOpen(!logOpen),
+            },
+            h('span', { style: { display: 'inline-block', transform: logOpen ? 'rotate(90deg)' : 'none', transition: 'transform .15s ease' } }, '›'),
+            h('span', null, t('compactLog')),
+            h('span', { style: styles.cardSub }, String(logs.length)),
+          ),
+          logOpen
+            ? logs.length === 0
+              ? h('p', { style: styles.emptyText, 'data-ctx-log-empty': '1' }, t('compactNoLogs'))
+              : h(
+                  'ul',
+                  { style: styles.logList, 'data-ctx-log-list': '1' },
+                  logs
+                    .slice()
+                    .reverse()
+                    .map((entry) => {
+                      const ok = entry && entry.outcome === 'success'
+                      const statusStyle = ok ? styles.badgeOk : styles.badgeError
+                      const meta = []
+                      if (entry.rounds) meta.push(`${entry.rounds} ${t('roundsUnit')}`)
+                      if (entry.trigger) meta.push(entry.trigger)
+                      return h(
+                        'li',
+                        { key: entry.id || `${entry.at}-${entry.outcome}`, style: styles.logItem, 'data-ctx-log-item': entry.id || undefined, 'data-ctx-log-outcome': ok ? 'success' : 'failure' },
+                        h(
+                          'div',
+                          { style: styles.logLine },
+                          h('span', { style: { ...styles.badge, ...statusStyle } }, ok ? t('compactSuccess') : t('compactFailure')),
+                          h('span', { style: styles.logTime }, formatTime(entry.at)),
+                          h(
+                            'span',
+                            {
+                              style: styles.logMain,
+                              title: entry.before !== null && entry.after !== null ? `${formatTokens(entry.before)} → ${formatTokens(entry.after)} ${t('tokens')}` : undefined,
+                            },
+                            `${compactTokens(entry.before)} → ${compactTokens(entry.after)} ${t('tokens')}${meta.length > 0 ? ` · ${meta.join(' · ')}` : ''}`,
+                          ),
+                          entry.sessionId ? h('span', { style: styles.logSession, title: entry.sessionId }, shortSessionId(entry.sessionId)) : null,
+                        ),
+                        entry.message ? h('p', { style: styles.logMessage, 'data-ctx-log-message': '1' }, entry.message) : null,
+                      )
+                    }),
+                )
+            : null,
         ),
       )
     }

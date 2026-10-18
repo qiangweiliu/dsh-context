@@ -358,7 +358,6 @@ window.__ModuleLoader__.load({
 | `test/static.mjs` | 32 项纯离线静态检查（导出形状、Config 拒绝非法/未知键、exports、locale、client mock、control 形状） |
 | `test/smoke.mjs` | 43 项真实 Cordis 集成冒烟（加载、`/ctx` 与 `/ctx reset`、命令输出、路由 200/405、卸载清理） |
 | `test/control.mjs` | 33 项控制半侧测试（上下文来源三级优先、idle 压缩与重试、cooldown、notify、pre-step 调 `compactIfNeeded` 并继续 waterfall、失败不打断、`/ctx-compact` 成功/失败、状态回写、卸载清理、`mode: off`） |
-| `test/dump-config-smoke.txt` | 隔离 profile 的 `--dump-config` 实证：`# == ctx-mon-and-con` 后跟着插入行 |
 
 实测结果：`node test/static.mjs` **32/32**、`node test/smoke.mjs` **43/43**、`node test/control.mjs` **33/33**、
 `node --check` 通过、`--dump-config` 里能看到 `- id: ctx-mon-and-con / name: ctx-mon-and-con`（说明 bundle 组合层真的生效）。

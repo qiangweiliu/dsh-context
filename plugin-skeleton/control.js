@@ -51,7 +51,6 @@ import {
   recordCompactionEvent,
   recordControlError,
   recordInventory,
-  recordSyncDebug,
   setCompacting,
   setControlActive,
 } from './state.js'
@@ -114,9 +113,6 @@ function validateConfig(input) {
   if (!Number.isInteger(config.keepTokens) || config.keepTokens < 0) {
     issues.push({ message: 'expected a non-negative integer', path: ['keepTokens'] })
   }
-  if (false) {
-    issues.push({ message: 'expected a non-negative integer (0 = follow host default)', path: ['maxContextTokens'] })
-  }
   if (!Number.isInteger(config.cooldownMs) || config.cooldownMs < 0) {
     issues.push({ message: 'expected a non-negative integer', path: ['cooldownMs'] })
   }
@@ -169,7 +165,6 @@ export function apply(ctx, config) {
 
   const syncGates = (agent) => {
     const sessionId = sessionIdOf(agent)
-    try { if (sessionId) recordSyncDebug(sessionId, { gate: 'pre-step', hasCtx: Boolean(agent?.ctx), hasTools: Boolean(agent?.ctx?.tools), deny: getSessionDisabledTools(sessionId) }) } catch {}
     if (!sessionId || !agent?.ctx) return
     let gate = agentGates.get(agent)
     if (!gate) {
@@ -372,7 +367,7 @@ export function apply(ctx, config) {
       return type === 'user/message' || type === 'assistant/message' || type === 'tool/result'
     })
     if (messageNodes.length < 2) return null
-    const keepFloor = config.keepTokens > 0 ? config.keepTokens : getDefaultKeepTokens() > 0 ? getDefaultKeepTokens() : Math.max(1, Math.floor(budget * 0.25))
+    const keepFloor = config.keepTokens > 0 ? config.keepTokens : getDefaultKeepTokens() || Math.max(1, Math.floor(budget * 0.25))
     // 最近 keepFloor tokens 作为“不动区”，只在它之前选可压范围。
     let reserve = 0
     let keepFrom = messageNodes.length

@@ -15,14 +15,6 @@ export const MODEL_PRICING = [
 
 const number = (value) => (typeof value === 'number' && Number.isFinite(value) ? value : 0)
 
-const textOf = (content) => {
-  if (!Array.isArray(content)) return ''
-  return content
-    .filter((block) => block && block.type === 'text' && typeof block.text === 'string')
-    .map((block) => block.text)
-    .join('\n')
-}
-
 const usageOf = (usage) => {
   if (!usage || typeof usage !== 'object') return null
   const input = number(usage.inputTokens)
@@ -100,8 +92,6 @@ export function foldSession(header, events) {
     counts: { turns: 0, steps: 0, requests: 0, toolCalls: 0, compactions: 0, injections: 0 },
     activeMs: 0,
     cost: null,
-    costCurrency: 'CNY',
-    costEstimated: true,
     compactions: [],
     timeline: [],
     events: list.length,
@@ -161,7 +151,7 @@ export function foldSession(header, events) {
       continue
     }
     if (event.type === 'compaction/start') {
-      lastCompaction = { at: event.time, turn: event.data?.turn ?? null, startedAt: event.time, endedAt: null, shadowedTokens: null, durationMs: null, summaryTokens: null, usage: null }
+      lastCompaction = { at: event.time, turn: event.data?.turn ?? null, startedAt: event.time, endedAt: null, shadowedTokens: null, durationMs: null, usage: null }
       continue
     }
     if (event.type === 'compaction/summary') {
@@ -169,7 +159,6 @@ export function foldSession(header, events) {
       const compaction = lastCompaction ?? { at: event.time, turn: event.data?.turn ?? null, startedAt: null, endedAt: null }
       compaction.endedAt = event.time
       compaction.shadowedTokens = shadowed || null
-      compaction.summaryTokens = Array.isArray(event.data?.summary) ? textOf(event.data.summary).length : null
       compaction.usage = usageOf(event.data?.usage)
       if (compaction.startedAt !== null) compaction.durationMs = event.time - compaction.startedAt
       lastCompaction = compaction
@@ -253,9 +242,6 @@ export function summarizeFolds(folds, options = {}) {
     injections: 0,
     activeMs: 0,
     cost: null,
-    costSessions: 0,
-    costKnownRequests: 0,
-    costUnknownRequests: 0,
   }
   const daily = new Map()
   const bucketDays = Math.min(days, 90)
@@ -274,7 +260,6 @@ export function summarizeFolds(folds, options = {}) {
     totals.activeMs += fold.activeMs
     if (fold.cost !== null) {
       totals.cost = (totals.cost ?? 0) + fold.cost
-      totals.costSessions += 1
     }
     for (const request of fold.requests) {
       if (request.time < start) continue
@@ -284,10 +269,6 @@ export function summarizeFolds(folds, options = {}) {
       bucket.output += request.usage.output
       bucket.requests += 1
       if (request.cost !== null) bucket.cost = (bucket.cost ?? 0) + request.cost
-    }
-    for (const request of fold.requests) {
-      if (request.cost !== null) totals.costKnownRequests += 1
-      else totals.costUnknownRequests += 1
     }
   }
   const cacheBase = totals.input + totals.cacheRead
@@ -304,11 +285,6 @@ export function summarizeFolds(folds, options = {}) {
       injections: totals.injections,
       activeMs: totals.activeMs,
       cost: totals.cost,
-      costSessions: totals.costSessions,
-      costKnownRequests: totals.costKnownRequests,
-      costUnknownRequests: totals.costUnknownRequests,
-      costCurrency: 'CNY',
-      costEstimated: true,
     },
     daily: [...daily.values()],
     sessions: sessions.map((fold) => ({
@@ -329,7 +305,6 @@ export function summarizeFolds(folds, options = {}) {
       compactions: fold.counts.compactions,
       activeMs: fold.activeMs,
       cost: fold.cost,
-      costCurrency: fold.costCurrency,
     })),
   }
 }
@@ -364,7 +339,6 @@ export function sessionDetail(fold) {
       startedAt: item.startedAt,
       durationMs: item.durationMs,
       shadowedTokens: item.shadowedTokens,
-      summaryTokens: item.summaryTokens,
       turn: item.turn,
     })),
     timeline: fold.timeline,

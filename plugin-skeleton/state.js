@@ -55,11 +55,6 @@ export function setDefaultBudget(tokens) {
   defaultBudget = Number.isFinite(tokens) && tokens > 0 ? Math.floor(tokens) : undefined
 }
 
-/** 读取全局默认预算（可能为 undefined）。 */
-export function getDefaultBudget() {
-  return defaultBudget
-}
-
 /** 宿主半侧写入自动压缩触发比例（非法值忽略，保持默认 1）。 */
 export function setDefaultTriggerAt(value) {
   const number = Number(value)
@@ -287,13 +282,6 @@ export function recordAppliedTools(sessionId, deny) {
   applied.set(sessionId, { at: new Date().toISOString(), deny: [...deny] })
 }
 
-const syncDebug = new Map()
-export function recordSyncDebug(sessionId, entry) {
-  syncDebug.set(sessionId, { at: new Date().toISOString(), ...entry })
-}
-export function getSyncDebug(sessionId) {
-  return syncDebug.get(sessionId) ?? null
-}
 export function getAppliedTools(sessionId) {
   return applied.get(sessionId) ?? null
 }

@@ -9,7 +9,6 @@ pnpm-store/
 *.log
 *.tmp
 dump-config*.txt
-!plugin-skeleton/test/dump-config-smoke.txt
 
 # 系统杂项
 Thumbs.db

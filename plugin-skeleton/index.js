@@ -240,17 +240,6 @@ const SOURCE_HINTS = {
     if (name === 'mcp-resource-servers') return 'dsh-mcp'
     return null
   },
-  tool(name) {
-    if (name === 'bash') return 'dsh-bash-local'
-    if (['read', 'write', 'edit', 'glob', 'grep', 'read_image'].includes(name)) return 'dsh-client-ui-sidebar-files'
-    if (['job_list', 'job_kill', 'job_output'].includes(name)) return 'dsh-api-job-controller'
-    if (name === 'skill') return 'dsh-client-ui-skill'
-    if (['get_goal', 'create_goal', 'update_goal'].includes(name)) return 'dsh-client-ui-goal'
-    if (name === 'todo_write') return 'dsh-client-ui-plan'
-    if (['subagent', 'subagent_fork', 'list_agents', 'interrupt_agent', 'send_message'].includes(name)) return 'dsh-agent'
-    if (name === 'ask_user_question') return 'dsh-client-ui-input-trigger'
-    return null
-  },
 }
 
 let packagesRootCache
@@ -289,86 +278,14 @@ const sourceFileFor = (packageName) => {
   return existsSync(file) ? file : null
 }
 
-let toolSourceIndex = null
-const TOOL_INDEX_MAX_FILES = 700
-const TOOL_INDEX_MAX_BYTES = 2 * 1024 * 1024
-
-/** 扫描各包 lib 下的注册代码，建立 tool name -> 真实文件索引（一次，缓存）。 */
-const ensureToolIndex = () => {
-  if (toolSourceIndex !== null) return toolSourceIndex
-  toolSourceIndex = new Map()
-  const root = packagesRoot()
-  if (!root || !existsSync(root)) return toolSourceIndex
-  let scanned = 0
-  const walk = (dir, depth) => {
-    if (scanned >= TOOL_INDEX_MAX_FILES || depth > 2) return
-    let entries
-    try {
-      entries = readdirSync(dir, { withFileTypes: true })
-    } catch {
-      return
-    }
-    for (const entry of entries) {
-      if (scanned >= TOOL_INDEX_MAX_FILES) return
-      const full = join(dir, entry.name)
-      if (entry.isDirectory()) {
-        if (entry.name === 'node_modules' || entry.name === 'client') continue
-        walk(full, depth + 1)
-        continue
-      }
-      if (!entry.isFile() || !entry.name.endsWith('.js')) continue
-      if (entry.name.includes('client')) continue
-      let stat
-      try {
-        stat = statSync(full)
-      } catch {
-        continue
-      }
-      if (!stat.isFile() || stat.size > TOOL_INDEX_MAX_BYTES) continue
-      scanned += 1
-      let text
-      try {
-        text = readFileSync(full, 'utf8')
-      } catch {
-        continue
-      }
-      for (const match of text.matchAll(/\bname\s*:\s*['"]([A-Za-z0-9_-]+)['"]/g)) {
-        if (!toolSourceIndex.has(match[1])) toolSourceIndex.set(match[1], full)
-      }
-    }
-  }
-  let packages = []
-  try {
-    packages = readdirSync(root, { withFileTypes: true }).filter((entry) => entry.isDirectory()).map((entry) => entry.name)
-  } catch {}
-  for (const pkg of packages) {
-    if (scanned >= TOOL_INDEX_MAX_FILES) break
-    walk(join(root, pkg, 'lib'), 0)
-  }
-  return toolSourceIndex
-}
-
-const toolSourceFile = (name) => {
-  try {
-    const found = ensureToolIndex().get(name)
-    if (found) return found
-  } catch {}
-  const pkg = SOURCE_HINTS.tool(name)
-  return pkg ? sourceFileFor(pkg) : null
-}
-
 const sourcesFor = (inventory) => {
   const sections = {}
-  const tools = {}
   for (const section of inventory && Array.isArray(inventory.sections) ? inventory.sections : []) {
     sections[section.name] = section.name.startsWith('ctx-mon-and-con:extra:')
       ? 'ctx-mon-and-con/control.js'
       : sourceFileFor(SOURCE_HINTS.section(section.name))
   }
-  for (const tool of inventory && Array.isArray(inventory.tools) ? inventory.tools : []) {
-    tools[tool.name] = toolSourceFile(tool.name)
-  }
-  return { sections, tools }
+  return { sections }
 }
 
 const numberFormat = new Intl.NumberFormat('en-US')

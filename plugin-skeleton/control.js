@@ -343,7 +343,7 @@ export function apply(ctx, config) {
                 }
               }
               if (after.totalTokens >= first.totalTokens) {
-                recordControlError(`上下文上限（${formatTokens(budget)}）低于系统提示+工具定义的基础开销（约 ${formatTokens(first.totalTokens)}），无法再压缩；请调高上限`)
+                recordControlError(`压缩后用量未降低（${formatTokens(first.totalTokens)} → ${formatTokens(after.totalTokens)}，上限 ${formatTokens(budget)}）；当前预算可能低于系统提示+工具定义的基础开销，或没有可安全压缩的历史`)
               } else {
                 recordCompaction(sessionIdOf(agent), first.totalTokens, after.totalTokens)
               }

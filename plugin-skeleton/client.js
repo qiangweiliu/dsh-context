@@ -139,6 +139,59 @@ window.__ModuleLoader__.load({
       toolTokens: 'Tools',
       historyTokens: 'History',
       userTokens: 'This turn',
+      tabsOverview: 'Overview',
+      tabsTrend: 'Trend',
+      tabsEvents: 'Events',
+      tabsSettings: 'Settings',
+      range7: '7 days',
+      range30: '30 days',
+      rangeAll: 'All',
+      kpiSessions: 'Sessions',
+      kpiTokens: 'Tokens',
+      kpiCache: 'Cache hit',
+      kpiCost: 'Cost (est.)',
+      kpiTools: 'Tool calls',
+      kpiActive: 'Active time',
+      kpiCompactions: 'Compactions',
+      costUnknown: 'no price for this model',
+      costEstimated: 'estimated from known model prices',
+      readFailures: '{count} sessions could not be read',
+      coverage: 'Scanned {scanned}/{total} sessions',
+      coverageShort: '{scanned}/{total} scanned',
+      dailyTitle: 'Tokens per day',
+      heatmapTitle: 'Activity',
+      sessionsTitle: 'Recent sessions',
+      searchSessions: 'Search title / workspace / id',
+      noSessions: 'No sessions in this range',
+      sortRecent: 'Newest',
+      sortTokens: 'Tokens',
+      selectSession: 'View trend',
+      trendTitle: 'Request context trend',
+      trendPrompt: 'Prompt',
+      trendOutput: 'Output',
+      trendCompaction: 'Compaction',
+      trendNoData: 'No completed requests yet',
+      eventsTitle: 'Compaction & injections',
+      eventAll: 'All',
+      eventSuccess: 'Success',
+      eventFailure: 'Failure',
+      eventCompaction: 'Compaction',
+      eventInject: 'Injection',
+      noEvents: 'No matching events',
+      settingsTitle: 'Settings',
+      sessionLabel: 'Session',
+      turnsLabel: 'Turns',
+      requestsLabel: 'Requests',
+      lastActive: 'Last active',
+      analyticsLoading: 'Loading session analytics…',
+      analyticsError: 'Analytics unavailable',
+      budgetLine: 'Budget',
+      targetLine: 'Target',
+      beforeAfter: 'Before → after',
+      roundsLabel: 'Rounds',
+      durationLabel: 'Duration',
+      showMore: 'Show more',
+      showLess: 'Show less',
     }
 
     const zh = {
@@ -256,6 +309,59 @@ window.__ModuleLoader__.load({
       toolTokens: '工具定义',
       historyTokens: '上文',
       userTokens: '本轮用户对话',
+      tabsOverview: '概览',
+      tabsTrend: '趋势',
+      tabsEvents: '事件',
+      tabsSettings: '设置',
+      range7: '近 7 天',
+      range30: '近 30 天',
+      rangeAll: '全部',
+      kpiSessions: '会话数',
+      kpiTokens: '累计 tokens',
+      kpiCache: '缓存命中',
+      kpiCost: '费用（估算）',
+      kpiTools: '工具调用',
+      kpiActive: '活跃时长',
+      kpiCompactions: '压缩次数',
+      costUnknown: '该模型暂无价格',
+      costEstimated: '按已知模型价格估算',
+      readFailures: '{count} 个会话读取失败',
+      coverage: '已扫描 {scanned}/{total} 个会话',
+      coverageShort: '{scanned}/{total} 已扫描',
+      dailyTitle: '每日 tokens',
+      heatmapTitle: '活跃度',
+      sessionsTitle: '最近会话',
+      searchSessions: '搜索标题 / 工作区 / id',
+      noSessions: '该范围内没有会话',
+      sortRecent: '最近',
+      sortTokens: 'Tokens',
+      selectSession: '查看趋势',
+      trendTitle: '请求上下文趋势',
+      trendPrompt: '请求',
+      trendOutput: '输出',
+      trendCompaction: '压缩',
+      trendNoData: '还没有完成的请求',
+      eventsTitle: '压缩与注入事件',
+      eventAll: '全部',
+      eventSuccess: '成功',
+      eventFailure: '失败',
+      eventCompaction: '压缩',
+      eventInject: '注入',
+      noEvents: '没有匹配的事件',
+      settingsTitle: '设置',
+      sessionLabel: '会话',
+      turnsLabel: '轮数',
+      requestsLabel: '请求数',
+      lastActive: '最近活动',
+      analyticsLoading: '正在加载会话统计…',
+      analyticsError: '统计暂不可用',
+      budgetLine: '预算',
+      targetLine: '目标',
+      beforeAfter: '压缩前 → 后',
+      roundsLabel: '轮次',
+      durationLabel: '耗时',
+      showMore: '展开更多',
+      showLess: '收起',
     }
 
     let sessionService = null
@@ -325,6 +431,14 @@ window.__ModuleLoader__.load({
       return Number.isNaN(date.getTime()) ? iso : date.toLocaleTimeString()
     }
 
+    function formatDurationMs(value) {
+      const number = Number(value)
+      if (!Number.isFinite(number) || number < 0) return '—'
+      if (number < 1000) return `${Math.round(number)}ms`
+      if (number < 60000) return `${(number / 1000).toFixed(1)}s`
+      if (number < 3600000) return `${Math.round(number / 60000)}m`
+      return `${(number / 3600000).toFixed(1)}h`
+    }
     /** 会话 id 的短标签：去掉 "session-" 前缀，避免所有 id 都显示成 session-。 */
     function shortSessionId(value) {
       const text = String(value)
@@ -569,6 +683,53 @@ window.__ModuleLoader__.load({
       actionRow: { display: 'flex', alignItems: 'center', gap: '10px', flexWrap: 'wrap' },
       successText: { margin: 0, fontSize: '12px', lineHeight: 1.6, color: 'var(--dsw-alias-state-success-primary)' },
     }
+
+    Object.assign(styles, {
+      headerCard: { position: 'sticky', top: 0, zIndex: 3, background: 'var(--dsw-alias-bg-base)', padding: '4px 0 8px', display: 'flex', flexDirection: 'column', gap: '8px', borderBottom: '0.5px solid var(--dsw-alias-border-l1)' },
+      headerRow: { display: 'flex', alignItems: 'center', gap: '10px', flexWrap: 'wrap' },
+      headerSpacer: { flex: '1 1 auto' },
+      tabs: { display: 'flex', gap: '2px', flexWrap: 'wrap', background: 'var(--dsw-alias-interactive-bg-hover)', padding: '2px', borderRadius: '9px', alignSelf: 'flex-start' },
+      tab: { border: 'none', background: 'transparent', color: 'var(--dsw-alias-label-secondary)', borderRadius: '7px', padding: '4px 12px', fontSize: '12.5px', lineHeight: '18px', cursor: 'pointer' },
+      tabActive: { background: 'var(--dsw-alias-bg-layer-1)', color: 'var(--dsw-alias-label-primary)', fontWeight: 600, boxShadow: '0 0.5px 2px rgba(0,0,0,.08)' },
+      rangeRow: { display: 'flex', alignItems: 'center', gap: '6px', flexWrap: 'wrap' },
+      rangeBtn: { border: '0.5px solid var(--dsw-alias-border-l2)', background: 'transparent', color: 'var(--dsw-alias-label-secondary)', borderRadius: '999px', padding: '1px 10px', fontSize: '11.5px', lineHeight: '19px', cursor: 'pointer' },
+      rangeBtnOn: { background: 'var(--dsw-alias-brand-primary)', borderColor: 'transparent', color: 'var(--dsw-alias-label-primary-foreground, #fff)' },
+      kpiBand: { display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(124px, 1fr))', gap: '10px' },
+      kpiCard: { padding: '10px 12px', borderRadius: '10px', background: 'var(--dsw-alias-bg-layer-1)', border: '0.5px solid var(--dsw-alias-border-l1)', display: 'flex', flexDirection: 'column', gap: '3px', minWidth: 0 },
+      kpiCardLabel: { fontSize: '11px', color: 'var(--dsw-alias-label-tertiary)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' },
+      kpiCardValue: { fontSize: '19px', lineHeight: '26px', fontWeight: 600, fontVariantNumeric: 'tabular-nums', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' },
+      kpiCardSub: { fontSize: '10.5px', lineHeight: '15px', color: 'var(--dsw-alias-label-tertiary)', fontVariantNumeric: 'tabular-nums' },
+      chartWrap: { display: 'flex', flexDirection: 'column', gap: '6px', minWidth: 0 },
+      chartBars: { display: 'flex', alignItems: 'flex-end', gap: '4px', height: '92px', paddingTop: '6px', overflowX: 'auto' },
+      chartBarCol: { flex: '1 1 0', minWidth: '14px', display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '3px', height: '100%', justifyContent: 'flex-end' },
+      chartBar: { width: '100%', maxWidth: '34px', borderRadius: '4px 4px 2px 2px', background: 'var(--dsw-alias-brand-primary)', minHeight: '2px', opacity: 0.85 },
+      chartBarZero: { background: 'var(--dsw-alias-interactive-bg-hover)' },
+      chartLabel: { fontSize: '9.5px', color: 'var(--dsw-alias-label-tertiary)', whiteSpace: 'nowrap', fontVariantNumeric: 'tabular-nums' },
+      heatGrid: { display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(18px, 1fr))', gap: '3px' },
+      heatCell: { aspectRatio: '1 / 1', borderRadius: '3px', background: 'var(--dsw-alias-interactive-bg-hover)', minWidth: '14px' },
+      sessionList: { display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(250px, 1fr))', gap: '10px' },
+      sessionCard: { textAlign: 'left', border: '0.5px solid var(--dsw-alias-border-l1)', background: 'var(--dsw-alias-bg-layer-1)', borderRadius: '10px', padding: '10px 12px', display: 'flex', flexDirection: 'column', gap: '6px', cursor: 'pointer', color: 'inherit', minWidth: 0 },
+      sessionCardOn: { borderColor: 'var(--dsw-alias-brand-primary)' },
+      sessionTitle: { margin: 0, fontSize: '12.5px', fontWeight: 600, lineHeight: '18px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' },
+      sessionMeta: { fontSize: '10.5px', color: 'var(--dsw-alias-label-tertiary)', fontVariantNumeric: 'tabular-nums', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' },
+      sessionStats: { display: 'flex', gap: '10px', flexWrap: 'wrap', fontSize: '11px', color: 'var(--dsw-alias-label-secondary)', fontVariantNumeric: 'tabular-nums' },
+      trendWrap: { display: 'flex', flexDirection: 'column', gap: '8px', minWidth: 0 },
+      trendScroll: { overflowX: 'auto', paddingBottom: '4px' },
+      trendCols: { display: 'flex', alignItems: 'flex-end', gap: '3px', minHeight: '130px', minWidth: '100%' },
+      trendCol: { flex: '1 0 18px', maxWidth: '48px', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'flex-end', gap: '3px', position: 'relative' },
+      trendPrompt: { width: '100%', borderRadius: '3px 3px 0 0', background: 'var(--dsw-alias-brand-primary)', minHeight: '2px' },
+      trendOutput: { width: '100%', borderRadius: '0 0 2px 2px', background: 'var(--dsw-alias-state-warn-primary)', minHeight: '1px' },
+      trendMarker: { position: 'absolute', top: '-2px', width: '100%', height: '3px', borderRadius: '2px', background: 'var(--dsw-alias-state-error-primary)' },
+      legendInline: { display: 'flex', alignItems: 'center', gap: '12px', flexWrap: 'wrap', fontSize: '11px', color: 'var(--dsw-alias-label-tertiary)' },
+      filterBar: { display: 'flex', alignItems: 'center', gap: '6px', flexWrap: 'wrap' },
+      eventList: { listStyle: 'none', margin: 0, padding: 0, display: 'flex', flexDirection: 'column', gap: '0' },
+      eventItem: { display: 'flex', alignItems: 'flex-start', gap: '8px', padding: '7px 0', borderTop: '0.5px solid var(--dsw-alias-border-l1)', minWidth: 0 },
+      eventKind: { flex: 'none', fontSize: '10px', fontWeight: 600, borderRadius: '4px', padding: '0 5px', lineHeight: '17px', color: 'var(--dsw-alias-label-secondary)', background: 'var(--dsw-alias-interactive-bg-hover)' },
+      eventMain: { flex: '1 1 auto', minWidth: 0, fontSize: '11.5px', color: 'var(--dsw-alias-label-secondary)', wordBreak: 'break-word' },
+      eventAside: { flex: 'none', fontSize: '10.5px', color: 'var(--dsw-alias-label-tertiary)', fontVariantNumeric: 'tabular-nums', whiteSpace: 'nowrap' },
+      searchInput: { width: '100%', boxSizing: 'border-box', border: '0.5px solid var(--dsw-alias-border-l2)', borderRadius: '8px', background: 'var(--dsw-alias-bg-base)', color: 'inherit', padding: '5px 9px', fontSize: '12px' },
+      banner: { display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap', padding: '6px 10px', borderRadius: '8px', background: 'var(--dsw-alias-bg-layer-2)', fontSize: '11.5px', color: 'var(--dsw-alias-label-secondary)' },
+    })
 
     // ── 基础视觉组件 ────────────────────────────────────────────────────────
     function Ring(props) {
@@ -1766,83 +1927,282 @@ window.__ModuleLoader__.load({
     }
 
     /** 共享面板：设置分区与整页都用它。 */
+    // ── 会话洞察：KPI / 每日图 / 会话卡 / 趋势 / 事件 ───────────────────────
+    function KpiBand(props) {
+      const t = props.t
+      const kpi = props.kpi || {}
+      const cost = typeof kpi.cost === 'number' ? `¥${kpi.cost >= 0.01 ? kpi.cost.toFixed(2) : kpi.cost.toFixed(4)}` : '—'
+      const items = [
+        { key: 'sessions', label: t('kpiSessions'), value: formatTokens(kpi.sessions), sub: props.coverage ? t('coverageShort').replace('{scanned}', props.coverage.scanned).replace('{total}', props.coverage.total) : '' },
+        { key: 'tokens', label: t('kpiTokens'), value: compactTokens(kpi.tokens), sub: `≈ ${formatTokens(kpi.tokens)} tok` },
+        { key: 'cache', label: t('kpiCache'), value: formatPercent(kpi.cacheHit, 1), sub: `${compactTokens(kpi.cacheRead || 0)} cache` },
+        { key: 'cost', label: t('kpiCost'), value: cost, sub: kpi.cost === null || kpi.cost === undefined ? t('costUnknown') : t('costEstimated') },
+        { key: 'tools', label: t('kpiTools'), value: formatTokens(kpi.toolCalls), sub: '' },
+        { key: 'active', label: t('kpiActive'), value: formatDurationMs(kpi.activeMs), sub: '' },
+        { key: 'compactions', label: t('kpiCompactions'), value: formatTokens(kpi.compactions), sub: kpi.injections ? `${formatTokens(kpi.injections)} inject` : '' },
+      ]
+      return h('div', { style: styles.kpiBand, 'data-ctx-kpis': '1' }, items.map((item) => h('div', { key: item.key, style: styles.kpiCard, 'data-ctx-kpi': item.key },
+        h('span', { style: styles.kpiCardLabel }, item.label),
+        h('strong', { style: styles.kpiCardValue }, item.value),
+        item.sub ? h('span', { style: styles.kpiCardSub }, item.sub) : null,
+      )))
+    }
+
+    function DailyChart(props) {
+      const t = props.t
+      const daily = Array.isArray(props.daily) ? props.daily : []
+      const max = Math.max(1, ...daily.map((day) => Number(day.tokens) || 0))
+      return h('div', { style: styles.chartWrap, 'data-ctx-daily': '1' },
+        h('div', { style: styles.cardHead }, h('h3', { style: styles.cardTitle }, t('dailyTitle')), h('span', { style: styles.cardSub }, `${compactTokens(daily.reduce((sum, day) => sum + (Number(day.tokens) || 0), 0))} tok`)),
+        h('div', { style: styles.chartBars }, daily.map((day) => {
+          const value = Number(day.tokens) || 0
+          const ratio = value / max
+          return h('div', { key: day.date, style: styles.chartBarCol, title: `${day.date} · ${formatTokens(value)} tok · ${day.requests} req` },
+            h('div', { style: { ...styles.chartBar, ...(value === 0 ? styles.chartBarZero : null), height: `${Math.max(2, ratio * 100)}%` } }),
+            h('span', { style: styles.chartLabel }, String(day.date).slice(5)),
+          )
+        })),
+      )
+    }
+
+    function Heatmap(props) {
+      const t = props.t
+      const daily = Array.isArray(props.daily) ? props.daily : []
+      const max = Math.max(1, ...daily.map((day) => Number(day.tokens) || 0))
+      return h('div', { style: styles.chartWrap, 'data-ctx-heatmap': '1' },
+        h('div', { style: styles.cardHead }, h('h3', { style: styles.cardTitle }, t('heatmapTitle')), h('span', { style: styles.cardSub }, `${daily.length}d`)),
+        h('div', { style: styles.heatGrid }, daily.map((day) => {
+          const ratio = (Number(day.tokens) || 0) / max
+          return h('div', { key: day.date, style: { ...styles.heatCell, opacity: ratio === 0 ? 1 : 0.2 + ratio * 0.8, background: ratio === 0 ? undefined : 'var(--dsw-alias-brand-primary)' }, title: `${day.date} · ${formatTokens(day.tokens)} tok · ${day.requests} req` })
+        })),
+      )
+    }
+
+    function SessionCards(props) {
+      const t = props.t
+      const sessions = Array.isArray(props.sessions) ? props.sessions : []
+      const [query, setQuery] = react.useState('')
+      const [sort, setSort] = react.useState('recent')
+      const [expanded, setExpanded] = react.useState(false)
+      const needle = query.trim().toLowerCase()
+      const filtered = sessions
+        .filter((item) => {
+          if (!needle) return true
+          return [item.title, item.cwd, item.id, item.model].some((value) => String(value || '').toLowerCase().includes(needle))
+        })
+        .slice()
+        .sort((a, b) => (sort === 'tokens' ? (b.tokens || 0) - (a.tokens || 0) : (b.lastActivityAt || 0) - (a.lastActivityAt || 0)))
+      const visible = expanded ? filtered : filtered.slice(0, 12)
+      const base = (item) => (String(item || '').split(/[\\/]/).filter(Boolean).pop() || '—')
+      return h('div', { style: styles.card, 'data-ctx-sessions': '1' },
+        h('div', { style: styles.cardHead }, h('h3', { style: styles.cardTitle }, t('sessionsTitle')), h('span', { style: styles.cardSub }, `${filtered.length}/${sessions.length}`)),
+        h('div', { style: styles.filterBar },
+          h('input', { style: styles.searchInput, value: query, placeholder: t('searchSessions'), onChange: (event) => setQuery(event.target.value), 'data-ctx-session-search': '1' }),
+          h('button', { type: 'button', style: { ...styles.filterToggle, ...(sort === 'recent' ? styles.filterToggleOn : null) }, onClick: () => setSort('recent') }, t('sortRecent')),
+          h('button', { type: 'button', style: { ...styles.filterToggle, ...(sort === 'tokens' ? styles.filterToggleOn : null) }, onClick: () => setSort('tokens') }, t('sortTokens')),
+        ),
+        filtered.length === 0 ? h('p', { style: styles.emptyText }, t('noSessions')) : h('div', { style: styles.sessionList }, visible.map((item) =>
+          h('button', { key: item.id, type: 'button', style: { ...styles.sessionCard, ...(props.selected === item.id ? styles.sessionCardOn : null) }, onClick: () => props.onSelect(item.id), title: item.id, 'data-ctx-session-card': item.id },
+            h('p', { style: styles.sessionTitle }, item.title || shortSessionId(item.id)),
+            h('span', { style: styles.sessionMeta }, `${base(item.cwd)} · ${item.lastActivityAt ? new Date(item.lastActivityAt).toLocaleString() : '—'}`),
+            h('div', { style: styles.sessionStats },
+              h('span', null, `${compactTokens(item.tokens)} tok`),
+              h('span', null, `${formatTokens(item.turns)} ${t('turnsLabel')}`),
+              h('span', null, `${formatTokens(item.requests)} ${t('requestsLabel')}`),
+              item.compactions > 0 ? h('span', null, `${formatTokens(item.compactions)}×` ) : null,
+            ),
+          ),
+        )),
+        filtered.length > 12 ? h('button', { type: 'button', style: styles.button, onClick: () => setExpanded((value) => !value), 'data-ctx-session-more': '1' }, expanded ? t('showLess') : t('showMore')) : null,
+      )
+    }
+
+    function TrendCard(props) {
+      const t = props.t
+      const detail = props.detail
+      if (!detail) {
+        return h('div', { style: styles.card }, h('h3', { style: styles.cardTitle }, t('trendTitle')), props.error ? h('p', { style: styles.error }, `${t('analyticsError')}: ${props.error}`) : h('div', { style: styles.skeletonStack }, h('div', { style: { ...styles.skeleton, width: '100%', height: '120px' } })))
+      }
+      const requests = Array.isArray(detail.requests) ? detail.requests.slice(-40) : []
+      const compactions = Array.isArray(detail.compactions) ? detail.compactions : []
+      if (requests.length === 0) return h('div', { style: styles.card }, h('h3', { style: styles.cardTitle }, t('trendTitle')), h('p', { style: styles.emptyText }, t('trendNoData')))
+      const max = Math.max(1, ...requests.map((item) => (Number(item.prompt) || 0) + (Number(item.output) || 0)))
+      return h('div', { style: { ...styles.card, ...styles.cardFill }, 'data-ctx-trend': '1' },
+        h('div', { style: styles.cardHead }, h('h3', { style: styles.cardTitle }, t('trendTitle')), h('span', { style: styles.cardSub }, `${requests.length} req`)),
+        h('div', { style: styles.legendInline },
+          h('span', null, `■ ${t('trendPrompt')}`), h('span', null, `■ ${t('trendOutput')}`), h('span', null, `━ ${t('trendCompaction')}`), h('span', null, `${t('budgetLine')} ${formatTokens(props.budget)}`),
+        ),
+        h('div', { style: styles.trendScroll }, h('div', { style: styles.trendCols }, requests.map((item, index) => {
+          const previous = index > 0 ? requests[index - 1].time : 0
+          const marker = compactions.some((compaction) => compaction.at <= item.time && compaction.at > previous)
+          const promptHeight = Math.max(2, Math.round(((Number(item.prompt) || 0) / max) * 118))
+          const outputHeight = Math.max(1, Math.round(((Number(item.output) || 0) / max) * 118))
+          return h('div', { key: `${item.time}-${index}`, style: styles.trendCol, title: `#${index + 1} · ${formatTokens(item.prompt)} prompt + ${formatTokens(item.output)} output${item.compaction ? ' · after compaction' : ''}` },
+            marker ? h('div', { style: styles.trendMarker }) : null,
+            h('div', { style: { ...styles.trendOutput, height: `${outputHeight}px` } }),
+            h('div', { style: { ...styles.trendPrompt, height: `${promptHeight}px` } }),
+            h('span', { style: styles.chartLabel }, item.turn !== null ? `T${item.turn}` : ''),
+          )
+        }))),
+        h('div', { style: styles.banner, 'data-ctx-detail-session': detail.session ? detail.session.id : '' }, `${detail.session && detail.session.title ? detail.session.title : '—'} · ${t('requestsLabel')} ${detail.requests.length} · ${detail.session && detail.session.lastActivityAt ? new Date(detail.session.lastActivityAt).toLocaleString() : '—'}`),
+        compactions.length > 0 ? h('div', { style: styles.logBox }, h('div', { style: styles.logToggle }, `${t('eventCompaction')} · ${compactions.length}`), h('ul', { style: styles.logList }, compactions.slice(-8).reverse().map((item) =>
+          h('li', { key: `${item.at}-${item.turn}`, style: styles.logItem },
+            h('div', { style: styles.logLine },
+              h('span', { style: styles.logTime }, item.at ? new Date(item.at).toLocaleTimeString() : '—'),
+              h('span', { style: styles.logMain }, `${formatTokens(item.shadowedTokens)} tok`),
+              h('span', { style: styles.logSession }, `${t('durationLabel')} ${formatDurationMs(item.durationMs)}`),
+            ),
+          ),
+        ))) : null,
+      )
+    }
+
+    function EventsCard(props) {
+      const t = props.t
+      const [filter, setFilter] = react.useState('all')
+      const logs = Array.isArray(props.logs) ? props.logs.slice().reverse() : []
+      const filtered = logs.filter((entry) => filter === 'all' || entry.outcome === filter)
+      const rawTimeline = props.detail && Array.isArray(props.detail.timeline) ? props.detail.timeline.slice().reverse() : []
+      const timeline = rawTimeline.filter((item) => item.kind === 'compaction').slice(0, 30)
+      const injectionCount = rawTimeline.filter((item) => item.kind === 'inject').length
+      return h('div', { style: styles.card, 'data-ctx-events': '1' },
+        h('div', { style: styles.cardHead }, h('h3', { style: styles.cardTitle }, t('eventsTitle')), h('span', { style: styles.cardSub }, `${filtered.length}/${logs.length}${injectionCount > 0 ? ` · ${injectionCount} ${t('eventInject')}` : ''}`)),
+        h('div', { style: styles.filterBar },
+          [['all', t('eventAll')], ['success', t('eventSuccess')], ['failure', t('eventFailure')]].map(([key, label]) =>
+            h('button', { key, type: 'button', style: { ...styles.filterToggle, ...(filter === key ? styles.filterToggleOn : null) }, onClick: () => setFilter(key) }, label),
+          ),
+        ),
+        filtered.length === 0 ? h('p', { style: styles.emptyText }, t('noEvents')) : h('ul', { style: styles.eventList }, filtered.map((entry) => {
+          const success = entry.outcome === 'success'
+          return h('li', { key: entry.id, style: styles.eventItem, 'data-ctx-event': entry.outcome },
+            h('span', { style: { ...styles.eventKind, color: success ? 'var(--dsw-alias-state-success-primary)' : 'var(--dsw-alias-state-error-primary)' } }, success ? t('eventSuccess') : t('eventFailure')),
+            h('div', { style: styles.eventMain },
+              h('div', null, entry.before || entry.after ? `${t('beforeAfter')}: ${formatTokens(entry.before)} → ${formatTokens(entry.after)}${entry.target ? ` · ${t('targetLine')} ${formatTokens(entry.target)}` : ''}` : `${t('targetLine')} ${formatTokens(entry.target)}`),
+              h('div', { style: styles.sessionMeta }, `${entry.trigger || '—'}${entry.rounds !== null && entry.rounds !== undefined ? ` · ${t('roundsLabel')} ${entry.rounds}` : ''}${entry.durationMs !== null && entry.durationMs !== undefined ? ` · ${t('durationLabel')} ${formatDurationMs(entry.durationMs)}` : ''}${entry.shadowed ? ` · ${formatTokens(entry.shadowed)} tok` : ''}`),
+              entry.message ? h('div', { style: styles.logMessage }, entry.message) : null,
+            ),
+            h('span', { style: styles.eventAside }, formatTime(entry.at)),
+          )
+        })),
+        timeline.length > 0 ? h('div', { style: styles.logBox },
+          h('div', { style: styles.logToggle }, `${t('eventCompaction')} · ${timeline.length}`),
+          h('ul', { style: styles.eventList }, timeline.map((item, index) =>
+            h('li', { key: `${item.time}-${index}`, style: styles.eventItem },
+              h('span', { style: styles.eventKind }, item.kind === 'compaction' ? t('eventCompaction') : t('eventInject')),
+              h('span', { style: styles.eventMain }, item.detail || ''),
+              h('span', { style: styles.eventAside }, item.time ? new Date(item.time).toLocaleTimeString() : '—'),
+            ),
+          )),
+        ) : null,
+      )
+    }
+
     function CtxPanel(props) {
       const t = props.t
       const [state, load] = useStatus(STATUS_PATH)
+      const [tab, setTab] = react.useState('overview')
+      const [range, setRange] = react.useState('7d')
+      const [selected, setSelected] = react.useState(null)
       const activeSession = useCurrentSession()
       const usageTick = useUsageActivity()
       const livePath = activeSession ? `${STATUS_PATH}/live?sessionId=${encodeURIComponent(activeSession)}` : `${STATUS_PATH}/live`
       const inventoryPath = activeSession ? `${STATUS_PATH}/inventory?sessionId=${encodeURIComponent(activeSession)}` : `${STATUS_PATH}/inventory`
+      const analyticsPath = `${STATUS_PATH}/analytics?range=${encodeURIComponent(range)}&limit=40`
+      const detailSession = selected || activeSession
+      const detailPath = detailSession ? `${STATUS_PATH}/session-detail?sessionId=${encodeURIComponent(detailSession)}` : `${STATUS_PATH}/session-detail`
       const [liveState, reloadLive] = useLive(livePath, usageTick)
       const [invState, reloadInv] = useLive(inventoryPath, usageTick)
+      const [analyticsState, reloadAnalytics] = useLive(analyticsPath)
+      const [detailState, reloadDetail] = useLive(detailPath)
       const live = liveState.data
       const data = state.phase === 'ready' ? state.data || {} : null
       const budget = data ? data.budget || {} : {}
       const control = data ? data.control || {} : {}
       const measurements = data && Array.isArray(data.measurements) ? data.measurements : []
       const latest = measurements.length > 0 ? measurements[0] : null
+      const analytics = analyticsState.data || null
+      const detail = detailState.data || null
+      const reloadAll = () => { load(); reloadLive(); reloadInv(); reloadAnalytics(); reloadDetail() }
+
+      const tabs = [
+        ['overview', t('tabsOverview')],
+        ['trend', t('tabsTrend')],
+        ['events', t('tabsEvents')],
+        ['settings', t('tabsSettings')],
+      ]
 
       const children = [
-        h(
-          'div',
-          { key: 'titleRow', style: styles.titleRow },
-          h('h2', { style: styles.title }, props.title || t('title')),
-          data && data.version
-            ? h(
-                'span',
-                { style: styles.versionChip, title: `${t('versionLabel')}: ${data.version}`, 'data-ctx-version': String(data.version) },
-                `v${data.version}`,
-              )
-            : null,
+        h('div', { key: 'header', style: styles.headerCard },
+          h('div', { style: styles.headerRow },
+            h('h2', { style: styles.title }, props.title || t('title')),
+            data && data.version ? h('span', { style: styles.versionChip, title: `${t('versionLabel')}: ${data.version}`, 'data-ctx-version': String(data.version) }, `v${data.version}`) : null,
+            h('span', { style: styles.headerSpacer }),
+            control.active ? h(StatusBadge, { t, state: control.compacting ? 'warn' : 'ok', label: control.compacting ? t('compacting') : undefined }) : null,
+            h('button', { type: 'button', style: styles.button, onClick: reloadAll, 'data-ctx-refresh': '1' }, t('refresh')),
+          ),
+          h('p', { style: styles.subtitle }, t('description')),
+          h('div', { style: styles.tabs, role: 'tablist' }, tabs.map(([key, label]) =>
+            h('button', { key, type: 'button', role: 'tab', 'aria-selected': tab === key ? 'true' : 'false', style: { ...styles.tab, ...(tab === key ? styles.tabActive : null) }, onClick: () => setTab(key), 'data-ctx-tab': key }, label),
+          )),
+          tab === 'overview' ? h('div', { style: styles.rangeRow },
+            [['7d', t('range7')], ['30d', t('range30')], ['all', t('rangeAll')]].map(([key, label]) =>
+              h('button', { key, type: 'button', style: { ...styles.rangeBtn, ...(range === key ? styles.rangeBtnOn : null) }, onClick: () => setRange(key), 'data-ctx-range': key }, label),
+            ),
+          ) : null,
         ),
-        h('p', { key: 'subtitle', style: styles.subtitle }, t('description')),
       ]
 
       if (state.phase === 'loading') {
-        children.push(
-          h(
-            'div',
-            { key: 'loading', style: styles.card },
-            h(
-              'div',
-              { style: styles.skeletonStack },
-              h('div', { style: { ...styles.skeleton, width: '38%', height: '14px' } }),
-              h('div', { style: { ...styles.skeleton, width: '100%', height: '84px' } }),
-              h('div', { style: { ...styles.skeleton, width: '64%' } }),
-            ),
-          ),
-        )
-      } else if (state.phase === 'error') {
-        children.push(
-          h(
-            'div',
-            { key: 'error', style: styles.emptyState },
-            h('p', { style: styles.error }, `${t('error')}: ${state.message}`),
-            h('button', { type: 'button', style: styles.button, onClick: load }, t('retry')),
-          ),
-        )
-      } else {
-        // 概览卡占满一行；控制卡 + 全局配置卡并排两列。
+        children.push(h('div', { key: 'loading', style: styles.card }, h('div', { style: styles.skeletonStack },
+          h('div', { style: { ...styles.skeleton, width: '38%', height: '14px' } }),
+          h('div', { style: { ...styles.skeleton, width: '100%', height: '84px' } }),
+          h('div', { style: { ...styles.skeleton, width: '64%' } }),
+        )))
+        return h('div', { style: styles.root, 'data-ctx-panel': '1' }, children)
+      }
+      if (state.phase === 'error') {
+        children.push(h('div', { key: 'error', style: styles.emptyState },
+          h('p', { style: styles.error }, `${t('error')}: ${state.message}`),
+          h('button', { type: 'button', style: styles.button, onClick: reloadAll }, t('retry')),
+        ))
+        return h('div', { style: styles.root, 'data-ctx-panel': '1' }, children)
+      }
+
+      if (tab === 'overview') {
+        children.push(h(KpiBand, { key: 'kpis', t, kpi: analytics ? analytics.kpi : {}, coverage: analytics ? analytics.coverage : null }))
+        if (analyticsState.error && !analytics) {
+          children.push(h('div', { key: 'analyticsError', style: styles.emptyState },
+            h('p', { style: styles.error }, `${t('analyticsError')}: ${analyticsState.error}`),
+            h('button', { type: 'button', style: styles.button, onClick: reloadAnalytics }, t('retry')),
+          ))
+        } else if (!analytics) {
+          children.push(h('div', { key: 'analyticsLoading', style: styles.banner }, t('analyticsLoading')))
+        }
+        if (analytics) {
+          children.push(h('div', { key: 'charts', style: styles.cols },
+            h('div', { style: { ...styles.card, ...styles.cardFill } }, h(DailyChart, { t, daily: analytics.daily })),
+            h('div', { style: { ...styles.card, ...styles.cardFill } }, h(Heatmap, { t, daily: analytics.daily })),
+          ))
+        }
         children.push(h(OverviewCard, { key: 'overview', t, budget, latest, live, liveAt: liveState.at, controlActive: Boolean(control.active) }))
-        children.push(
-          h('div', { key: 'cols', style: styles.cols }, h(ControlSection, { t, control, onToggled: load }), h(ConfigSection, { t, budget, editable: Boolean(data.configEditable), onSaved: load })),
-        )
-        children.push(
-          h(InventoryCard, {
-            key: 'inventory',
-            t,
-            data: invState.data,
-            loading: invState.data === null && invState.error === null,
-            error: invState.data === null ? invState.error : null,
-            reload: reloadInv,
-            sessionId: activeSession,
-          }),
-        )
-        children.push(h('button', { key: 'refresh', type: 'button', style: styles.button, onClick: () => { load(); reloadLive(); reloadInv() } }, t('refresh')))
+        children.push(h(SessionCards, { key: 'sessions', t, sessions: analytics ? analytics.sessions : [], selected: detailSession, onSelect: (id) => { setSelected(id); setTab('trend') } }))
+        if (analytics && Array.isArray(analytics.warnings) && analytics.warnings.length > 0) {
+          children.push(h('div', { key: 'warnings', style: styles.banner, title: analytics.warnings.join(' | ') }, `${t('coverage').replace('{scanned}', analytics.coverage.scanned).replace('{total}', analytics.coverage.total)} · ${t('readFailures').replace('{count}', String(analytics.warnings.length))}`))
+        }
+      } else if (tab === 'trend') {
+        children.push(h(TrendCard, { key: 'trend', t, detail, error: detailState.error, budget: (live && live.budget && live.budget.tokens) || (latest && latest.budget && latest.budget.tokens) || budget.tokens }))
+        if (selected) children.push(h('button', { key: 'back', type: 'button', style: styles.button, onClick: () => setSelected(null) }, t('tabsOverview')))
+      } else if (tab === 'events') {
+        children.push(h(EventsCard, { key: 'events', t, logs: control.log || [], detail }))
+      } else {
+        children.push(h('div', { key: 'settings', style: styles.cols },
+          h(ControlSection, { t, control, onToggled: load }),
+          h(ConfigSection, { t, budget, editable: Boolean(data.configEditable), onSaved: load }),
+        ))
+        children.push(h(InventoryCard, { key: 'inventory', t, data: invState.data, loading: invState.data === null && invState.error === null, error: invState.data === null ? invState.error : null, reload: reloadInv, sessionId: activeSession }))
       }
       return h('div', { style: styles.root, 'data-ctx-panel': '1' }, children)
     }
-
     function CtxPage(props) {
       return h(
         'div',

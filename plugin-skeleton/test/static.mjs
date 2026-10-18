@@ -36,7 +36,7 @@ check(
 )
 check(
   'manifest files 分发全部运行文件',
-  ['index.js', 'control.js', 'state.js', 'client.js', 'dsh.bundle.patch.yml'].every((file) => Array.isArray(manifest.files) && manifest.files.includes(file)),
+  ['index.js', 'control.js', 'state.js', 'metrics.js', 'client.js', 'dsh.bundle.patch.yml'].every((file) => Array.isArray(manifest.files) && manifest.files.includes(file)),
   JSON.stringify(manifest.files),
 )
 check('manifest 无 npm 运行依赖（只依赖宿主服务与 Node 内置模块）', !manifest.dependencies || Object.keys(manifest.dependencies).length === 0, JSON.stringify(manifest.dependencies ?? {}))

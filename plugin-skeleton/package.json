@@ -1,6 +1,6 @@
 {
   "name": "ctx-mon-and-con",
-  "version": "0.14.19",
+  "version": "0.15.0",
   "description": "DSH 上下文长度管理插件：/ctx 查看会话 token 用量与预算；可选的 control 半侧挂在 agent preset 内，按预算自动压缩",
   "type": "module",
   "main": "index.js",
@@ -16,6 +16,7 @@
     "index.js",
     "control.js",
     "state.js",
+    "metrics.js",
     "client.js",
     "icon.svg",
     "locale/*.json",

@@ -51,11 +51,13 @@ import {
   clearSessionBudget,
 } from './state.js'
 
+import { foldSession, sessionDetail, summarizeFolds } from './metrics.js'
+
 /** 依赖的真实服务名（见 @deepseek-ai/dsh-commands / @deepseek-ai/dsh-token-meter）。 */
 export const inject = ['commands', 'tokenMeter']
 
 /** 与 package.json 的 version 保持一致（只用于状态接口的自述）。 */
-const PLUGIN_VERSION = '0.14.19'
+const PLUGIN_VERSION = '0.15.0'
 
 /** 浏览器半侧 client.js 拉的只读状态接口；两处路径必须一致。 */
 const STATUS_PATH = '/api/ctx-mon-and-con/status'
@@ -804,6 +806,132 @@ export function apply(ctx, config) {
   // 浏览器半侧（client.js）通过这个只读接口取上下文与最近测量值。
   // 用 ctx.inject(['webServer']) 而不是写进 export const inject：
   // 无 Web server 的 profile（纯 CLI/headless）也能正常挂载本插件。
+  let sessionQuery = null
+  ctx.inject(['sessionQuery'], (sub) => {
+    sessionQuery = sub?.sessionQuery ?? null
+    if (typeof sub.effect === 'function') sub.effect(() => () => { sessionQuery = null }, 'ctx-mon-and-con: sessionQuery presence')
+  })
+
+  const withTimeout = (promise, ms, label) =>
+    Promise.race([
+      promise,
+      new Promise((_, reject) => {
+        const timer = setTimeout(() => reject(new Error(`${label} timed out after ${ms}ms`)), ms)
+        if (typeof timer?.unref === 'function') timer.unref()
+      }),
+    ])
+
+  const mapLimit = async (items, limit, worker) => {
+    const output = new Array(items.length)
+    let cursor = 0
+    const runners = Array.from({ length: Math.min(limit, items.length) }, async () => {
+      for (;;) {
+        const index = cursor
+        cursor += 1
+        if (index >= items.length) return
+        output[index] = await worker(items[index], index)
+      }
+    })
+    await Promise.all(runners)
+    return output
+  }
+
+  // 会话日志折叠很便宜但文件读取不便宜；按 sessionId 做短 TTL 缓存，页面切 tab/刷新不会反复读全量。
+  const foldCache = new Map()
+  const observeFold = async (sessionId, header, ttlMs = 20000) => {
+    const cached = foldCache.get(sessionId)
+    if (cached && Date.now() - cached.at < ttlMs) return cached.fold
+    if (!sessionQuery || typeof sessionQuery.observeSession !== 'function') throw new Error('sessionQuery.observeSession unavailable')
+    const observation = await withTimeout(sessionQuery.observeSession(sessionId, { projectionMode: 'none' }), 4000, 'observeSession')
+    try {
+      const fold = foldSession(observation.header ?? header, observation.events ?? [])
+      foldCache.set(sessionId, { at: Date.now(), fold })
+      return fold
+    } finally {
+      const dispose = typeof observation[Symbol.dispose] === 'function' ? observation[Symbol.dispose] : null
+      if (dispose) dispose.call(observation)
+    }
+  }
+
+  const parseRange = (value) => {
+    if (value === 'today') return 1
+    if (value === '30d') return 30
+    if (value === 'all') return 3650
+    return 7
+  }
+
+  /** GET /status/analytics?range=7d|30d|all|today&limit=40 —— 近 N 个会话的聚合。 */
+  const analyticsHandler = async (request, response) => {
+    const send = (code, payload) => {
+      response.statusCode = code
+      response.setHeader('content-type', 'application/json; charset=utf-8')
+      response.setHeader('cache-control', 'no-store')
+      response.end(JSON.stringify(payload))
+    }
+    if (request.method !== 'GET') {
+      response.setHeader('allow', 'GET')
+      return send(405, { ok: false, error: 'method not allowed' })
+    }
+    if (!sessionQuery || typeof sessionQuery.listSessions !== 'function') {
+      return send(503, { ok: false, error: 'sessionQuery unavailable in this host' })
+    }
+    const url = requestUrl(request)
+    const days = parseRange(url.searchParams.get('range'))
+    const limit = Math.min(80, Math.max(1, Number(url.searchParams.get('limit')) || 40))
+    try {
+      const records = await withTimeout(sessionQuery.listSessions(), 8000, 'listSessions')
+      const list = Array.isArray(records) ? records : []
+      const picked = list.slice(0, limit)
+      const warnings = []
+      const folds = await mapLimit(picked, 4, async (record) => {
+        try {
+          return await observeFold(record.header.id, record.header, record.live ? 3000 : 20000)
+        } catch (error) {
+          warnings.push(`${record.header.id}: ${error instanceof Error ? error.message : String(error)}`)
+          return null
+        }
+      })
+      const summary = summarizeFolds(folds.filter(Boolean), { days })
+      return send(200, {
+        ok: true,
+        generatedAt: new Date().toISOString(),
+        range: url.searchParams.get('range') ?? '7d',
+        coverage: { total: list.length, scanned: picked.length, withData: folds.filter(Boolean).length, limit },
+        warnings: warnings.slice(0, 5),
+        ...summary,
+      })
+    } catch (error) {
+      return send(500, { ok: false, error: error instanceof Error ? error.message : String(error) })
+    }
+  }
+
+  /** GET /status/session-detail?sessionId=... —— 当前会话的请求序列 + 事件。 */
+  const sessionDetailHandler = async (request, response) => {
+    const send = (code, payload) => {
+      response.statusCode = code
+      response.setHeader('content-type', 'application/json; charset=utf-8')
+      response.setHeader('cache-control', 'no-store')
+      response.end(JSON.stringify(payload))
+    }
+    if (request.method !== 'GET') {
+      response.setHeader('allow', 'GET')
+      return send(405, { ok: false, error: 'method not allowed' })
+    }
+    if (!sessionQuery || typeof sessionQuery.observeSession !== 'function') {
+      return send(503, { ok: false, error: 'sessionQuery unavailable in this host' })
+    }
+    const url = requestUrl(request)
+    const sessionId = url.searchParams.get('sessionId') || latestSession()?.id
+    if (!sessionId) return send(404, { ok: false, error: 'no session yet' })
+    try {
+      const fold = await observeFold(sessionId, null, 5000)
+      return send(200, { ok: true, ...sessionDetail(fold) })
+    } catch (error) {
+      return send(500, { ok: false, error: error instanceof Error ? error.message : String(error) })
+    }
+  }
+
+
   const statusHandler = (request, response) => {
     if (request.method !== 'GET') {
       response.statusCode = 405
@@ -1275,6 +1403,8 @@ export function apply(ctx, config) {
         server.register({ kind: 'exact', path: STATUS_PATH, handler: statusHandler }),
         server.register({ kind: 'exact', path: `${STATUS_PATH}/config`, handler: configHandler }),
         server.register({ kind: 'exact', path: `${STATUS_PATH}/live`, handler: liveHandler }),
+        server.register({ kind: 'exact', path: `${STATUS_PATH}/analytics`, handler: analyticsHandler }),
+        server.register({ kind: 'exact', path: `${STATUS_PATH}/session-detail`, handler: sessionDetailHandler }),
         server.register({ kind: 'exact', path: `${STATUS_PATH}/config/preset`, handler: presetHandler }),
         server.register({ kind: 'exact', path: `${STATUS_PATH}/inventory`, handler: inventoryHandler }),
         server.register({ kind: 'exact', path: `${STATUS_PATH}/inventory/toggle`, handler: inventoryToggleHandler }),

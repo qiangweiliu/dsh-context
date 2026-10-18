@@ -1,7 +1,7 @@
 # 验收证据（ctx-mon-and-con）
 
 - 仓库：<https://github.com/qiangweiliu/dsh-context>（插件目录 `plugin-skeleton/`）
-- 版本：`0.14.19`（本文件随 manifest 兼容性声明一起提交）
+- 版本：`0.15.0`（本文件随 manifest 兼容性声明一起提交）
 - 采集日期：2026-10-18
 - 证据层级说明：`verified` = 本次固定源码上实际执行并记录结果；`partial` = 只在明确边界内验证；`unknown` = 未取得证据。**这些证据不构成独立安全审计，也不替代商城的专项审阅。**
 
@@ -165,6 +165,22 @@ npm 运行依赖：无；生命周期脚本：无
   1. `keepTokens` 之前只存在于宿主 Config，没有传给控制半侧；预设行被配置保存重写后自定义 `keepTokens` 也会丢。已改为宿主 `keepTokens` 经 `state.js` 下发给控制半侧（`0` 仍表示预算 25%）。
   2. 选前缀下限原为 `1000 tokens`，当目标只差 814 tokens 时 `planRegion` 返回 null，导致“目标已可达但不压”。已把下限降为 `max(200, min(keepFloor, needed))`，本次实测才得以触发。
 - 局限：只测到 1 次成功收敛（n=1），43.5s 是模型摘要耗时，会随历史大小/模型负载波动；该耗时发生在 `agent/pre-step` 内，**会阻塞当轮请求**（截图里本轮对话确实等了压缩完成后才出现回复）。长会话真实 128k 预算下的目标 60% 尚未在 WSL 造出同等规模会话复测。
+
+## E12. v0.15.0 整页 tabs + 跨会话洞察（2026-10-18）
+
+- 环境：WSL Ubuntu 24.04，`dsh 0.2.0-rc.2`，web profile，模型 `agnes-3.0-flash`，插件 `0.15.0`；headless Edge + CDP 截图。
+- 数据源：`GET /api/ctx-mon-and-con/status/analytics?range=7d&limit=40` 与 `/status/session-detail?sessionId=...`；宿主通过 `ctx.sessionQuery.listSessions()` 取最近 40 个会话，再用 `observeSession(id, { projectionMode:'none' })` 读事件，按 `metrics.js` 纯函数折叠。
+- 概览（`docs/ui/0.15-overview.png`）：KPI 带显示最近 7 天 40 个已扫描会话（总库 102）的会话数 / 1.3M tokens / 84.3% 缓存命中 / 工具调用 / 17m 活跃时长 / 6 次压缩；费用显示 `—`，因为当前 `agnes-3.0-flash` 没有可识别价格，UI 明示「该模型暂无价格」，不伪造数字。下方是每日 tokens、活跃度热力、四色上下文卡和可搜索/排序/展开的最近会话。
+- 趋势（`docs/ui/0.15-trend.png`）：选中一个 8 请求的历史会话，逐请求 prompt/output 柱状图 + 压缩标记；压缩记录显示 2,559 tokens / 43.5s，与 E11 的实测压缩一致。
+- 事件（`docs/ui/0.15-events.png`）：成功/失败筛选；实测一条手动压缩失败记录（`manual compaction could not produce a smaller summary`），能显示 target、轮次/耗时、原因；下方时间线只列压缩事件，注入数量在标题上汇总。
+- 设置（`docs/ui/0.15-settings.png`）：控制卡、全局配置、工具与提示词集中到设置 tab；保存仍走 `configEditor`。
+- 测试：`test/metrics.mjs` 17/17（usage/cache/成本/压缩耗时/范围过滤），`test/static.mjs` 56/56，`test/smoke.mjs` 48/48，`test/control.mjs` 51/51。
+- 局限（诚实声明）：
+  - 跨会话 KPI 只扫描最近 40 个会话（界面标 40/102），不是全库；全量扫描会随会话数增长而变慢，因此没做；
+  - 费用只对内置价格表的 DeepSeek 模型估算，未知 provider 显示 `—`；
+  - 会话卡点击是「在本页看趋势」，不是跳转到对话主视图（未找到公开的客户端切会话 API，未做 DOM 点击黑客）；
+  - 趋势图未画目标线，只显示预算文字；活动热力最多 90 天（`all` 时）。
+  - 首次加载 40 个会话的事件折叠耗时未做独立压测；已加 20s 内存缓存和 4 并发限制。
 
 ## 已知限制（unknown）
 

@@ -1,6 +1,6 @@
 # UI 优化提案（同类插件调研 + 改动方案）
 
-> 状态：**P0/P1 已实施**，版本 `ctx-mon-and-con@0.14.19`；用户已确认：概览卡用环形图、内容多时默认折叠、Dock 加「打开完整面板」、只做「仅看已启用」筛选（搜索后置）。
+> 状态：**P0/P1 已实施，P2 部分实施**，版本 `ctx-mon-and-con@0.15.0`；用户已确认：概览卡用环形图、内容多时默认折叠、Dock 加「打开完整面板」、只做「仅看已启用」筛选（搜索后置），并批准按 P0/P1/P2 推进整页信息架构。
 >
 > 调研日期：2026-10-18；参考版本：`ctx-mon-and-con@0.14.13`
 
@@ -139,3 +139,27 @@ dsh-context 的客户端样式大量使用 DSH 主题变量与过渡变量（统
 
 ![WSL 长会话实测压缩完成（5 条历史/约 2559 tokens，耗时 43.5s）](ui/current-compaction-latency.png)
 
+## 7. v0.15.0 落地：整页 tabs + 跨会话洞察
+
+参考截图里的信息密度，把单页堆叠改成 **概览 / 趋势 / 事件 / 设置** 四个 tab；不复制整块「Context Insights」仪表盘，优先保留压缩可解释性与控制，再加轻量跨会话总览。
+
+| 项目 | 落地 | 证据 |
+| --- | --- | --- |
+| P0 整页 tabs + sticky header | 四个 tab、范围 chips、刷新、正常/压缩中 badge | `docs/ui/0.15-overview.png` |
+| P0 压缩记录可解释 | 前→后、target、轮次、耗时、成功/失败筛选；`state.js` 持久化新字段 | `docs/ui/0.15-events.png` |
+| P0 逐轮趋势 | 请求 prompt/output 柱状 + 压缩标记 + 压缩耗时列表 | `docs/ui/0.15-trend.png` |
+| P0 加载/错误/空态/重试 | 各 tab 的 skeleton、错误 banner、retry；空态文案 | 截图与 static 测试 |
+| P1 宿主聚合 | `/status/analytics`、`/status/session-detail`；`sessionQuery` + `metrics.js` 纯折叠 | `test/metrics.mjs` 17/17 |
+| P1 KPI 带 | 会话/tokens/缓存命中/费用估算/工具调用/活跃时长/压缩次数 | `docs/ui/0.15-overview.png` |
+| P1 每日图 + 会话卡 | 7/30 天每日 tokens、活跃度热力；搜索/排序/展开/点击看趋势 | 同上 |
+| P1 设置合并 | 控制 + 全局配置 + 工具与提示词集中到设置 tab | `docs/ui/0.15-settings.png` |
+| P2 热力 + 事件时间线 | 已做活动热力与压缩时间线；上下文浏览/drilldown/agent 网络未做 | 见下方局限 |
+| 可维护性 | 新增宿主 `metrics.js`；折叠/聚合有纯函数测试；CSS token 与复用组件 | `test/metrics.mjs` |
+
+**未做与原因**：
+
+- 费用只对已知 DeepSeek 模型估算；当前 WSL 的 `agnes-3.0-flash` 无价格，显示 `—` 而不是编一个数字。
+- 跨会话只扫描最近 40 个会话（界面标注覆盖率）；全量扫描会随会话增长变慢。
+- 点击会话卡在页内看趋势，未跳转对话主视图；没有找到公开的客户端切会话 API，未用 DOM 点击 hack。
+- 趋势图未叠加 target 虚线（只在图例显示预算），后续可加。
+- 上下文 composition 沿用原有实测数据，没有对历史会话逐条重算 tokenMeter（会非常慢）。

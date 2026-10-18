@@ -21,22 +21,30 @@ DSH（DeepSeek Harness）的**上下文监控与控制**插件，补足原生缺
 2. **设置 → 上下文长度** —— 设置弹窗里的分区
 3. `GET /api/ctx-mon-and-con/status` —— 面板的数据源
 
-面板内容（概览占整行，下面控制 + 全局配置两列；没有折叠）：
+面板分成四个 tab（v0.15.0）：
 
 ```
-ctx —— 上下文监控
-┌ 上下文 ─────────────────────────────────────────────────┐
-│ 已同步  6%   7.4K / 128K                               │
-│ ▓▓▓░░░░░░░░░░░░░░░░░░░░░░░  4px（四色分段）            │
-│ [提示词 1.4K·20%] [工具定义 5.2K·73%]                   │
-│ [上文 12·0.2%] [本轮用户对话 483·6.8%]                  │
-│ [警告阈值 75%] [超限阈值 90%] [触发阈值 100%] [控制 已启用]             │
-└────────────────────────────────────────────────────────┘
-┌ 控制 ───────────────────┐ ┌ 全局配置 ─────────────────┐
-│ 已启用 + 说明 + [停用按钮] │ │ 默认上下文 / 警告 / 超限      │
-└─────────────────────────┘ │ 提示 + [保存]              │
-                            └───────────────────────────┘
+ctx —— 上下文监控                         [概览] [趋势] [事件] [设置]
+┌ 概览 ───────────────────────────────────────────────────┐
+│ [会话 39] [累计 tokens 1.3M] [缓存命中 82.6%] [费用 ¥—]   │
+│ [工具调用 37] [活跃时长 18m] [压缩次数 5]                 │
+│ ┌ 每日 tokens (7/30 天) ┐ ┌ 活跃度热力 ┐                 │
+│ ┌ 上下文 6% 7.4K/128K + 四色分段 + 阈值 ┐                 │
+│ ┌ 最近会话：搜索 / 排序 / 点击查看趋势 ┐                  │
+└──────────────────────────────────────────────────────────┘
+趋势：当前（或选中的）会话逐请求 prompt / output 柱状 + 压缩标记
+事件：压缩记录（成功/失败筛选、前→后、target、轮次、耗时）+ 会话压缩/注入时间线
+设置：控制卡 + 全局配置卡 + 工具与提示词
 ```
+
+数据来自 `GET /api/ctx-mon-and-con/status/analytics` 和 `/status/session-detail`：
+一次读取最近 40 个会话并标注扫描覆盖范围（如 40/99），不声称全量；结果按会话
+做 20 秒内存缓存，切 tab / 刷新不会反复读全部日志。
+
+**费用是估算**：只对能识别出价格的 DeepSeek 模型（deepseek-chat / deepseek-reasoner）
+按内置 CNY/1M 价格计算；自定义 provider / 未知模型显示 `—` 和「该模型暂无价格」，
+不伪造数字。缓存命中按 `cacheRead / (input + cacheRead)` 计算；工具调用、压缩次数、
+注入次数来自会话事件折叠。
 
 **全局配置是真写的**：保存后走宿主 `ctx.configEditor`，把值写进 profile 的
 `cordis.patch.yml`（对应 `- id: ctx-mon-and-con` 那一行），然后 Loader 按新配置重挂插件。
@@ -306,6 +314,7 @@ powershell -NoProfile -ExecutionPolicy Bypass -File scripts/verify-uninstall.ps1
 | `test/static.mjs` | 纯离线静态检查（56 项，不需要 DSH） |
 | `test/smoke.mjs` | 用真实 Cordis 的集成冒烟测试（48 项，需先 `node test/prepare-deps.mjs`） |
 | `test/control.mjs` | 控制半侧的离线测试（51 项：上下文来源、trigger/target 闭环、预检跳过、idle/pre-step/notify、命令、状态回写、卸载） |
+| `test/metrics.mjs` | 会话日志折叠与聚合口径（17 项：usage/cache/成本/压缩耗时/范围过滤，不需要 DSH） |
 | `test/prepare-deps.mjs` | 从 app.asar 离线解出 cordis/cosmokit 到 `test/deps/`（交付不带第三方副本） |
 | `test/dump-config-smoke.txt` | 隔离 profile 里 `--dump-config` 的实际输出证据 |
 
@@ -359,7 +368,8 @@ bash /mnt/c/<repo>/scripts/wsl-uninstall.sh web    # 卸载并核对残留
 
    ```powershell
    node test/static.mjs        # 56/56：导出形状、Config 校验、exports 解析、locale、client mock、control 形状
-   node --check index.js; node --check control.js; node --check client.js
+   node --check index.js; node --check control.js; node --check client.js; node --check metrics.js
+   node test/metrics.mjs       # 17/17：会话日志 usage/cache/成本/压缩耗时/范围过滤
    node test/prepare-deps.mjs  # 可选：从 app.asar 解出 cordis，第一次需要
    node test/smoke.mjs         # 48/48：真实 Cordis 里加载、/ctx 与 reset、状态路由、压缩记录落盘、卸载清理
    node test/control.mjs       # 51/51：上下文来源、trigger/target 闭环、预检跳过、idle/pre-step/notify、命令、状态回写、卸载

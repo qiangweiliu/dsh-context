@@ -387,6 +387,7 @@ export function apply(ctx, config) {
       let after = before
       let result = null
       let rounds = 0
+      const startedAt = Date.now()
       setCompacting(true)
       try {
         for (let attempt = 1; attempt <= config.maxAttempts; attempt += 1) {
@@ -410,6 +411,8 @@ export function apply(ctx, config) {
         before,
         after,
         budget,
+        target: Math.round(target),
+        durationMs: Date.now() - startedAt,
         rounds,
         shadowed: result?.shadowedTokenCount,
         message: compacted ? null : `压缩后用量未降低（${formatTokens(before)} → ${formatTokens(after)}，上限 ${formatTokens(budget)}）`,
@@ -437,6 +440,7 @@ export function apply(ctx, config) {
               }
               if (!throttle(agent)) return next()
               setCompacting(true)
+              const startedAt = Date.now()
               const before = first.totalTokens
               let after = first
               let result = null
@@ -473,13 +477,13 @@ export function apply(ctx, config) {
                 }
                 if (after.totalTokens < before) {
                   recordCompaction(sessionIdOf(agent), before, after.totalTokens)
-                  logCompaction({ outcome: 'success', trigger: 'idle', sessionId: sessionIdOf(agent), before, after: after.totalTokens, budget, rounds, shadowed: result?.shadowedTokenCount })
+                  logCompaction({ outcome: 'success', trigger: 'idle', sessionId: sessionIdOf(agent), before, after: after.totalTokens, budget, target: Math.round(target), durationMs: Date.now() - startedAt, rounds, shadowed: result?.shadowedTokenCount })
                   if (after.totalTokens > target) log('warn', `idle: still above target ${formatTokens(target)} after ${rounds} round(s)`)
                 } else {
                   const reason = before <= budget
                     ? `达到预压缩阈值但用量未降低（${formatTokens(before)} → ${formatTokens(after.totalTokens)}）；当前没有可安全压缩的历史`
                     : `压缩后用量未降低（${formatTokens(before)} → ${formatTokens(after.totalTokens)}，上限 ${formatTokens(budget)}）；当前预算可能低于系统提示+工具定义的基础开销，或没有可安全压缩的历史`
-                  logCompactionFailure('idle', reason, { sessionId: sessionIdOf(agent), before, after: after.totalTokens, budget })
+                  logCompactionFailure('idle', reason, { sessionId: sessionIdOf(agent), before, after: after.totalTokens, budget, target: Math.round(target), durationMs: Date.now() - startedAt })
                 }
               } finally {
                 setCompacting(false)

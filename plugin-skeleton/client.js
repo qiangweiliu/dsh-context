@@ -62,6 +62,7 @@ window.__ModuleLoader__.load({
       controlWriteFailed: 'Could not update the agent preset',
       controlEnabled: 'Auto-compaction is now enforced with this context limit.',
       controlError: 'Last compaction issue',
+      compositionHint: 'Composition is a heuristic estimate; provider pressure may differ.',
       controlDisabled: 'Auto-compaction row removed from the agent preset.',
       configTitle: 'Global configuration',
       configHint: 'Writes to the profile’s config row; the plugin reloads with the new values.',
@@ -155,6 +156,7 @@ window.__ModuleLoader__.load({
       controlWriteFailed: '更新 agent preset 失败',
       controlEnabled: '自动压缩已启用，按当前上下文执行。',
       controlError: '最近压缩未生效',
+      compositionHint: '构成是启发式估算，与 provider 压力口径可能不同',
       controlDisabled: '已从 agent preset 移除自动压缩行。',
       configTitle: '全局配置',
       configHint: '写入 profile 里本插件的 config 行，保存后插件会按新配置重挂。',
@@ -715,6 +717,7 @@ window.__ModuleLoader__.load({
                   ),
                 ),
                 h('div', { style: meter.row }, h('dt', null, t('control')), h('dd', { style: meter.figures }, props.controlActive ? t('controlOn') : t('controlOff'))),
+                h('p', { style: { margin: '6px 0 0', fontSize: '11px', opacity: 0.7 } }, t('compositionHint')),
               ),
             )
           : null,

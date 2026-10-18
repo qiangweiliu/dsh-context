@@ -325,18 +325,36 @@ export function apply(ctx, config) {
               // 引擎阈值未到或仍超预算：只压缩较早历史，保留最近 keepTokens，避免影响当前任务。
               const keepTokens = config.keepTokens > 0 ? config.keepTokens : Math.max(1, Math.floor(budget * 0.25))
               const nodes = Array.isArray(first.nodes) ? first.nodes : []
+              const tokensOf = (node) => Number(node.tokens ?? node.heuristicTokens ?? 0)
+              const typeOf = (node) => {
+                try {
+                  const event = agent?.session && typeof agent.session.eventAt === 'function' ? agent.session.eventAt(node.seq) : undefined
+                  return event?.type
+                } catch {
+                  return undefined
+                }
+              }
+              // 从消息节点起选范围：跳过 system，只压较早的 user/assistant 消息，保留最近 keepTokens。
+              const messageNodes = nodes.filter((node, index) => {
+                if (index === 0) return false
+                const type = typeOf(node)
+                if (type === undefined) return true
+                return type === 'user/message' || type === 'assistant/message' || type === 'tool/result'
+              })
               let accumulated = 0
-              let cut = nodes.length
-              for (let index = nodes.length - 1; index >= 0; index -= 1) {
-                accumulated += Number(nodes[index].tokens ?? nodes[index].heuristicTokens ?? 0)
+              let cut = messageNodes.length
+              for (let index = messageNodes.length - 1; index >= 0; index -= 1) {
+                accumulated += tokensOf(messageNodes[index])
                 if (accumulated >= keepTokens) {
                   cut = index
                   break
                 }
               }
-              if (cut > 0) {
+              const compactable = messageNodes.slice(0, Math.max(0, cut - 1))
+              const compactableTokens = compactable.reduce((sum, node) => sum + tokensOf(node), 0)
+              if (compactable.length >= 2 && compactableTokens >= Math.max(1000, keepTokens)) {
                 try {
-                  await compaction.compactRegion(nodes[0].seq, nodes[cut - 1].seq, agent, signal)
+                  await compaction.compactRegion(compactable[0].seq, compactable[compactable.length - 1].seq, agent, signal)
                   after = measure(agent) ?? after
                 } catch (error) {
                   recordControlError(error instanceof Error ? error.message : String(error))

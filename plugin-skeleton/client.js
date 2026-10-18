@@ -60,7 +60,8 @@ window.__ModuleLoader__.load({
       controlPresetHint: 'Writes one row into preset-standard; the preset config becomes a profile override.',
       controlBusy: 'Applying…',
       controlWriteFailed: 'Could not update the agent preset',
-      controlEnabled: 'Auto-compaction is now enforced with this context limit.',\n      controlError: 'Last compaction issue',
+      controlEnabled: 'Auto-compaction is now enforced with this context limit.'
+      controlError: 'Last compaction issue',
       controlDisabled: 'Auto-compaction row removed from the agent preset.',
       configTitle: 'Global configuration',
       configHint: 'Writes to the profile’s config row; the plugin reloads with the new values.',

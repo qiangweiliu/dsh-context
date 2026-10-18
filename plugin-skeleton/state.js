@@ -26,6 +26,9 @@ let defaultTriggerAt = 1
 /** 自动压缩的目标比例（0–1；压到该比例以下就停）；宿主半侧 apply 时写入。 */
 let defaultTargetAt = 0.6
 
+/** 压缩时保留的最近 tokens（0 = 用预算 25%）；宿主半侧 apply 时写入。 */
+let defaultKeepTokens = 0
+
 /** sessionId -> token 预算 */
 const overrides = new Map()
 
@@ -77,6 +80,17 @@ export function setDefaultTargetAt(value) {
 /** 读取压缩目标比例（默认 0.6）。 */
 export function getDefaultTargetAt() {
   return defaultTargetAt
+}
+
+/** 宿主半侧写入压缩保留量（0 或非法值保持自动 25%）。 */
+export function setDefaultKeepTokens(value) {
+  const number = Number(value)
+  if (Number.isInteger(number) && number >= 0) defaultKeepTokens = number
+}
+
+/** 读取压缩保留量（0 = 自动 25%）。 */
+export function getDefaultKeepTokens() {
+  return defaultKeepTokens
 }
 
 /** 控制半侧标记/清除“压缩中”状态。 */

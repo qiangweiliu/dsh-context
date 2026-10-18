@@ -1,7 +1,7 @@
 # 验收证据（ctx-mon-and-con）
 
 - 仓库：<https://github.com/qiangweiliu/dsh-context>（插件目录 `plugin-skeleton/`）
-- 版本：`0.14.18`（本文件随 manifest 兼容性声明一起提交）
+- 版本：`0.14.19`（本文件随 manifest 兼容性声明一起提交）
 - 采集日期：2026-10-18
 - 证据层级说明：`verified` = 本次固定源码上实际执行并记录结果；`partial` = 只在明确边界内验证；`unknown` = 未取得证据。**这些证据不构成独立安全审计，也不替代商城的专项审阅。**
 
@@ -15,9 +15,9 @@
 ## E1. 离线契约与测试（verified）
 
 ```text
-node test/static.mjs   → [static] 54/54 项通过
-node test/smoke.mjs    → [smoke] 47/47 项通过
-node test/control.mjs  → [control] 50/50 项通过
+node test/static.mjs   → [static] 56/56 项通过
+node test/smoke.mjs    → [smoke] 48/48 项通过
+node test/control.mjs  → [control] 51/51 项通过
 ```
 
 覆盖：插件导出形状、Config Standard Schema 校验、package `exports` 解析、locale、bundle patch 结构、client 渲染注册、control 半侧状态机与压缩区间（含预算不足时不调用 `compactRegion` 的负例）；本次新增 manifest 契约检查（`engines.node`、`engines.dsh`、`dsh.compatibility.dshReleases`、无生命周期脚本、运行文件已分发、无 npm 运行依赖）。
@@ -34,7 +34,7 @@ ok   - bundles 含该包: true
 ok   - dependencies 含该包: true
 ok   - node_modules/ctx-mon-and-con 存在（link -> /home/wu/dsh-plugins/ctx-mon-and-con）
 ok   - --dump-config 出现该行（5 处）
-安装完成：ctx-mon-and-con@0.14.18 已进入 profile web
+安装完成：ctx-mon-and-con@0.14.19 已进入 profile web
 ```
 
 ## E3. 启动与 UI（verified，web profile）
@@ -45,7 +45,7 @@ ok   - --dump-config 出现该行（5 处）
 GET /api/ctx-mon-and-con/status
 {
   "plugin": "ctx-mon-and-con",
-  "version": "0.14.18",
+  "version": "0.14.19",
   "budget": { "tokens": 128000, "warnAt": 0.75, "errorAt": 0.9, "source": "default" },
   "control": { "active": true, "mode": "idle", "presetMounted": true, "lastError": null }
 }
@@ -56,9 +56,9 @@ GET /api/ctx-mon-and-con/status
 ```json
 {
   "ok": true,
-  "version": "v0.14.18",
+  "version": "v0.14.19",
   "title": "上下文监控",
-  "chipTitleAttr": "插件版本: 0.14.18",
+  "chipTitleAttr": "插件版本: 0.14.19",
   "panelPresent": true,
   "errors": []
 }
@@ -84,9 +84,9 @@ ok   - --dump-config 不再出现该行
 
 ## E5. Windows 桌面真实 profile（partial）
 
-- 安装组合已注册：`profiles/desktop/package.json` 的 `dependencies` 含 `"ctx-mon-and-con": "link:C:/Users/40410/Desktop/context/plugin-skeleton"`，`dsh.profile.bundles` 含 `ctx-mon-and-con`；已安装副本版本 `0.14.18`。
+- 安装组合已注册：`profiles/desktop/package.json` 的 `dependencies` 含 `"ctx-mon-and-con": "link:C:/Users/40410/Desktop/context/plugin-skeleton"`，`dsh.profile.bundles` 含 `ctx-mon-and-con`；已安装副本版本 `0.14.19`。
 - 桌面版不允许 CLI 管理该 profile（`profile "desktop" is managed exclusively by the Electron application`），由 Electron 启动时加载；历史运行实例已验证：status 路由 HTTP 200、`version` 与已安装副本一致、`control.active: true`、`presetMounted: true`，并真实执行过压缩（一次记录：before `215229` → after `80639`，`lastError: null`）。
-- **当前运行实例是旧版本（0.14.11），0.14.18 需重启桌面版后生效**；重启后应出现「上下文监控 / v0.14.18」与 `data-ctx-version` 标签。
+- **当前运行实例是旧版本（0.14.11），0.14.19 需重启桌面版后生效**；重启后应出现「上下文监控 / v0.14.19」与 `data-ctx-version` 标签。
 
 ## E6. 权限静态审计（partial）
 
@@ -106,18 +106,18 @@ npm 运行依赖：无；生命周期脚本：无
 
 ## E7. UI 优化验证（partial，2026-10-18）
 
-- 版本：`0.14.18`（WSL profile web 安装后由 headless Edge + CDP 截图验证）。
+- 版本：`0.14.19`（WSL profile web 安装后由 headless Edge + CDP 截图验证）。
 - 修复：概览卡/工具卡不再被纵向 `flex-basis` 撑到 ~320px 高；空态/加载态改为高度自适应；阈值颜色变量改为真实存在的 `--dsw-alias-state-warn-primary`。
 - 概览卡改为环形图 + 已用/上限/剩余 KPI + 8px 分段条 + 右对齐图例；顶部状态 badge（正常/警告/超限）。
 - 工具与提示词：≤6 项自动展开、>6 项默认折叠；「仅看已启用」筛选；加载 skeleton / 空态虚线框 / 错误重试。
 - Dock 弹层底部新增「打开完整面板」，点击跳到侧栏 ctx 页（弹层内已验证按钮存在并可点）。
 - P2：卡片头折叠按钮 + `localStorage` 记忆，刷新后 `data-ctx-collapsed="1"`、`stored={"inventory":true}`（CDP 实测）；`prefers-reduced-motion: reduce` 模拟下注入的 `<style>` 生效，环形图 `transition-duration` 变为 `1e-05s`；KPI/图例/环形图均带精确 token `title`；新增「较上次同步」增量 KPI（同会话两次刷新的差值）。
 - 截图：`docs/ui/current-panel-session.png`（1400px 暗色，6% 真实用量）、`docs/ui/current-panel-empty.png`、`docs/ui/current-panel-light.png`（浅色主题：移除 body `data-ds-dark-theme` 与内联 `--dsw-*` 后截图）、`docs/ui/current-panel-900.png`、`docs/ui/current-panel-600.png`（600px 窄屏：hero 自动换行、卡片单列）、`docs/ui/current-panel-collapsed.png`、`docs/ui/current-dock-popover.png`。
-- 未覆盖：Firefox/Safari（本机未安装 Firefox，WebKit 不可用）；浅色主题用「切换 `data-ds-theme-source` + 移除 body 暗色 token」模拟，未走 app 设置里的主题偏好切换；桌面运行实例需重启后才加载 `0.14.18`（当前仍是 0.14.11）。
+- 未覆盖：Firefox/Safari（本机未安装 Firefox，WebKit 不可用）；浅色主题用「切换 `data-ds-theme-source` + 移除 body 暗色 token」模拟，未走 app 设置里的主题偏好切换；桌面运行实例需重启后才加载 `0.14.19`（当前仍是 0.14.11）。
 
 ## E8. 压缩记录（成功 / 失败日志）验证（partial，2026-10-18）
 
-- 版本：`0.14.18`。
+- 版本：`0.14.19`。
 - 事件源：`control.js` 在 `enforce`（manual/idle）、`compactIfNeeded` / `compactRegion`（idle/step）的成功与失败分支调用 `recordCompactionEvent`；失败同时保留 `lastError`。`state.js` 内存最多 200 条，`index.js` 订阅后追加 JSONL。
 - 测试：`control 42/42`（新增 success-idle 日志、failure-含原因、manual-success 3 条断言）；`smoke 46/46`（新增 status.control.log 数组、临时 HOME 下 JSONL 落盘、status 返回刚写入记录 3 条断言）；`static 49/49`（state 导出接口 + client 可折叠容器）。
 - 持久化：`~/.dsh/ctx-mon-and-con/compaction-log.jsonl`；宿主 apply 时 hydrate，`subscribeCompactionLog` 追加；超过 512KB 只保留最近 400 行。
@@ -127,7 +127,7 @@ npm 运行依赖：无；生命周期脚本：无
 
 ## E9. 阈值驱动 UI + triggerAt 触发 + 清理（partial，2026-10-18）
 
-- 版本：`0.14.18`。
+- 版本：`0.14.19`。
 - A（阈值驱动显示）：`/api/ctx-mon-and-con/status` 与 `/live` 返回 `warnAt/errorAt/triggerAt`；`client.js` 的 `ratioColor/ratioState` 接收阈值，概览卡、Dock、`SegmentedBar` 全部按配置阈值取色/取状态；配置卡新增「触发比例」输入，概览 chips 同时显示警告/超限/触发三个阈值。
 - B（阈值参与触发）：宿主 Config 新增 `triggerAt`（默认 1，取值 (0,1]）；`state.js` 提供 `setDefaultTriggerAt/getDefaultTriggerAt`；`control.js` 的自动压缩（idle/pre-step）触发条件改为 `used > budget × triggerAt`；`/ctx-compact` 手动压缩不受 triggerAt 限制。
 - C（清理）：修正 `control.js` 头注释与 README 模式表（idle 实际监听 `agent/pre-step` 并带 `compactRegion` 兜底）；删除 notify 分支不可达的 `retryEnforce`；明确 `maxAttempts` 只作用于 `/ctx-compact`；预压缩失败文案区分“阈值触发但没有可安全压缩历史”。
@@ -140,14 +140,31 @@ npm 运行依赖：无；生命周期脚本：无
 
 ## E10. 压缩平滑化（targetAt 闭环 / 预检跳过 / 压缩中状态，2026-10-18）
 
-- 版本：`0.14.18`。
+- 版本：`0.14.19`。
 - `targetAt`：新增宿主 Config `targetAt`（默认 `0.6`，要求 `0 < targetAt < triggerAt`）；`state.js` 提供 `setDefaultTargetAt/getDefaultTargetAt`。
 - 闭环：`idle` 模式先让引擎 `compactIfNeeded` 压一次；没到目标线时循环 `compactRegion`（每轮重新算“最小可压前缀”），最多 `maxAttempts` 轮，或直到没有进展；`/ctx-compact` 同样以目标线为停止条件。
 - 预检：`triggerAt < 1` 且没有足够可压历史时静默跳过，不调用压缩服务、不写 failure、不置 `lastError`（实测 74% 预压缩场景压缩记录仍为 0，控制卡保持「正常」）。
 - 状态提示：`state.control.compacting` 经 status 快照和 `/live` 暴露；控制卡在压缩中显示「压缩中…」badge + 提示，Dock 标签显示「ctx 压缩中…」。
-- 测试：`static 54/54`（新增 targetAt 默认/范围/与 triggerAt 关系）、`smoke 47/47`（status 含 triggerAt/targetAt）、`control 50/50`（新增 targetAt 闭环、无历史预检静默跳过、压缩中状态复位）。
+- 测试：`static 56/56`（新增 targetAt 默认/范围/与 triggerAt 关系、keepTokens 校验）、`smoke 48/48`（status 含 triggerAt/targetAt/keepTokens）、`control 51/51`（新增 targetAt 闭环、无历史预检静默跳过、宿主 keepTokens、压缩中状态复位）。
 - 实测（WSL 临时配置 `tokens 10000 / triggerAt 0.5 / targetAt 0.3`）：74% 用量 + 无可压历史时压缩记录保持 0、无红色 lastError（`docs/ui/current-precheck-skip.png`）；目标比例字段与四个阈值 chip 显示正确（`docs/ui/current-target-at.png`）。
 - 未覆盖：未在真实长会话中测量压缩延迟与目标闭环的实际收敛轮数（仅 mock 控制测试）；桌面版需重启后生效。
+
+## E11. WSL 长会话实测：压缩延迟与目标闭环收敛轮数（2026-10-18）
+
+- 环境：WSL Ubuntu 24.04，`dsh 0.2.0-rc.2`，web profile，模型 `agnes-3.0-flash`，插件 `0.14.19`（测试时用临时计时补丁，未提交）。
+- 造长会话：新会话连续 6 轮“写约 800 字中文文章”，用量长到 **14,773 tokens**（系统提示+工具定义约 7.4k，历史约 7k）。
+- 配置：`contextWindowTokens 14,343`、`triggerAt 1`（触发线 14,343）、`targetAt 0.95`（目标线 **13,626**）、`keepTokens 300`；`mode: idle`。
+- 一次自动压缩实测：
+  - 触发点：下一轮 `agent/pre-step` 测得 14,773 > 14,343；
+  - 轮数：**rounds=2**（引擎 `compactIfNeeded` 1 次 + 范围 `compactRegion` 1 次）；
+  - 耗时：**43,522 ms**（从 `agent/pre-step` 开始压缩到压缩完成写日志）；
+  - 结果：before **14,773** → after **13,044**，已低于目标 13,626 → **收敛**；`lastError=null`；
+  - UI：采样点 +22s、+44s 时 `compacting=true`，下一轮采样变回 `false`；聊天记录出现「上下文已压缩 · 已压缩 5 条历史记录（约 2559 tokens）」（`docs/ui/current-compaction-latency.png`）。
+- 对照（同一会话族，目标 60%）：`budget 11,948 / target 7,168 / trigger 10,155` 时压缩一次（rounds=2，6,483 ms），after 9,410 仍高于目标；原因是 **系统提示+工具定义的基础开销约 7.4k，目标 7,168 低于基础开销，物理上不可达**，不是闭环无效。默认 128k 预算下 60% = 76.8k，不存在这个问题。
+- 实测中暴露并修复的两个问题：
+  1. `keepTokens` 之前只存在于宿主 Config，没有传给控制半侧；预设行被配置保存重写后自定义 `keepTokens` 也会丢。已改为宿主 `keepTokens` 经 `state.js` 下发给控制半侧（`0` 仍表示预算 25%）。
+  2. 选前缀下限原为 `1000 tokens`，当目标只差 814 tokens 时 `planRegion` 返回 null，导致“目标已可达但不压”。已把下限降为 `max(200, min(keepFloor, needed))`，本次实测才得以触发。
+- 局限：只测到 1 次成功收敛（n=1），43.5s 是模型摘要耗时，会随历史大小/模型负载波动；该耗时发生在 `agent/pre-step` 内，**会阻塞当轮请求**（截图里本轮对话确实等了压缩完成后才出现回复）。长会话真实 128k 预算下的目标 60% 尚未在 WSL 造出同等规模会话复测。
 
 ## 已知限制（unknown）
 

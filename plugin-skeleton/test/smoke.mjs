@@ -165,6 +165,7 @@ const statusPayload = statusResponse.body ? JSON.parse(statusResponse.body) : {}
 check('状态路由 200 + JSON', statusResponse.statusCode === 200 && String(statusResponse.headers['content-type']).includes('application/json'), statusResponse.statusCode)
 check('状态含上下文', statusPayload.budget?.tokens === 128000, JSON.stringify(statusPayload.budget))
 check('状态含触发/目标阈值', statusPayload.budget?.triggerAt === 1 && statusPayload.budget?.targetAt === 0.6, JSON.stringify(statusPayload.budget))
+check('状态含宿主 keepTokens', statusPayload.budget?.keepTokens === 0, JSON.stringify(statusPayload.budget))
 check('状态含最近测量', statusPayload.measurements?.[0]?.id === 'smoke-session', JSON.stringify(statusPayload.measurements))
 check('状态含会话上下文列表（reset 后为空）', Array.isArray(statusPayload.sessionBudgets) && statusPayload.sessionBudgets.length === 0, JSON.stringify(statusPayload.sessionBudgets))
 check('状态含控制状态（未挂控制行 = 未激活）', statusPayload.control?.active === false, JSON.stringify(statusPayload.control))

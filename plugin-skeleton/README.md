@@ -303,9 +303,9 @@ powershell -NoProfile -ExecutionPolicy Bypass -File scripts/verify-uninstall.ps1
 | `dsh.bundle.patch.yml` | bundle 层：往 profile 的 boot graph `insert` 一行 `id: ctx-mon-and-con` |
 | `locale/{en,zh}.json` | 插件市场/插件管理页显示的 `meta.title` / `meta.description` |
 | `icon.svg` | 插件图标（`exports["./icon"]` 暴露） |
-| `test/static.mjs` | 纯离线静态检查（40 项，不需要 DSH） |
-| `test/smoke.mjs` | 用真实 Cordis 的集成冒烟测试（43 项，需先 `node test/prepare-deps.mjs`） |
-| `test/control.mjs` | 控制半侧的离线测试（33 项：上下文来源、idle/pre-step/notify、重试、cooldown、命令、状态回写、卸载） |
+| `test/static.mjs` | 纯离线静态检查（56 项，不需要 DSH） |
+| `test/smoke.mjs` | 用真实 Cordis 的集成冒烟测试（48 项，需先 `node test/prepare-deps.mjs`） |
+| `test/control.mjs` | 控制半侧的离线测试（51 项：上下文来源、trigger/target 闭环、预检跳过、idle/pre-step/notify、命令、状态回写、卸载） |
 | `test/prepare-deps.mjs` | 从 app.asar 离线解出 cordis/cosmokit 到 `test/deps/`（交付不带第三方副本） |
 | `test/dump-config-smoke.txt` | 隔离 profile 里 `--dump-config` 的实际输出证据 |
 
@@ -358,11 +358,11 @@ bash /mnt/c/<repo>/scripts/wsl-uninstall.sh web    # 卸载并核对残留
 1. **离线自检**（不启动 DSH）：
 
    ```powershell
-   node test/static.mjs        # 40/40：导出形状、Config 校验、exports 解析、locale、client mock、control 形状
+   node test/static.mjs        # 56/56：导出形状、Config 校验、exports 解析、locale、client mock、control 形状
    node --check index.js; node --check control.js; node --check client.js
    node test/prepare-deps.mjs  # 可选：从 app.asar 解出 cordis，第一次需要
-   node test/smoke.mjs         # 47/47：真实 Cordis 里加载、/ctx 与 reset、状态路由、压缩记录落盘、卸载清理
-   node test/control.mjs       # 50/50：上下文来源、trigger/target 闭环、预检跳过、idle/pre-step/notify、命令、状态回写、卸载
+   node test/smoke.mjs         # 48/48：真实 Cordis 里加载、/ctx 与 reset、状态路由、压缩记录落盘、卸载清理
+   node test/control.mjs       # 51/51：上下文来源、trigger/target 闭环、预检跳过、idle/pre-step/notify、命令、状态回写、卸载
    ```
 
 2. **确认 bundle 层生效**：
@@ -387,6 +387,7 @@ bash /mnt/c/<repo>/scripts/wsl-uninstall.sh web    # 卸载并核对残留
        errorAt: 0.85
        triggerAt: 0.85   # 到 85% 就预压缩；默认 1 = 到上限才触发
        targetAt: 0.5     # 压到 50% 左右停；默认 0.6
+       keepTokens: 300   # 压缩时保留最近 tokens；0 = 预算 25%
    ```
 
 ## 卸载

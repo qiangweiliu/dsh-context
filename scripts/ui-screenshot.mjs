@@ -158,6 +158,82 @@ if (selector === 'none') {
     if (trigger) trigger.click()
     await new Promise((r) => setTimeout(r, 1200))
   })()`)
+} else if (selector === 'probeonce') {
+  await evaluate(`(async () => {
+    const norm = (s) => (s || '').replace(/\\s+/g, ' ').trim()
+    const session = Array.from(document.querySelectorAll('button, a, [role="button"]')).find((el) => /长会话中的上下文管理/.test(norm(el.textContent)) && norm(el.textContent).length < 80)
+    if (session) session.click()
+    await new Promise((r) => setTimeout(r, 1500))
+    const composer = document.querySelector('textarea, [contenteditable="true"]')
+    if (composer) composer.focus()
+  })()`)
+  await send('Input.insertText', { text: '继续' })
+  await sleep(300)
+  await evaluate(`(() => { const norm = (s) => (s || '').replace(/\\s+/g, ' ').trim(); const b = Array.from(document.querySelectorAll('button')).find((x) => /发送消息/.test(norm(x.getAttribute('aria-label')) || '')); if (b) b.click() })()`)
+  await sleep(20000)
+  const result = await evaluate(`(async () => {
+    const status = await (await fetch('/api/ctx-mon-and-con/status')).json().catch(() => ({}))
+    const live = await (await fetch('/api/ctx-mon-and-con/status/live')).json().catch(() => ({}))
+    return JSON.stringify({ used: live.used, budget: live.budget, control: status.control ? { active: status.control.active, log: status.control.log ? status.control.log.length : 0, last: status.control.lastCompaction, lastError: status.control.lastError } : null })
+  })()`)
+  console.log('probeonce', result)
+} else if (selector === 'measurelong') {
+  const setConfig = async (payload) => {
+    const result = await evaluate(`(async () => {
+      const response = await fetch('/api/ctx-mon-and-con/status/config', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify(${JSON.stringify(payload)}) })
+      return JSON.stringify({ status: response.status, body: (await response.text()).slice(0, 200) })
+    })()`)
+    console.log('measure-config', result)
+  }
+  const sample = async (turn) => {
+    const value = await evaluate(`(async () => {
+      const live = await (await fetch('/api/ctx-mon-and-con/status/live')).json().catch(() => ({}))
+      const status = await (await fetch('/api/ctx-mon-and-con/status')).json().catch(() => ({}))
+      return JSON.stringify({ turn: ${turn}, used: live.used, budget: live.budget, ratio: live.ratio, compacting: live.compacting, log: (status.control && status.control.log ? status.control.log.length : 0), last: status.control ? status.control.lastCompaction : null, lastError: status.control ? status.control.lastError : null })
+    })()`)
+    console.log('measure-sample', value)
+    try { return JSON.parse(value) } catch { return {} }
+  }
+  const sendText = async (text) => {
+    await evaluate(`(() => { const c = document.querySelector('textarea, [contenteditable="true"]'); if (c) c.focus() })()`)
+    await send('Input.insertText', { text })
+    await sleep(300)
+    await evaluate(`(() => { const norm = (s) => (s || '').replace(/\\s+/g, ' ').trim(); const b = Array.from(document.querySelectorAll('button')).find((x) => /发送消息/.test(norm(x.getAttribute('aria-label')) || '')); if (b) b.click() })()`)
+  }
+  await setConfig({ contextWindowTokens: 100000, warnAt: 0.75, errorAt: 0.9, triggerAt: 1, targetAt: 0.5, keepTokens: 300 })
+  await sleep(6000)
+  await send('Page.reload')
+  await sleep(4500)
+  await evaluate(`(async () => {
+    const norm = (s) => (s || '').replace(/\\s+/g, ' ').trim()
+    const btn = Array.from(document.querySelectorAll('button')).find((b) => /新建会话/.test(norm(b.getAttribute('aria-label')) || '') || /新建会话/.test(norm(b.textContent)))
+    if (btn) btn.click()
+    await new Promise((r) => setTimeout(r, 1500))
+    const composer = document.querySelector('textarea, [contenteditable="true"]')
+    if (composer) composer.focus()
+  })()`)
+  const prompt = '请写一篇约 800 字的中文文章，主题：长会话中的上下文管理。只输出正文，不要标题，不要列表。'
+  let last = {}
+  for (let turn = 1; turn <= 6; turn += 1) {
+    await sendText(prompt)
+    await sleep(20000)
+    last = await sample(turn)
+  }
+  // 按当前真实用量定预算：target=0.6、trigger=0.85，使目标线可达、触发线低于当前用量
+  const used = typeof last.used === 'number' ? last.used : 12000
+  const budget = Math.round(used / 1.03)
+  await setConfig({ contextWindowTokens: budget, warnAt: 0.75, errorAt: 0.9, triggerAt: 1, targetAt: 0.95, keepTokens: 300 })
+  await sleep(7000)
+  for (let turn = 7; turn <= 9; turn += 1) {
+    await sendText('继续')
+    await sleep(22000)
+    await sample(turn)
+  }
+  const summary = await evaluate(`(async () => {
+    const status = await (await fetch('/api/ctx-mon-and-con/status')).json().catch(() => ({}))
+    return JSON.stringify({ control: status.control ? { compacting: status.control.compacting, log: status.control.log ? status.control.log.length : 0, last: status.control.lastCompaction, lastError: status.control.lastError } : null })
+  })()`)
+  console.log('measure-summary', summary)
 } else if (selector === 'configtrigger') {
   const result = await evaluate(`(async () => {
     const response = await fetch('/api/ctx-mon-and-con/status/config', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ contextWindowTokens: 10000, warnAt: 0.5, errorAt: 0.6, triggerAt: 0.5, targetAt: 0.3 }) })
@@ -201,7 +277,7 @@ if (selector === 'none') {
   console.log('runtime-errors', JSON.stringify(runtimeErrors.slice(0, 5)))
 } else if (selector === 'configrestore') {
   const restored = await evaluate(`(async () => {
-    const response = await fetch('/api/ctx-mon-and-con/status/config', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ contextWindowTokens: 128000, warnAt: 0.75, errorAt: 0.9, triggerAt: 1, targetAt: 0.6 }) })
+    const response = await fetch('/api/ctx-mon-and-con/status/config', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ contextWindowTokens: 128000, warnAt: 0.75, errorAt: 0.9, triggerAt: 1, targetAt: 0.6, keepTokens: 0 }) })
     return JSON.stringify({ status: response.status, body: (await response.text()).slice(0, 200) })
   })()`)
   console.log('config-restore', restored)

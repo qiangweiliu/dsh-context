@@ -233,6 +233,29 @@ check('exports apply function', typeof controlPlugin.apply === 'function')
   await root.fiber.dispose()
 }
 
+// ── 2e. 宿主 keepTokens 生效：目标只差一点也会做最小范围压缩 ─────────────────
+{
+  const { root, fiber, meter, compaction, agent } = await mount({ mode: 'idle', cooldownMs: 0, maxContextTokens: 100000 })
+  state.setDefaultTriggerAt(0.6)
+  state.setDefaultTargetAt(0.5)
+  state.setDefaultKeepTokens(100)
+  meter.tokens = 70000
+  meter.nodes = [
+    { seq: 1, tokens: 3000 },
+    { seq: 2, tokens: 20000 },
+    { seq: 3, tokens: 20000 },
+    { seq: 4, tokens: 27000 },
+  ]
+  agent.session = { id: 'control-session', eventAt: (seq) => ({ type: seq === 1 ? 'system/message' : 'user/message' }) }
+  compaction.shrinkTo = 55000
+  await root.waterfall('agent/pre-step', { agent, signal: new AbortController().signal }, () => 'inner-reached')
+  check('宿主 keepTokens 生效（目标差 5k 时仍 compactRegion）', compaction.calls.some((c) => c.kind === 'compactRegion'), JSON.stringify(compaction.calls.map((c) => c.kind)))
+  state.setDefaultKeepTokens(0)
+  state.setDefaultTargetAt(0.6)
+  await fiber.dispose()
+  await root.fiber.dispose()
+}
+
 // ── 3. 上下文来源：会话覆盖 > 宿主默认 > 本行配置 ────────────────────────────
 {
   const { root, fiber, meter, compaction, agent } = await mount({ mode: 'idle', cooldownMs: 0, maxContextTokens: 200000 })

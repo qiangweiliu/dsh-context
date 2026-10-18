@@ -45,6 +45,7 @@ import {
   listSessionBudgets,
   setDefaultBudget,
   setDefaultTriggerAt,
+  setDefaultKeepTokens,
   setDefaultTargetAt,
   setSessionBudget,
   clearSessionBudget,
@@ -54,7 +55,7 @@ import {
 export const inject = ['commands', 'tokenMeter']
 
 /** 与 package.json 的 version 保持一致（只用于状态接口的自述）。 */
-const PLUGIN_VERSION = '0.14.18'
+const PLUGIN_VERSION = '0.14.19'
 
 /** 浏览器半侧 client.js 拉的只读状态接口；两处路径必须一致。 */
 const STATUS_PATH = '/api/ctx-mon-and-con/status'
@@ -356,6 +357,7 @@ export function apply(ctx, config) {
   setDefaultBudget(config.contextWindowTokens)
   setDefaultTriggerAt(config.triggerAt)
   setDefaultTargetAt(config.targetAt)
+  setDefaultKeepTokens(config.keepTokens)
   setGlobalPromptOverrides(config.promptOverrides)
   setGlobalDisabledTools(config.disabledTools)
 
@@ -665,6 +667,7 @@ export function apply(ctx, config) {
       errorAt: config.errorAt,
       triggerAt: config.triggerAt,
       targetAt: config.targetAt,
+      keepTokens: config.keepTokens,
       ratio: typeof used === 'number' && budget > 0 ? used / budget : null,
     })
   }
@@ -816,7 +819,8 @@ export function apply(ctx, config) {
         warnAt: config.warnAt,
         errorAt: config.errorAt,
         triggerAt: config.triggerAt,
-      targetAt: config.targetAt,
+        targetAt: config.targetAt,
+        keepTokens: config.keepTokens,
         source: 'default',
       },
       sessionBudgets: listSessionBudgets(),
@@ -898,6 +902,10 @@ export function apply(ctx, config) {
       if (input[key] === undefined) continue
       if (typeof input[key] !== 'number' || !(input[key] > 0 && input[key] <= 1)) return null
       ratios[key] = input[key]
+    }
+    if (input.keepTokens !== undefined) {
+      if (!Number.isInteger(input.keepTokens) || input.keepTokens < 0) return null
+      patch.keepTokens = input.keepTokens
     }
     if (input.targetAt !== undefined) {
       if (typeof input.targetAt !== 'number' || !(input.targetAt > 0 && input.targetAt < 1)) return null

@@ -36,6 +36,7 @@
 
 import {
   budgetFor,
+  getDefaultKeepTokens,
   getDefaultTargetAt,
   getDefaultTriggerAt,
   getSessionDisabledPrompts,
@@ -291,7 +292,7 @@ export function apply(ctx, config) {
       return type === 'user/message' || type === 'assistant/message' || type === 'tool/result'
     })
     if (messageNodes.length < 2) return null
-    const keepFloor = config.keepTokens > 0 ? config.keepTokens : Math.max(1, Math.floor(budget * 0.25))
+    const keepFloor = config.keepTokens > 0 ? config.keepTokens : getDefaultKeepTokens() > 0 ? getDefaultKeepTokens() : Math.max(1, Math.floor(budget * 0.25))
     // 最近 keepFloor tokens 作为“不动区”，只在它之前选可压范围。
     let reserve = 0
     let keepFrom = messageNodes.length
@@ -324,7 +325,7 @@ export function apply(ctx, config) {
     const selected = candidates.slice(0, Math.min(cut, candidates.length))
     if (selected.length < 2) return null
     const selectedTokens = selected.reduce((sum, node) => sum + tokensOf(node), 0)
-    if (selectedTokens < Math.max(1000, Math.min(keepFloor, needed))) return null
+    if (selectedTokens < Math.max(200, Math.min(keepFloor, needed))) return null
     return { start: selected[0].seq, end: selected[selected.length - 1].seq, tokens: selectedTokens }
   }
 

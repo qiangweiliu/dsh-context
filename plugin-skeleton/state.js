@@ -308,6 +308,17 @@ export function getGlobalPromptOverrides() {
   return globalPromptOverrides
 }
 
+/** 全局新增提示词（用户命名 -> 文本）；与覆盖不同，它创建新的 system section。 */
+let globalExtraPrompts = {}
+
+export function setGlobalExtraPrompts(value) {
+  globalExtraPrompts = value && typeof value === 'object' ? { ...value } : {}
+}
+
+export function getGlobalExtraPrompts() {
+  return globalExtraPrompts
+}
+
 /** 全局禁用的工具名（Config.disabledTools，宿主 apply 时同步）。 */
 let globalDisabledTools = []
 

@@ -135,6 +135,15 @@ window.__ModuleLoader__.load({
       confirmGlobal: 'Save globally? It affects every session and is written to the profile.',
       resetSession: 'Reset session override',
       editHint: 'Writes profile config (global). Original kept for restore.',
+      extraPromptAdd: 'Add prompt',
+      extraPromptName: 'Prompt name',
+      extraPromptText: 'Prompt text',
+      extraPromptSave: 'Add',
+      extraPromptSaved: 'Added. It appears in the next request.',
+      extraPromptHint: 'Inserted after harness:identity; applies to the next request.',
+      extraPromptDelete: 'Delete',
+      extraPromptConfirmDelete: 'Remove this extra prompt?',
+      extraLabel: 'extra',
       promptTokens: 'Prompt',
       toolTokens: 'Tools',
       historyTokens: 'History',
@@ -306,6 +315,15 @@ window.__ModuleLoader__.load({
       confirmGlobal: '确认保存到全局？将影响所有会话并写入 profile。',
       resetSession: '清除会话覆盖',
       editHint: '写入 profile 配置（全局生效），原文保留可恢复。',
+      extraPromptAdd: '新增提示词',
+      extraPromptName: '提示词名称',
+      extraPromptText: '提示词内容',
+      extraPromptSave: '新增',
+      extraPromptSaved: '已新增，下一次请求生效。',
+      extraPromptHint: '会插入到 harness:identity 之后，下一次请求生效。',
+      extraPromptDelete: '删除',
+      extraPromptConfirmDelete: '确认删除这条新增提示词？',
+      extraLabel: '新增',
       promptTokens: '提示词',
       toolTokens: '工具定义',
       historyTokens: '上文',
@@ -1234,6 +1252,9 @@ window.__ModuleLoader__.load({
       const [editDraft, setEditDraft] = react.useState(null)
       const [promptSave, setPromptSave] = react.useState(null)
       const [promptBusy, setPromptBusy] = react.useState(false)
+      const [extraDraft, setExtraDraft] = react.useState(null)
+      const [extraBusy, setExtraBusy] = react.useState(false)
+      const [extraDeletePending, setExtraDeletePending] = react.useState(null)
       const [restorePending, setRestorePending] = react.useState(false)
       const [localEdits, setLocalEdits] = react.useState({})
       const [notice, setNotice] = react.useState(null)
@@ -1353,6 +1374,46 @@ window.__ModuleLoader__.load({
           .catch(() => setPromptBusy(false))
       }
 
+      const postExtraPrompt = (name, text) => {
+        setExtraBusy(true)
+        fetch(`${STATUS_PATH}/inventory/extra-prompt`, {
+          method: 'POST',
+          headers: { 'content-type': 'application/json' },
+          body: JSON.stringify({ name, text }),
+        })
+          .then((response) => response.json().catch(() => ({})))
+          .then((payload) => {
+            setExtraBusy(false)
+            if (!payload || !payload.ok) {
+              setNotice((payload && payload.error) || t('inventoryLoadFailed'))
+              return
+            }
+            setExtraDraft(null)
+            setPromptSave(null)
+            setEditDraft(null)
+            setNotice(t('extraPromptSaved'))
+            setTimeout(() => props.reload && props.reload(), 900)
+          })
+          .catch(() => setExtraBusy(false))
+      }
+
+      const postExtraPromptReset = (name) => {
+        setExtraBusy(true)
+        fetch(`${STATUS_PATH}/inventory/extra-prompt/reset`, {
+          method: 'POST',
+          headers: { 'content-type': 'application/json' },
+          body: JSON.stringify({ name }),
+        })
+          .then((response) => response.json().catch(() => ({})))
+          .then(() => {
+            setExtraBusy(false)
+            setExtraDeletePending(null)
+            setNotice(null)
+            setTimeout(() => props.reload && props.reload(), 900)
+          })
+          .catch(() => setExtraBusy(false))
+      }
+
       const switchNode = (kind, name, layer, enabled) => {
         const key = `${kind}:${name}:${layer}`
         const confirming = pending && pending.kind === kind && pending.name === name && pending.layer === layer
@@ -1420,6 +1481,22 @@ window.__ModuleLoader__.load({
       for (const name of disabledSessionPrompts) {
         if (!sections.some((section) => section.name === name)) sections.push({ name, tokens: null, text: '' })
       }
+      const extraPrompts = data.extraPrompts && typeof data.extraPrompts === 'object' ? data.extraPrompts : {}
+      for (const [name, text] of Object.entries(extraPrompts)) {
+        const sectionName = name.startsWith('ctx-mon-and-con:extra:') ? name : `ctx-mon-and-con:extra:${name}`
+        if (!sections.some((section) => section.name === sectionName)) {
+          sections.push({
+            name: sectionName,
+            extraName: name,
+            extra: true,
+            tokens: Math.ceil(String(text).length / 4),
+            text: String(text),
+            originalText: String(text),
+            overridden: true,
+            globalOverridden: true,
+          })
+        }
+      }
 
       const enabledToolName = (name) => !disabledSessionTools.includes(name) && !disabledGlobalTools.includes(name)
       const enabledPromptName = (name) => !disabledSessionPrompts.includes(name)
@@ -1484,11 +1561,13 @@ window.__ModuleLoader__.load({
 
       const promptRow = (section) => {
         const key = `prompt:${section.name}`
+        const isExtra = Boolean(section.extra)
+        const displayName = isExtra ? (section.extraName || section.name) : section.name
         const isOpen = Boolean(expanded[key])
         const editing = editDraft && editDraft.name === section.name
         const hasLocal = Object.prototype.hasOwnProperty.call(localEdits, section.name)
         const effectiveText = hasLocal ? localEdits[section.name] : section.text || ''
-        const dirty = hasLocal || section.overridden || (section.originalText !== undefined && section.originalText !== section.text)
+        const dirty = isExtra || hasLocal || section.overridden || (section.originalText !== undefined && section.originalText !== section.text)
         const editorNode = editing
           ? h('textarea', {
               style: styles.promptEditor,
@@ -1499,11 +1578,20 @@ window.__ModuleLoader__.load({
             })
           : h('div', { style: styles.detailBox },
               h('div', { style: styles.detailHead },
-                h('span', { style: styles.cardSub }, dirty ? (section.sessionOverridden ? t('sessionOverridden') : t('globalOverridden')) : t('editHint')),
+                h('span', { style: styles.cardSub }, isExtra ? t('extraLabel') : dirty ? (section.sessionOverridden ? t('sessionOverridden') : t('globalOverridden')) : t('editHint')),
                 h('span', { style: { ...styles.cardSub, fontFamily: 'ui-monospace, monospace', maxWidth: '46%', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }, title: sourceOf(section.name) || t('sourceUnknown') }, `${t('source')}: ${sourceOf(section.name) || t('sourceUnknown')}`),
                 h('span', { style: { display: 'inline-flex', gap: '6px' } },
-                  h('button', { type: 'button', style: styles.copyBtn, 'data-ctx-prompt-edit': section.name, onClick: () => { setEditDraft({ name: section.name, text: effectiveText }); setPromptSave(null) }, disabled: promptBusy }, t('edit')),
-                  dirty ? h('button', { type: 'button', style: styles.copyBtn, 'data-ctx-prompt-reset': section.name, onClick: () => (section.sessionOverridden ? postSessionPromptReset(section.name) : postPrompt('/reset', { name: section.name })), disabled: promptBusy }, section.sessionOverridden ? t('resetSession') : t('resetOriginal')) : null,
+                  h('button', { type: 'button', style: styles.copyBtn, 'data-ctx-prompt-edit': section.name, onClick: () => { setEditDraft({ name: section.name, text: effectiveText }); setPromptSave(null) }, disabled: promptBusy || extraBusy }, t('edit')),
+                  isExtra
+                    ? extraDeletePending === section.name
+                      ? [
+                          h('button', { key: 'del', type: 'button', style: styles.copyBtn, 'data-ctx-extra-delete-confirm': section.name, onClick: () => postExtraPromptReset(displayName), disabled: extraBusy }, t('confirm')),
+                          h('button', { key: 'no', type: 'button', style: styles.copyBtn, onClick: () => setExtraDeletePending(null) }, t('cancel')),
+                        ]
+                      : h('button', { type: 'button', style: styles.copyBtn, 'data-ctx-extra-delete': section.name, onClick: () => setExtraDeletePending(section.name), disabled: extraBusy }, t('extraPromptDelete'))
+                    : dirty
+                      ? h('button', { type: 'button', style: styles.copyBtn, 'data-ctx-prompt-reset': section.name, onClick: () => (section.sessionOverridden ? postSessionPromptReset(section.name) : postPrompt('/reset', { name: section.name })), disabled: promptBusy }, section.sessionOverridden ? t('resetSession') : t('resetOriginal'))
+                      : null,
                   h('button', { type: 'button', style: styles.copyBtn, onClick: () => copy(key, effectiveText) }, copied === key ? t('copied') : t('copy')),
                 ),
               ),
@@ -1519,8 +1607,8 @@ window.__ModuleLoader__.load({
               'button',
               { type: 'button', style: styles.inventoryHead, 'data-ctx-expand': key, 'aria-expanded': isOpen, onClick: () => setExpanded({ ...expanded, [key]: !isOpen }) },
               chevron(isOpen),
-              h('span', { style: styles.inventoryName }, section.name),
-              dirty ? h('span', { style: styles.cardSub }, section.sessionOverridden ? t('sessionOverridden') : t('globalOverridden')) : null,
+              h('span', { style: styles.inventoryName }, displayName),
+              isExtra ? h('span', { style: styles.cardSub }, t('extraLabel')) : dirty ? h('span', { style: styles.cardSub }, section.sessionOverridden ? t('sessionOverridden') : t('globalOverridden')) : null,
               section.tokens !== null && section.tokens !== undefined ? h('span', { style: styles.cardSub }, `~${compactTokens(section.tokens)} ${t('tokensShort')}`) : null,
             ),
             h(
@@ -1533,18 +1621,63 @@ window.__ModuleLoader__.load({
           isOpen && notice ? h('p', { style: styles.cardSub }, notice) : null,
           isOpen && editing
             ? h('div', { style: { display: 'flex', gap: '6px', alignItems: 'center', flexWrap: 'wrap' } },
-                promptSave === section.name
-                  ? [h('span', { key: 'q', style: styles.cardSub }, t('confirmGlobal')),
-                     h('button', { key: 'ok', type: 'button', style: styles.copyBtn, 'data-ctx-prompt-confirm': section.name, onClick: () => postPrompt('', { name: section.name, text: editDraft.text }), disabled: promptBusy }, t('confirm')),
-                     h('button', { key: 'no', type: 'button', style: styles.copyBtn, onClick: () => setPromptSave(null) }, t('cancel'))]
-                  : [h('button', { key: 'session', type: 'button', style: styles.copyBtn, 'data-ctx-prompt-save-session': section.name, onClick: () => postSessionPrompt(section.name, editDraft.text), disabled: promptBusy }, t('saveSession')),
-                     h('button', { key: 'save', type: 'button', style: styles.copyBtn, 'data-ctx-prompt-save': section.name, onClick: () => setPromptSave(section.name), disabled: promptBusy }, t('saveGlobal')),
+                isExtra
+                  ? [h('button', { key: 'save', type: 'button', style: styles.copyBtn, 'data-ctx-extra-save': section.name, onClick: () => postExtraPrompt(displayName, editDraft.text), disabled: extraBusy }, t('save')),
                      h('button', { key: 'cancel', type: 'button', style: styles.copyBtn, onClick: () => { setEditDraft(null); setPromptSave(null) } }, t('cancel')),
-                     h('span', { key: 'hint', style: styles.cardSub }, t('editHint'))],
+                     h('span', { key: 'hint', style: styles.cardSub }, t('editHint'))]
+                  : promptSave === section.name
+                    ? [h('span', { key: 'q', style: styles.cardSub }, t('confirmGlobal')),
+                       h('button', { key: 'ok', type: 'button', style: styles.copyBtn, 'data-ctx-prompt-confirm': section.name, onClick: () => postPrompt('', { name: section.name, text: editDraft.text }), disabled: promptBusy }, t('confirm')),
+                       h('button', { key: 'no', type: 'button', style: styles.copyBtn, onClick: () => setPromptSave(null) }, t('cancel'))]
+                    : [h('button', { key: 'session', type: 'button', style: styles.copyBtn, 'data-ctx-prompt-save-session': section.name, onClick: () => postSessionPrompt(section.name, editDraft.text), disabled: promptBusy }, t('saveSession')),
+                       h('button', { key: 'save', type: 'button', style: styles.copyBtn, 'data-ctx-prompt-save': section.name, onClick: () => setPromptSave(section.name), disabled: promptBusy }, t('saveGlobal')),
+                       h('button', { key: 'cancel', type: 'button', style: styles.copyBtn, onClick: () => { setEditDraft(null); setPromptSave(null) } }, t('cancel')),
+                       h('span', { key: 'hint', style: styles.cardSub }, t('editHint'))],
               )
             : null,
         )
       }
+
+      const extraForm = extraDraft
+        ? h(
+            'div',
+            { style: { display: 'flex', flexDirection: 'column', gap: '6px', padding: '6px 0' } },
+            h('input', {
+              type: 'text',
+              value: extraDraft.name,
+              placeholder: t('extraPromptName'),
+              'data-ctx-extra-name': '1',
+              style: { width: '100%', boxSizing: 'border-box', padding: '7px 9px', borderRadius: '8px', border: '1px solid var(--dsw-alias-border-l2)', background: 'var(--dsw-alias-bg-base)', color: 'inherit', font: 'inherit' },
+              onChange: (event) => setExtraDraft({ ...extraDraft, name: event.target.value }),
+            }),
+            h('textarea', {
+              rows: 6,
+              value: extraDraft.text,
+              placeholder: t('extraPromptText'),
+              'data-ctx-extra-text': '1',
+              style: { ...styles.promptEditor, minHeight: '96px' },
+              onChange: (event) => setExtraDraft({ ...extraDraft, text: event.target.value }),
+            }),
+            h(
+              'div',
+              { style: { display: 'flex', gap: '6px', alignItems: 'center', flexWrap: 'wrap' } },
+              h('button', {
+                type: 'button',
+                style: styles.copyBtn,
+                'data-ctx-extra-save-new': '1',
+                disabled: extraBusy || extraDraft.name.trim().length === 0 || extraDraft.text.trim().length === 0,
+                onClick: () => postExtraPrompt(extraDraft.name.trim(), extraDraft.text),
+              }, t('extraPromptSave')),
+              h('button', { type: 'button', style: styles.copyBtn, onClick: () => setExtraDraft(null) }, t('cancel')),
+              h('span', { style: styles.cardSub }, t('extraPromptHint')),
+            ),
+          )
+        : h('button', {
+            type: 'button',
+            style: styles.button,
+            'data-ctx-extra-add': '1',
+            onClick: () => setExtraDraft({ name: '', text: '' }),
+          }, t('extraPromptAdd'))
 
       const loading = Boolean(props.loading) && !inventory
       const loadError = props.error ? String(props.error) : null
@@ -1626,6 +1759,7 @@ window.__ModuleLoader__.load({
                   { type: 'button', style: styles.sectionHead, 'data-ctx-section': 'prompts', onClick: () => setOpen({ ...open, prompts: !open.prompts }) },
                   chevron(open.prompts), t('inventoryPrompts'), h('span', { style: styles.cardSub }, onlyEnabled ? `${visibleSections.length}/${sections.length}` : String(sections.length)),
                 ),
+                open.prompts ? extraForm : null,
                 open.prompts ? (visibleSections.length === 0 ? h('p', { style: styles.emptyText }, t('noneEnabled')) : h('ul', { style: styles.inventoryList }, visibleSections.map(promptRow))) : null,
               ),
               h('p', { style: styles.text }, t('inventoryRisk')),

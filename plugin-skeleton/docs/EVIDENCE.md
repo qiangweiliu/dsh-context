@@ -1,7 +1,7 @@
 # 验收证据（ctx-mon-and-con）
 
 - 仓库：<https://github.com/qiangweiliu/dsh-context>（插件目录 `plugin-skeleton/`）
-- 版本：`0.15.0`（本文件随 manifest 兼容性声明一起提交）
+- 版本：`0.16.0`（本文件随 manifest 兼容性声明一起提交）
 - 采集日期：2026-10-18
 - 证据层级说明：`verified` = 本次固定源码上实际执行并记录结果；`partial` = 只在明确边界内验证；`unknown` = 未取得证据。**这些证据不构成独立安全审计，也不替代商城的专项审阅。**
 
@@ -181,6 +181,16 @@ npm 运行依赖：无；生命周期脚本：无
   - 会话卡点击是「在本页看趋势」；另有「打开会话」链接按标题点击左侧会话列表（DOM 桥接）。没有公开的客户端切会话 API，找不到标题时静默不跳。
   - 趋势图未画目标线，只显示预算文字；活动热力最多 90 天（`all` 时）。
   - 首次加载 40 个会话的事件折叠耗时未做独立压测；已加 20s 内存缓存和 4 并发限制。
+
+## E13. v0.16.0 新增提示词 section（2026-10-18）
+
+- 环境：WSL Ubuntu 24.04，web profile 的临时副本（验证后删除），模型 `DeepSeek-V41-Flash`，插件 `0.16.0` 本地 `link:`。
+- 后端：`POST /api/ctx-mon-and-con/status/inventory/extra-prompt` 写入 `extraPrompts.project-rules`，返回 202；下一次装配的 inventory 出现：
+  - `ctx-mon-and-con:extra:project-rules`，`extra:true`，`extraName:"project-rules"`，约 29 tokens。
+- 会话日志（`session-2ce1e5b8-...`）：system prompt 文本为 `harness:identity` → 新增 section → `deployment:persona-prefix`，**原 identity 保留，未覆盖**；连续 2 轮都回复验证码 `EXTRA-ONE`，且只有 1 条 `system/message`（内容未变时不重复写）。
+- UI：headless Edge + CDP 在「工具与提示词 → 提示词 → 新增提示词」填入 `ui-rules` / `UI-ONE`，保存后 `GET /inventory` 的 `extraPrompts` 出现该键；删除接口返回 202 并清空。
+- 测试：`test/static.mjs` 58/58，`test/smoke.mjs` 48/48。
+- 局限：验证使用临时 profile 副本，未在 Desktop Electron profile 内实测；新增提示词只对之后的请求生效，已有会话的旧 system 历史不会被删除。
 
 ## 已知限制（unknown）
 

@@ -44,6 +44,7 @@ import {
   getGlobalDisabledTools,
   getSessionPromptTextMap,
   getGlobalPromptOverrides,
+  getGlobalExtraPrompts,
   recordAppliedTools,
   recordCompaction,
   recordCompactionEvent,
@@ -218,6 +219,34 @@ export function apply(ctx, config) {
               globalOverridden,
               sessionOverridden,
             })
+          }
+          const extraPrompts = getGlobalExtraPrompts()
+          for (const [name, text] of Object.entries(extraPrompts)) {
+            const sectionName = name.startsWith('ctx-mon-and-con:extra:') ? name : `ctx-mon-and-con:extra:${name}`
+            if (disabled.has(sectionName)) continue
+            const value = typeof text === 'string' ? text : ''
+            if (value.trim().length === 0) continue
+            if (mapped.some((section) => section.name === sectionName)) continue
+            const item = { name: sectionName, text: value }
+            const at = mapped.findIndex((section) => section.name === 'harness:identity')
+            const inventoryItem = {
+              name: sectionName,
+              tokens: Math.ceil(value.length / 4),
+              text: value,
+              originalText: value,
+              overridden: true,
+              globalOverridden: true,
+              sessionOverridden: false,
+              extra: true,
+              extraName: name,
+            }
+            if (at >= 0) {
+              mapped.splice(at + 1, 0, item)
+              inventory.splice(at + 1, 0, inventoryItem)
+            } else {
+              mapped.push(item)
+              inventory.push(inventoryItem)
+            }
           }
           result.sections = mapped
           recordInventory(sessionId, {

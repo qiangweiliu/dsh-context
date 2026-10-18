@@ -31,6 +31,7 @@ import {
   subscribeCompactionLog,
   setGlobalDisabledTools,
   setGlobalPromptOverrides,
+  setGlobalExtraPrompts,
   getAppliedTools,
   getInventory,
   getSessionDisabledPrompts,
@@ -57,7 +58,7 @@ import { foldSession, sessionDetail, summarizeFolds } from './metrics.js'
 export const inject = ['commands', 'tokenMeter']
 
 /** 与 package.json 的 version 保持一致（只用于状态接口的自述）。 */
-const PLUGIN_VERSION = '0.15.0'
+const PLUGIN_VERSION = '0.16.0'
 
 /** 浏览器半侧 client.js 拉的只读状态接口；两处路径必须一致。 */
 const STATUS_PATH = '/api/ctx-mon-and-con/status'
@@ -80,6 +81,8 @@ const DEFAULT_CONFIG = {
   disabledTools: [],
   // 全局提示词覆盖：section name -> 替换文本；空对象表示全部用原文。
   promptOverrides: {},
+  // 全局新增提示词：用户命名 -> 文本；在 harness:identity 后插入新的 system section。
+  extraPrompts: {},
   // 压缩时保留的最近 tokens（0 = 用插件预算的 25%）。
   keepTokens: 0,
   // 是否在启动时自动把控制行补挂进 agent preset（面板手动停用后置 false）。
@@ -100,7 +103,7 @@ function validateConfig(input) {
   if (typeof raw !== 'object' || raw === null || Array.isArray(raw)) {
     return { issues: [{ message: 'config must be an object' }] }
   }
-  const config = { ...DEFAULT_CONFIG, disabledTools: [], promptOverrides: {}, autoMountControl: true, keepTokens: 0 }
+  const config = { ...DEFAULT_CONFIG, disabledTools: [], promptOverrides: {}, extraPrompts: {}, autoMountControl: true, keepTokens: 0 }
   for (const key of NUMERIC_KEYS) {
     const value = raw[key]
     if (value === undefined) continue
@@ -144,6 +147,25 @@ function validateConfig(input) {
       config.promptOverrides = overrides
     }
   }
+  if (raw.extraPrompts !== undefined) {
+    if (typeof raw.extraPrompts !== 'object' || raw.extraPrompts === null || Array.isArray(raw.extraPrompts)) {
+      issues.push({ message: 'expected an object of prompt name -> text', path: ['extraPrompts'] })
+    } else {
+      const extras = {}
+      for (const [name, text] of Object.entries(raw.extraPrompts)) {
+        if (typeof name !== 'string' || name.trim().length === 0) {
+          issues.push({ message: 'expected non-empty prompt name', path: ['extraPrompts'] })
+          break
+        }
+        if (typeof text !== 'string') {
+          issues.push({ message: 'expected string text', path: ['extraPrompts', name] })
+          break
+        }
+        extras[name] = text
+      }
+      config.extraPrompts = extras
+    }
+  }
   if (raw.keepTokens !== undefined) {
     if (!Number.isInteger(raw.keepTokens) || raw.keepTokens < 0) issues.push({ message: 'expected a non-negative integer', path: ['keepTokens'] })
     else config.keepTokens = raw.keepTokens
@@ -153,7 +175,7 @@ function validateConfig(input) {
     else config.autoMountControl = raw.autoMountControl
   }
   for (const key of Object.keys(raw)) {
-    if (!CONFIG_KEYS.includes(key) && key !== 'disabledTools' && key !== 'promptOverrides' && key !== 'autoMountControl' && key !== 'keepTokens') issues.push({ message: 'unknown config key', path: [key] })
+    if (!CONFIG_KEYS.includes(key) && key !== 'disabledTools' && key !== 'promptOverrides' && key !== 'extraPrompts' && key !== 'autoMountControl' && key !== 'keepTokens') issues.push({ message: 'unknown config key', path: [key] })
   }
   if (!Number.isInteger(config.contextWindowTokens) || config.contextWindowTokens <= 0) {
     issues.push({ message: 'expected a positive integer', path: ['contextWindowTokens'] })
@@ -186,6 +208,7 @@ export const Config = Object.freeze({
 
 const SOURCE_HINTS = {
   section(name) {
+    if (name.startsWith('ctx-mon-and-con:extra:')) return 'ctx-mon-and-con (extra)'
     if (name.startsWith('harness:') || name.startsWith('deployment:')) return 'dsh-system-prompt'
     if (name.startsWith('tools:')) return 'dsh-tools'
     if (name.startsWith('tool:')) return 'dsh-tools'
@@ -316,7 +339,9 @@ const sourcesFor = (inventory) => {
   const sections = {}
   const tools = {}
   for (const section of inventory && Array.isArray(inventory.sections) ? inventory.sections : []) {
-    sections[section.name] = sourceFileFor(SOURCE_HINTS.section(section.name))
+    sections[section.name] = section.name.startsWith('ctx-mon-and-con:extra:')
+      ? 'ctx-mon-and-con/control.js'
+      : sourceFileFor(SOURCE_HINTS.section(section.name))
   }
   for (const tool of inventory && Array.isArray(inventory.tools) ? inventory.tools : []) {
     tools[tool.name] = toolSourceFile(tool.name)
@@ -361,6 +386,7 @@ export function apply(ctx, config) {
   setDefaultTargetAt(config.targetAt)
   setDefaultKeepTokens(config.keepTokens)
   setGlobalPromptOverrides(config.promptOverrides)
+  setGlobalExtraPrompts(config.extraPrompts)
   setGlobalDisabledTools(config.disabledTools)
 
   // 会话级开关持久化：~/.dsh/ctx-mon-and-con/session-toggles.json（按 sessionId 区分，跨 profile 共享）。
@@ -1162,6 +1188,7 @@ export function apply(ctx, config) {
       disabledSessionPrompts: sessionId ? getSessionDisabledPrompts(sessionId) : [],
       disabledTools: Array.isArray(config.disabledTools) ? config.disabledTools : [],
       promptOverrides: config.promptOverrides || {},
+      extraPrompts: runtimeExtraPrompts,
       applied: sessionId ? getAppliedTools(sessionId) : null,
     })
   }
@@ -1256,9 +1283,11 @@ export function apply(ctx, config) {
         const editor = configEditor
         const entry = editor && typeof editor.entries === 'function' ? editor.entries().find((candidate) => candidate?.options?.id === 'ctx-mon-and-con') : undefined
         if (!editor || typeof editor.edit !== 'function' || !entry) return send(501, { ok: false, error: 'config editor unavailable in this profile' })
+        runtimeExtraPrompts = {}
+        setGlobalExtraPrompts({})
         send(202, { ok: true, layer })
         void editor
-          .edit(entry, (value) => ({ ...(value ?? {}), disabledTools: [], promptOverrides: {} }))
+          .edit(entry, (value) => ({ ...(value ?? {}), disabledTools: [], promptOverrides: {}, extraPrompts: {} }))
           .catch((error) => {
             promptWrite = { at: new Date().toISOString(), error: error instanceof Error ? error.message : String(error) }
           })
@@ -1269,6 +1298,78 @@ export function apply(ctx, config) {
   }
 
   let promptWrite = null
+  let runtimeExtraPrompts = { ...(config.extraPrompts || {}) }
+
+  /** 把 extraPrompts 写回 profile config；运行时先同步，避免等待重挂。 */
+  const writeExtraPrompts = (next, response, send) => {
+    const editor = configEditor
+    const entry = editor && typeof editor.entries === 'function' ? editor.entries().find((candidate) => candidate?.options?.id === 'ctx-mon-and-con') : undefined
+    if (!editor || typeof editor.edit !== 'function' || !entry) return send(501, { ok: false, error: 'config editor unavailable in this profile' })
+    runtimeExtraPrompts = { ...next }
+    setGlobalExtraPrompts(next)
+    send(202, { ok: true, accepted: next })
+    void editor
+      .edit(entry, (value) => ({ ...(value ?? {}), extraPrompts: next }))
+      .catch((error) => {
+        promptWrite = { at: new Date().toISOString(), error: error instanceof Error ? error.message : String(error) }
+      })
+  }
+
+  /** POST /inventory/extra-prompt {name, text}：新增或更新一条额外 system section。 */
+  const extraPromptHandler = (request, response) => {
+    const send = (code, payload) => {
+      response.statusCode = code
+      response.setHeader('content-type', 'application/json; charset=utf-8')
+      response.end(JSON.stringify(payload))
+    }
+    if (request.method !== 'POST') {
+      response.setHeader('allow', 'POST')
+      return send(405, { ok: false, error: 'method not allowed' })
+    }
+    const chunks = []
+    request.on('data', (chunk) => chunks.push(chunk))
+    request.on('end', () => {
+      let input
+      try {
+        input = JSON.parse(Buffer.concat(chunks).toString('utf8'))
+      } catch {
+        return send(400, { ok: false, error: 'invalid body' })
+      }
+      const name = typeof input?.name === 'string' ? input.name.trim() : ''
+      const text = input?.text
+      if (name.length === 0 || name.length > 80) return send(400, { ok: false, error: 'name is required (max 80 chars)' })
+      if (typeof text !== 'string') return send(400, { ok: false, error: 'text is required' })
+      if (text.trim().length === 0) return send(400, { ok: false, error: 'text must not be empty' })
+      const next = { ...runtimeExtraPrompts, [name]: text }
+      writeExtraPrompts(next, response, send)
+    })
+  }
+
+  /** POST /inventory/extra-prompt/reset {name?}：移除一条或全部额外 system section。 */
+  const extraPromptResetHandler = (request, response) => {
+    const send = (code, payload) => {
+      response.statusCode = code
+      response.setHeader('content-type', 'application/json; charset=utf-8')
+      response.end(JSON.stringify(payload))
+    }
+    if (request.method !== 'POST') {
+      response.setHeader('allow', 'POST')
+      return send(405, { ok: false, error: 'method not allowed' })
+    }
+    const chunks = []
+    request.on('data', (chunk) => chunks.push(chunk))
+    request.on('end', () => {
+      let input
+      try {
+        input = JSON.parse(Buffer.concat(chunks).toString('utf8'))
+      } catch {
+        return send(400, { ok: false, error: 'invalid body' })
+      }
+      const name = typeof input?.name === 'string' ? input.name.trim() : ''
+      const next = name ? Object.fromEntries(Object.entries(runtimeExtraPrompts).filter(([key]) => key !== name)) : {}
+      writeExtraPrompts(next, response, send)
+    })
+  }
 
   /** 把 promptOverrides 写回 profile config。 */
   const writePromptOverrides = (next, response, send) => {
@@ -1413,6 +1514,8 @@ export function apply(ctx, config) {
         server.register({ kind: 'exact', path: `${STATUS_PATH}/inventory/prompt/reset`, handler: promptResetHandler }),
         server.register({ kind: 'exact', path: `${STATUS_PATH}/inventory/prompt/session`, handler: sessionPromptHandler }),
         server.register({ kind: 'exact', path: `${STATUS_PATH}/inventory/prompt/session/reset`, handler: sessionPromptResetHandler }),
+        server.register({ kind: 'exact', path: `${STATUS_PATH}/inventory/extra-prompt`, handler: extraPromptHandler }),
+        server.register({ kind: 'exact', path: `${STATUS_PATH}/inventory/extra-prompt/reset`, handler: extraPromptResetHandler }),
       ]
       return () => offs.forEach((off) => off())
     }

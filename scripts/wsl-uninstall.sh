@@ -28,6 +28,16 @@ else
   fail "dsh plugin remove 失败"; tail -5 /tmp/ctx-remove.log; exit 1
 fi
 
+# 插件在 profile patch 里可能留下自动挂载行（顶层插件行、control 行、preset-standard 整段覆盖）。
+# 依赖移除后这些行会引用不存在的包，必须一并清理；脚本自带备份。
+say "== 清理 profile patch 里的插件残留行"
+CLEAN=/mnt/c/Users/40410/Desktop/context/scripts/clean-ctx-profile-patch.mjs
+if [ -f "$CLEAN" ] && node "$CLEAN" "$P"; then
+  ok "profile patch 清理完成"
+else
+  fail "profile patch 清理失败（可手动检查 $P/cordis.patch.yml）"
+fi
+
 say "== 核对"
 node - "$P" "$PKG" <<'NODE'
 const fs = require('fs')

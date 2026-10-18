@@ -49,7 +49,7 @@ import {
 export const inject = ['commands', 'tokenMeter']
 
 /** 与 package.json 的 version 保持一致（只用于状态接口的自述）。 */
-const PLUGIN_VERSION = '0.14.9'
+const PLUGIN_VERSION = '0.14.10'
 
 /** 浏览器半侧 client.js 拉的只读状态接口；两处路径必须一致。 */
 const STATUS_PATH = '/api/ctx-mon-and-con/status'
@@ -689,24 +689,6 @@ export function apply(ctx, config) {
       })
   }
 
-  /** 只读诊断：当前 profile 能看到哪些可编辑条目/preset，便于定位自动挂载问题。 */
-  const diagnosticsSnapshot = () => {
-    const editor = configEditor
-    const entries = editor && typeof editor.entries === 'function' ? editor.entries() : []
-    const preset = findPresetEntry()
-    return {
-      configEditable: Boolean(editor && typeof editor.edit === 'function'),
-      documentPath: typeof editor?.documentPath === 'string' ? editor.documentPath : null,
-      entries: entries.map((entry) => ({
-        id: entry?.options?.id ?? null,
-        name: entry?.options?.name ?? null,
-        hasPlugins: Array.isArray(entry?.options?.config?.plugins),
-      })),
-      presetEntry: preset?.options?.id ?? null,
-      presetIds: PRESET_IDS,
-    }
-  }
-
   const presetHandler = (request, response) => {
     const send = (code, payload) => {
       response.statusCode = code
@@ -756,18 +738,6 @@ export function apply(ctx, config) {
   // 浏览器半侧（client.js）通过这个只读接口取上下文与最近测量值。
   // 用 ctx.inject(['webServer']) 而不是写进 export const inject：
   // 无 Web server 的 profile（纯 CLI/headless）也能正常挂载本插件。
-  const diagnosticsHandler = (request, response) => {
-    if (request.method !== 'GET') {
-      response.statusCode = 405
-      response.setHeader('allow', 'GET')
-      response.end('{}')
-      return
-    }
-    response.statusCode = 200
-    response.setHeader('content-type', 'application/json; charset=utf-8')
-    response.end(JSON.stringify({ ok: true, ...diagnosticsSnapshot() }))
-  }
-
   const statusHandler = (request, response) => {
     if (request.method !== 'GET') {
       response.statusCode = 405
@@ -1223,7 +1193,6 @@ export function apply(ctx, config) {
     const register = () => {
       const offs = [
         server.register({ kind: 'exact', path: STATUS_PATH, handler: statusHandler }),
-        server.register({ kind: 'exact', path: `${STATUS_PATH}/diagnostics`, handler: diagnosticsHandler }),
         server.register({ kind: 'exact', path: `${STATUS_PATH}/config`, handler: configHandler }),
         server.register({ kind: 'exact', path: `${STATUS_PATH}/live`, handler: liveHandler }),
         server.register({ kind: 'exact', path: `${STATUS_PATH}/config/preset`, handler: presetHandler }),

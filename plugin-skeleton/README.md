@@ -274,6 +274,13 @@ powershell -NoProfile -ExecutionPolicy Bypass -File scripts/verify-uninstall.ps1
 
 - **重启 Desktop 后** `/ctx`、`/ctx-compact` 与设置面板才会真正消失：运行中的进程会保留已加载的模块，卸载只改 profile 配置，不会热卸载已激活的插件。
 - `desktop` profile 由 Electron 独占，CLI 拒绝 `--dump-config`；组合树是否含该行要在非 desktop profile 或应用重启后验证（脚本会自动跳过这一项并说明）。
+- **自动挂载行需要清理**：插件启动时若把控制行自动挂进 agent preset，会经 `configEditor` 在 profile 的 `cordis.patch.yml` 写出顶层插件行与 `preset-standard` 整段覆盖。`dsh plugin remove` 不会删这些行（依赖已移除，重启后它们会引用不存在的包）。用仓库脚本清理（自动备份）：
+
+  ```bash
+  node scripts/clean-ctx-profile-patch.mjs ~/.dsh/profiles/<profile>
+  ```
+
+  `scripts/wsl-uninstall.sh` 已内置这一步；Windows 侧卸载后同样运行一次即可。`scripts/verify-uninstall.ps1` 的 `cordis.patch.yml 与装前一致` 一项在自动挂载过时会失败，属预期，先跑上面的清理脚本再对比。
 
 ## 文件
 

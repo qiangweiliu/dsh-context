@@ -40,6 +40,7 @@ class MockTokenMeter extends Service {
   constructor(ctx) {
     super(ctx, 'tokenMeter')
     this.tokens = 0
+    this.nodes = null
   }
   measure(session) {
     if (!session || typeof session !== 'object') throw new Error('measure() expects a session object')
@@ -49,7 +50,7 @@ class MockTokenMeter extends Service {
       surfaceDeltaTokens: 0,
       totalTokens: this.tokens,
       surfaceTokens: this.tokens,
-      nodes: Object.freeze([{ tokens: this.tokens }]),
+      nodes: this.nodes ?? Object.freeze([{ tokens: this.tokens }]),
     })
   }
 }
@@ -62,6 +63,7 @@ class MockCompaction extends Service {
     /** 由 mount() 注入：compactNow 生效后把它的 tokens 改成 shrinkTo（模拟压缩变小）。 */
     this.meter = null
     this.shrinkTo = null
+    this.ifNeededResult = undefined
     this.result = Object.freeze({ shadowedSeqs: [1, 2], shadowedRange: { start: 1, end: 2 }, shadowedTokenCount: 5000 })
   }
   async compactNow(agent, signal) {
@@ -73,6 +75,7 @@ class MockCompaction extends Service {
   async compactIfNeeded(agent, trigger, signal) {
     this.calls.push({ kind: 'compactIfNeeded', agent, trigger, signal })
     if (this.fail) throw this.fail
+    if (this.ifNeededResult !== undefined) return this.ifNeededResult
     if (this.shrinkTo !== null && this.meter) this.meter.tokens = this.shrinkTo
     return this.result
   }
@@ -187,6 +190,49 @@ check('exports apply function', typeof controlPlugin.apply === 'function')
   await root.waterfall('agent/pre-step', { agent, signal: new AbortController().signal }, () => 'inner-reached')
   check('压完仍超出上下文时记录最终用量', compaction.calls.length >= 1 && state.control.last?.after === 120000, JSON.stringify({ calls: compaction.calls.map((c) => c.kind), last: state.control.last }))
   check('重试后状态记录最终用量', state.control.last?.after === 120000, JSON.stringify(state.control.last))
+  await fiber.dispose()
+  await root.fiber.dispose()
+}
+
+// ── 4b. compactRegion 范围：跳过 system、保留最近 keepTokens（确定性） ──
+{
+  const { root, fiber, meter, compaction, agent } = await mount({ mode: 'idle', cooldownMs: 0, maxContextTokens: 100000, keepTokens: 2000 })
+  compaction.ifNeededResult = null // 强制走 compactRegion fallback
+  compaction.shrinkTo = 50000
+  meter.tokens = 120000
+  meter.nodes = [
+    { seq: 1, tokens: 2000 },
+    { seq: 2, tokens: 2000 },
+    { seq: 3, tokens: 2000 },
+    { seq: 4, tokens: 2000 },
+    { seq: 5, tokens: 2000 },
+  ]
+  agent.session = { id: 'control-session', eventAt: (seq) => ({ type: seq === 1 ? 'system/message' : seq === 5 ? 'user/message' : 'assistant/message' }) }
+  await root.waterfall('agent/pre-step', { agent, signal: new AbortController().signal }, () => 'inner-reached')
+  const region = compaction.calls.find((c) => c.kind === 'compactRegion')
+  check('compactRegion 跳过 system 从消息节点起', Boolean(region) && region.start === 2, JSON.stringify(compaction.calls.map((c) => [c.kind, c.start, c.end])))
+  check('compactRegion 保留最近 keepTokens（end=3）', Boolean(region) && region.end === 3, JSON.stringify(region))
+  check('范围压缩后记录 before/after', state.control.last?.before === 120000 && state.control.last?.after === 50000, JSON.stringify(state.control.last))
+  check('范围压缩不写 lastError', state.control.lastError === null, JSON.stringify(state.control.lastError))
+  await fiber.dispose()
+  await root.fiber.dispose()
+}
+
+// ── 4c. 没有足够可压历史时不调用 compactRegion ──
+{
+  const { root, fiber, meter, compaction, agent } = await mount({ mode: 'idle', cooldownMs: 0, maxContextTokens: 100000, keepTokens: 10000 })
+  compaction.ifNeededResult = null
+  meter.tokens = 120000
+  meter.nodes = [
+    { seq: 1, tokens: 1000 },
+    { seq: 2, tokens: 2000 },
+    { seq: 3, tokens: 2000 },
+    { seq: 4, tokens: 2000 },
+  ]
+  agent.session = { id: 'control-session', eventAt: (seq) => ({ type: seq === 1 ? 'system/message' : 'user/message' }) }
+  await root.waterfall('agent/pre-step', { agent, signal: new AbortController().signal }, () => 'inner-reached')
+  check('可压历史不足时不调用 compactRegion', compaction.calls.every((c) => c.kind !== 'compactRegion'), JSON.stringify(compaction.calls.map((c) => c.kind)))
+  check('可压历史不足时记录说明', typeof state.control.lastError === 'string' && state.control.lastError.length > 0, JSON.stringify(state.control.lastError))
   await fiber.dispose()
   await root.fiber.dispose()
 }

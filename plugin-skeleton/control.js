@@ -62,6 +62,8 @@ const DEFAULT_CONFIG = {
   cooldownMs: 60000,
   /** 一次触发里最多连续压缩几次（压完仍超出上下文时重试）。 */
   maxAttempts: 2,
+  /** 压缩时保留的最近 tokens（0 = 用上下文上限的 25%）。 */
+  keepTokens: 0,
 }
 
 const MODES = ['off', 'notify', 'idle', 'pre-step']
@@ -96,6 +98,12 @@ function validateConfig(input) {
     if (!CONFIG_KEYS.includes(key)) issues.push({ message: 'unknown config key', path: [key] })
   }
   if (!Number.isInteger(config.maxContextTokens) || config.maxContextTokens < 0) {
+    issues.push({ message: 'expected a non-negative integer', path: ['maxContextTokens'] })
+  }
+  if (!Number.isInteger(config.keepTokens) || config.keepTokens < 0) {
+    issues.push({ message: 'expected a non-negative integer', path: ['keepTokens'] })
+  }
+  if (false) {
     issues.push({ message: 'expected a non-negative integer (0 = follow host default)', path: ['maxContextTokens'] })
   }
   if (!Number.isInteger(config.cooldownMs) || config.cooldownMs < 0) {

@@ -1,7 +1,7 @@
 # 验收证据（ctx-mon-and-con）
 
 - 仓库：<https://github.com/qiangweiliu/dsh-context>（插件目录 `plugin-skeleton/`）
-- 版本：`0.16.0`（本文件随 manifest 兼容性声明一起提交）
+- 版本：`0.17.0`（本文件随 manifest 兼容性声明一起提交）
 - 采集日期：2026-10-18
 - 证据层级说明：`verified` = 本次固定源码上实际执行并记录结果；`partial` = 只在明确边界内验证；`unknown` = 未取得证据。**这些证据不构成独立安全审计，也不替代商城的专项审阅。**
 
@@ -191,6 +191,18 @@ npm 运行依赖：无；生命周期脚本：无
 - UI：headless Edge + CDP 在「工具与提示词 → 提示词 → 新增提示词」填入 `ui-rules` / `UI-ONE`，保存后 `GET /inventory` 的 `extraPrompts` 出现该键；删除接口返回 202 并清空。
 - 测试：`test/static.mjs` 58/58，`test/smoke.mjs` 48/48。
 - 局限：验证使用临时 profile 副本，未在 Desktop Electron profile 内实测；新增提示词只对之后的请求生效，已有会话的旧 system 历史不会被删除。
+
+## E14. v0.17.0 提示词追加到每次用户提问末尾（2026-10-18）
+
+- 环境：WSL Ubuntu 24.04，临时 web profile 副本，模型 `DeepSeek-V41-Flash`，插件 `0.17.0` 本地 `link:`。
+- API：`POST /status/inventory/extra-prompt` 带 `placement: "user"`，返回 `202` 和 `placements: { "tail-rule": "user" }`。
+- 会话 `session-4d79e49e-...` 连续 3 轮发送同一问题，日志检查：
+  - `system/message` 1 条，且不含 `TAIL-ONE`；
+  - `user/message` 3 条，**每一条**末尾都含追加文本 `TAIL-ONE`；
+  - 第 1 轮模型输出 `TAIL-ONE`；后 2 轮模型因把追加文本识别为嵌入指令而拒绝复述，但追加机制本身每轮都执行。
+- UI：headless Edge + CDP 在新增提示词表单使用默认位置「每次用户提问末尾」，保存后 `GET /inventory` 返回 `extraPromptPlacements: { "ui-rules": "user" }`。
+- 测试：`test/static.mjs` 60/60，`test/control.mjs` 51/51，`test/smoke.mjs` 48/48。
+- 局限：追加内容会写入 `user/message` 并在 UI 中可见，不是隐藏指令；模型是否服从仍是模型行为，不是插件能保证的。验证使用临时 profile 副本，未在 Desktop Electron profile 内实测。
 
 ## 已知限制（unknown）
 

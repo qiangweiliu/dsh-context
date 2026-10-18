@@ -32,6 +32,7 @@ import {
   setGlobalDisabledTools,
   setGlobalPromptOverrides,
   setGlobalExtraPrompts,
+  setGlobalExtraPromptPlacements,
   getAppliedTools,
   getInventory,
   getSessionDisabledPrompts,
@@ -58,7 +59,7 @@ import { foldSession, sessionDetail, summarizeFolds } from './metrics.js'
 export const inject = ['commands', 'tokenMeter']
 
 /** 与 package.json 的 version 保持一致（只用于状态接口的自述）。 */
-const PLUGIN_VERSION = '0.16.0'
+const PLUGIN_VERSION = '0.17.0'
 
 /** 浏览器半侧 client.js 拉的只读状态接口；两处路径必须一致。 */
 const STATUS_PATH = '/api/ctx-mon-and-con/status'
@@ -83,6 +84,8 @@ const DEFAULT_CONFIG = {
   promptOverrides: {},
   // 全局新增提示词：用户命名 -> 文本；在 harness:identity 后插入新的 system section。
   extraPrompts: {},
+  // 新增提示词的放置位置：name -> 'system' | 'user'；缺省 system。
+  extraPromptPlacements: {},
   // 压缩时保留的最近 tokens（0 = 用插件预算的 25%）。
   keepTokens: 0,
   // 是否在启动时自动把控制行补挂进 agent preset（面板手动停用后置 false）。
@@ -103,7 +106,7 @@ function validateConfig(input) {
   if (typeof raw !== 'object' || raw === null || Array.isArray(raw)) {
     return { issues: [{ message: 'config must be an object' }] }
   }
-  const config = { ...DEFAULT_CONFIG, disabledTools: [], promptOverrides: {}, extraPrompts: {}, autoMountControl: true, keepTokens: 0 }
+  const config = { ...DEFAULT_CONFIG, disabledTools: [], promptOverrides: {}, extraPrompts: {}, extraPromptPlacements: {}, autoMountControl: true, keepTokens: 0 }
   for (const key of NUMERIC_KEYS) {
     const value = raw[key]
     if (value === undefined) continue
@@ -166,6 +169,25 @@ function validateConfig(input) {
       config.extraPrompts = extras
     }
   }
+  if (raw.extraPromptPlacements !== undefined) {
+    if (typeof raw.extraPromptPlacements !== 'object' || raw.extraPromptPlacements === null || Array.isArray(raw.extraPromptPlacements)) {
+      issues.push({ message: 'expected an object of prompt name -> system | user', path: ['extraPromptPlacements'] })
+    } else {
+      const placements = {}
+      for (const [name, placement] of Object.entries(raw.extraPromptPlacements)) {
+        if (typeof name !== 'string' || name.trim().length === 0) {
+          issues.push({ message: 'expected non-empty prompt name', path: ['extraPromptPlacements'] })
+          break
+        }
+        if (placement !== 'system' && placement !== 'user') {
+          issues.push({ message: "expected 'system' or 'user'", path: ['extraPromptPlacements', name] })
+          break
+        }
+        if (placement === 'user') placements[name] = 'user'
+      }
+      config.extraPromptPlacements = placements
+    }
+  }
   if (raw.keepTokens !== undefined) {
     if (!Number.isInteger(raw.keepTokens) || raw.keepTokens < 0) issues.push({ message: 'expected a non-negative integer', path: ['keepTokens'] })
     else config.keepTokens = raw.keepTokens
@@ -175,7 +197,7 @@ function validateConfig(input) {
     else config.autoMountControl = raw.autoMountControl
   }
   for (const key of Object.keys(raw)) {
-    if (!CONFIG_KEYS.includes(key) && key !== 'disabledTools' && key !== 'promptOverrides' && key !== 'extraPrompts' && key !== 'autoMountControl' && key !== 'keepTokens') issues.push({ message: 'unknown config key', path: [key] })
+    if (!CONFIG_KEYS.includes(key) && key !== 'disabledTools' && key !== 'promptOverrides' && key !== 'extraPrompts' && key !== 'extraPromptPlacements' && key !== 'autoMountControl' && key !== 'keepTokens') issues.push({ message: 'unknown config key', path: [key] })
   }
   if (!Number.isInteger(config.contextWindowTokens) || config.contextWindowTokens <= 0) {
     issues.push({ message: 'expected a positive integer', path: ['contextWindowTokens'] })
@@ -387,6 +409,7 @@ export function apply(ctx, config) {
   setDefaultKeepTokens(config.keepTokens)
   setGlobalPromptOverrides(config.promptOverrides)
   setGlobalExtraPrompts(config.extraPrompts)
+  setGlobalExtraPromptPlacements(config.extraPromptPlacements)
   setGlobalDisabledTools(config.disabledTools)
 
   // 会话级开关持久化：~/.dsh/ctx-mon-and-con/session-toggles.json（按 sessionId 区分，跨 profile 共享）。
@@ -1189,6 +1212,7 @@ export function apply(ctx, config) {
       disabledTools: Array.isArray(config.disabledTools) ? config.disabledTools : [],
       promptOverrides: config.promptOverrides || {},
       extraPrompts: runtimeExtraPrompts,
+      extraPromptPlacements: runtimeExtraPromptPlacements,
       applied: sessionId ? getAppliedTools(sessionId) : null,
     })
   }
@@ -1284,10 +1308,12 @@ export function apply(ctx, config) {
         const entry = editor && typeof editor.entries === 'function' ? editor.entries().find((candidate) => candidate?.options?.id === 'ctx-mon-and-con') : undefined
         if (!editor || typeof editor.edit !== 'function' || !entry) return send(501, { ok: false, error: 'config editor unavailable in this profile' })
         runtimeExtraPrompts = {}
+        runtimeExtraPromptPlacements = {}
         setGlobalExtraPrompts({})
+        setGlobalExtraPromptPlacements({})
         send(202, { ok: true, layer })
         void editor
-          .edit(entry, (value) => ({ ...(value ?? {}), disabledTools: [], promptOverrides: {}, extraPrompts: {} }))
+          .edit(entry, (value) => ({ ...(value ?? {}), disabledTools: [], promptOverrides: {}, extraPrompts: {}, extraPromptPlacements: {} }))
           .catch((error) => {
             promptWrite = { at: new Date().toISOString(), error: error instanceof Error ? error.message : String(error) }
           })
@@ -1299,17 +1325,20 @@ export function apply(ctx, config) {
 
   let promptWrite = null
   let runtimeExtraPrompts = { ...(config.extraPrompts || {}) }
+  let runtimeExtraPromptPlacements = { ...(config.extraPromptPlacements || {}) }
 
-  /** 把 extraPrompts 写回 profile config；运行时先同步，避免等待重挂。 */
-  const writeExtraPrompts = (next, response, send) => {
+  /** 把 extraPrompts / placements 写回 profile config；运行时先同步，避免等待重挂。 */
+  const writeExtraPrompts = (next, placements, response, send) => {
     const editor = configEditor
     const entry = editor && typeof editor.entries === 'function' ? editor.entries().find((candidate) => candidate?.options?.id === 'ctx-mon-and-con') : undefined
     if (!editor || typeof editor.edit !== 'function' || !entry) return send(501, { ok: false, error: 'config editor unavailable in this profile' })
     runtimeExtraPrompts = { ...next }
+    runtimeExtraPromptPlacements = { ...placements }
     setGlobalExtraPrompts(next)
-    send(202, { ok: true, accepted: next })
+    setGlobalExtraPromptPlacements(placements)
+    send(202, { ok: true, accepted: next, placements })
     void editor
-      .edit(entry, (value) => ({ ...(value ?? {}), extraPrompts: next }))
+      .edit(entry, (value) => ({ ...(value ?? {}), extraPrompts: next, extraPromptPlacements: placements }))
       .catch((error) => {
         promptWrite = { at: new Date().toISOString(), error: error instanceof Error ? error.message : String(error) }
       })
@@ -1337,11 +1366,16 @@ export function apply(ctx, config) {
       }
       const name = typeof input?.name === 'string' ? input.name.trim() : ''
       const text = input?.text
+      const placement = input?.placement === undefined ? 'system' : input.placement
       if (name.length === 0 || name.length > 80) return send(400, { ok: false, error: 'name is required (max 80 chars)' })
       if (typeof text !== 'string') return send(400, { ok: false, error: 'text is required' })
       if (text.trim().length === 0) return send(400, { ok: false, error: 'text must not be empty' })
+      if (placement !== 'system' && placement !== 'user') return send(400, { ok: false, error: "placement must be 'system' or 'user'" })
       const next = { ...runtimeExtraPrompts, [name]: text }
-      writeExtraPrompts(next, response, send)
+      const placements = { ...runtimeExtraPromptPlacements }
+      if (placement === 'user') placements[name] = 'user'
+      else delete placements[name]
+      writeExtraPrompts(next, placements, response, send)
     })
   }
 
@@ -1367,7 +1401,10 @@ export function apply(ctx, config) {
       }
       const name = typeof input?.name === 'string' ? input.name.trim() : ''
       const next = name ? Object.fromEntries(Object.entries(runtimeExtraPrompts).filter(([key]) => key !== name)) : {}
-      writeExtraPrompts(next, response, send)
+      const placements = name
+        ? Object.fromEntries(Object.entries(runtimeExtraPromptPlacements).filter(([key]) => key !== name))
+        : {}
+      writeExtraPrompts(next, placements, response, send)
     })
   }
 

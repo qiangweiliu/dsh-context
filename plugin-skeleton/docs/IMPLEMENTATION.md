@@ -2,7 +2,7 @@
 
 本文描述 `ctx-mon-and-con` 的内部结构、集成点和验证方式。面向用户的功能说明见 [README.md](../README.md)；约束与已知限制见 [LIMITATIONS.md](LIMITATIONS.md)。
 
-当前版本：`0.16.0`
+当前版本：`0.17.0`
 
 ## 1. 两个半侧
 
@@ -30,6 +30,7 @@
 - `disabledTools`
 - `promptOverrides`
 - `extraPrompts`
+- `extraPromptPlacements`
 - `autoMountControl`
 
 注册内容：
@@ -92,10 +93,20 @@
 
 - 配置 key 为用户名称；
 - 实际 section 名为 `ctx-mon-and-con:extra:<name>`；
-- 插入到 `harness:identity` 之后；
+- `extraPromptPlacements[name] === 'user'` 时**不插入 system section**，而是在 `agent/pre-step` 中追加到本轮新用户消息末尾；
+- 其余情况插入到 `harness:identity` 之后；
 - 内容为空则跳过；
 - 已存在同名 section 时不重复插入；
 - 支持会话级禁用。
+
+`placement: user` 的追加 hook：
+
+- 在 `agent/pre-step` 调用 `next()` 后取最终 decision；
+- 只处理 `role === 'user'` 且 `source.kind === 'user'` 的消息；
+- 把文本作为末尾 text block 追加到 content（不另建消息、不改历史）；
+- 每一条新的用户消息都会独立追加，因此每个用户提问都会带上；
+- 内容成为 `user/message` 的一部分并写入会话日志，UI 中可见；
+- 会话级禁用后跳过。
 
 inventory 属于进程内存，只反映最近一次装配；新会话需要先发一条消息。
 

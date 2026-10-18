@@ -140,7 +140,14 @@ window.__ModuleLoader__.load({
       extraPromptText: 'Prompt text',
       extraPromptSave: 'Add',
       extraPromptSaved: 'Added. It appears in the next request.',
-      extraPromptHint: 'Inserted after harness:identity; applies to the next request.',
+      extraPromptHint: 'Choose where it applies; changes take effect on the next request.',
+      extraPromptPlacement: 'Append to',
+      extraPromptSystem: 'System prompt',
+      extraPromptUser: 'End of every user message',
+      extraPromptSystemBadge: 'system',
+      extraPromptUserBadge: 'per message',
+      extraPromptSwitchUser: 'Move to message end',
+      extraPromptSwitchSystem: 'Move to system prompt',
       extraPromptDelete: 'Delete',
       extraPromptConfirmDelete: 'Remove this extra prompt?',
       extraLabel: 'extra',
@@ -320,7 +327,14 @@ window.__ModuleLoader__.load({
       extraPromptText: '提示词内容',
       extraPromptSave: '新增',
       extraPromptSaved: '已新增，下一次请求生效。',
-      extraPromptHint: '会插入到 harness:identity 之后，下一次请求生效。',
+      extraPromptHint: '选择放置位置；修改会在下一次请求生效。',
+      extraPromptPlacement: '追加位置',
+      extraPromptSystem: '系统提示词',
+      extraPromptUser: '每次用户提问末尾',
+      extraPromptSystemBadge: '系统',
+      extraPromptUserBadge: '每次提问',
+      extraPromptSwitchUser: '改为追加到提问末尾',
+      extraPromptSwitchSystem: '改为系统提示词',
       extraPromptDelete: '删除',
       extraPromptConfirmDelete: '确认删除这条新增提示词？',
       extraLabel: '新增',
@@ -1374,12 +1388,12 @@ window.__ModuleLoader__.load({
           .catch(() => setPromptBusy(false))
       }
 
-      const postExtraPrompt = (name, text) => {
+      const postExtraPrompt = (name, text, placement = 'system') => {
         setExtraBusy(true)
         fetch(`${STATUS_PATH}/inventory/extra-prompt`, {
           method: 'POST',
           headers: { 'content-type': 'application/json' },
-          body: JSON.stringify({ name, text }),
+          body: JSON.stringify({ name, text, placement }),
         })
           .then((response) => response.json().catch(() => ({})))
           .then((payload) => {
@@ -1482,13 +1496,21 @@ window.__ModuleLoader__.load({
         if (!sections.some((section) => section.name === name)) sections.push({ name, tokens: null, text: '' })
       }
       const extraPrompts = data.extraPrompts && typeof data.extraPrompts === 'object' ? data.extraPrompts : {}
+      const extraPromptPlacements = data.extraPromptPlacements && typeof data.extraPromptPlacements === 'object' ? data.extraPromptPlacements : {}
       for (const [name, text] of Object.entries(extraPrompts)) {
         const sectionName = name.startsWith('ctx-mon-and-con:extra:') ? name : `ctx-mon-and-con:extra:${name}`
-        if (!sections.some((section) => section.name === sectionName)) {
+        const placement = extraPromptPlacements[name] === 'user' ? 'user' : 'system'
+        const existing = sections.find((section) => section.name === sectionName)
+        if (existing) {
+          existing.extra = true
+          existing.extraName = name
+          existing.extraPlacement = placement
+        } else {
           sections.push({
             name: sectionName,
             extraName: name,
             extra: true,
+            extraPlacement: placement,
             tokens: Math.ceil(String(text).length / 4),
             text: String(text),
             originalText: String(text),
@@ -1563,6 +1585,8 @@ window.__ModuleLoader__.load({
         const key = `prompt:${section.name}`
         const isExtra = Boolean(section.extra)
         const displayName = isExtra ? (section.extraName || section.name) : section.name
+        const extraPlacement = section.extraPlacement === 'user' ? 'user' : 'system'
+        const extraBadge = extraPlacement === 'user' ? t('extraPromptUserBadge') : t('extraPromptSystemBadge')
         const isOpen = Boolean(expanded[key])
         const editing = editDraft && editDraft.name === section.name
         const hasLocal = Object.prototype.hasOwnProperty.call(localEdits, section.name)
@@ -1578,7 +1602,7 @@ window.__ModuleLoader__.load({
             })
           : h('div', { style: styles.detailBox },
               h('div', { style: styles.detailHead },
-                h('span', { style: styles.cardSub }, isExtra ? t('extraLabel') : dirty ? (section.sessionOverridden ? t('sessionOverridden') : t('globalOverridden')) : t('editHint')),
+                h('span', { style: styles.cardSub }, isExtra ? `${t('extraLabel')} · ${extraBadge}` : dirty ? (section.sessionOverridden ? t('sessionOverridden') : t('globalOverridden')) : t('editHint')),
                 h('span', { style: { ...styles.cardSub, fontFamily: 'ui-monospace, monospace', maxWidth: '46%', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }, title: sourceOf(section.name) || t('sourceUnknown') }, `${t('source')}: ${sourceOf(section.name) || t('sourceUnknown')}`),
                 h('span', { style: { display: 'inline-flex', gap: '6px' } },
                   h('button', { type: 'button', style: styles.copyBtn, 'data-ctx-prompt-edit': section.name, onClick: () => { setEditDraft({ name: section.name, text: effectiveText }); setPromptSave(null) }, disabled: promptBusy || extraBusy }, t('edit')),
@@ -1588,7 +1612,10 @@ window.__ModuleLoader__.load({
                           h('button', { key: 'del', type: 'button', style: styles.copyBtn, 'data-ctx-extra-delete-confirm': section.name, onClick: () => postExtraPromptReset(displayName), disabled: extraBusy }, t('confirm')),
                           h('button', { key: 'no', type: 'button', style: styles.copyBtn, onClick: () => setExtraDeletePending(null) }, t('cancel')),
                         ]
-                      : h('button', { type: 'button', style: styles.copyBtn, 'data-ctx-extra-delete': section.name, onClick: () => setExtraDeletePending(section.name), disabled: extraBusy }, t('extraPromptDelete'))
+                      : [
+                          h('button', { key: 'placement', type: 'button', style: styles.copyBtn, 'data-ctx-extra-placement-toggle': section.name, onClick: () => postExtraPrompt(displayName, effectiveText, extraPlacement === 'user' ? 'system' : 'user'), disabled: extraBusy }, extraPlacement === 'user' ? t('extraPromptSwitchSystem') : t('extraPromptSwitchUser')),
+                          h('button', { key: 'delete', type: 'button', style: styles.copyBtn, 'data-ctx-extra-delete': section.name, onClick: () => setExtraDeletePending(section.name), disabled: extraBusy }, t('extraPromptDelete')),
+                        ]
                     : dirty
                       ? h('button', { type: 'button', style: styles.copyBtn, 'data-ctx-prompt-reset': section.name, onClick: () => (section.sessionOverridden ? postSessionPromptReset(section.name) : postPrompt('/reset', { name: section.name })), disabled: promptBusy }, section.sessionOverridden ? t('resetSession') : t('resetOriginal'))
                       : null,
@@ -1608,7 +1635,7 @@ window.__ModuleLoader__.load({
               { type: 'button', style: styles.inventoryHead, 'data-ctx-expand': key, 'aria-expanded': isOpen, onClick: () => setExpanded({ ...expanded, [key]: !isOpen }) },
               chevron(isOpen),
               h('span', { style: styles.inventoryName }, displayName),
-              isExtra ? h('span', { style: styles.cardSub }, t('extraLabel')) : dirty ? h('span', { style: styles.cardSub }, section.sessionOverridden ? t('sessionOverridden') : t('globalOverridden')) : null,
+              isExtra ? h('span', { style: styles.cardSub }, `${t('extraLabel')} · ${extraBadge}`) : dirty ? h('span', { style: styles.cardSub }, section.sessionOverridden ? t('sessionOverridden') : t('globalOverridden')) : null,
               section.tokens !== null && section.tokens !== undefined ? h('span', { style: styles.cardSub }, `~${compactTokens(section.tokens)} ${t('tokensShort')}`) : null,
             ),
             h(
@@ -1622,7 +1649,7 @@ window.__ModuleLoader__.load({
           isOpen && editing
             ? h('div', { style: { display: 'flex', gap: '6px', alignItems: 'center', flexWrap: 'wrap' } },
                 isExtra
-                  ? [h('button', { key: 'save', type: 'button', style: styles.copyBtn, 'data-ctx-extra-save': section.name, onClick: () => postExtraPrompt(displayName, editDraft.text), disabled: extraBusy }, t('save')),
+                  ? [h('button', { key: 'save', type: 'button', style: styles.copyBtn, 'data-ctx-extra-save': section.name, onClick: () => postExtraPrompt(displayName, editDraft.text, extraPlacement), disabled: extraBusy }, t('save')),
                      h('button', { key: 'cancel', type: 'button', style: styles.copyBtn, onClick: () => { setEditDraft(null); setPromptSave(null) } }, t('cancel')),
                      h('span', { key: 'hint', style: styles.cardSub }, t('editHint'))]
                   : promptSave === section.name
@@ -1658,6 +1685,18 @@ window.__ModuleLoader__.load({
               style: { ...styles.promptEditor, minHeight: '96px' },
               onChange: (event) => setExtraDraft({ ...extraDraft, text: event.target.value }),
             }),
+            h('label', { style: { ...styles.cardSub, display: 'flex', gap: '6px', alignItems: 'center' } },
+              t('extraPromptPlacement'),
+              h('select', {
+                value: extraDraft.placement || 'user',
+                'data-ctx-extra-placement': '1',
+                style: { padding: '5px 7px', borderRadius: '7px', border: '1px solid var(--dsw-alias-border-l2)', background: 'var(--dsw-alias-bg-base)', color: 'inherit', font: 'inherit' },
+                onChange: (event) => setExtraDraft({ ...extraDraft, placement: event.target.value }),
+              },
+                h('option', { value: 'user' }, t('extraPromptUser')),
+                h('option', { value: 'system' }, t('extraPromptSystem')),
+              ),
+            ),
             h(
               'div',
               { style: { display: 'flex', gap: '6px', alignItems: 'center', flexWrap: 'wrap' } },
@@ -1666,7 +1705,7 @@ window.__ModuleLoader__.load({
                 style: styles.copyBtn,
                 'data-ctx-extra-save-new': '1',
                 disabled: extraBusy || extraDraft.name.trim().length === 0 || extraDraft.text.trim().length === 0,
-                onClick: () => postExtraPrompt(extraDraft.name.trim(), extraDraft.text),
+                onClick: () => postExtraPrompt(extraDraft.name.trim(), extraDraft.text, extraDraft.placement || 'user'),
               }, t('extraPromptSave')),
               h('button', { type: 'button', style: styles.copyBtn, onClick: () => setExtraDraft(null) }, t('cancel')),
               h('span', { style: styles.cardSub }, t('extraPromptHint')),
@@ -1676,7 +1715,7 @@ window.__ModuleLoader__.load({
             type: 'button',
             style: styles.button,
             'data-ctx-extra-add': '1',
-            onClick: () => setExtraDraft({ name: '', text: '' }),
+            onClick: () => setExtraDraft({ name: '', text: '', placement: 'user' }),
           }, t('extraPromptAdd'))
 
       const loading = Boolean(props.loading) && !inventory

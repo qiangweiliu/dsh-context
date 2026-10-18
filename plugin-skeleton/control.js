@@ -45,6 +45,7 @@ import {
   getSessionPromptTextMap,
   getGlobalPromptOverrides,
   getGlobalExtraPrompts,
+  getGlobalExtraPromptPlacements,
   recordAppliedTools,
   recordCompaction,
   recordCompactionEvent,
@@ -221,14 +222,14 @@ export function apply(ctx, config) {
             })
           }
           const extraPrompts = getGlobalExtraPrompts()
+          const extraPlacements = getGlobalExtraPromptPlacements()
           for (const [name, text] of Object.entries(extraPrompts)) {
             const sectionName = name.startsWith('ctx-mon-and-con:extra:') ? name : `ctx-mon-and-con:extra:${name}`
             if (disabled.has(sectionName)) continue
             const value = typeof text === 'string' ? text : ''
             if (value.trim().length === 0) continue
             if (mapped.some((section) => section.name === sectionName)) continue
-            const item = { name: sectionName, text: value }
-            const at = mapped.findIndex((section) => section.name === 'harness:identity')
+            const placement = extraPlacements[name] === 'user' ? 'user' : 'system'
             const inventoryItem = {
               name: sectionName,
               tokens: Math.ceil(value.length / 4),
@@ -239,7 +240,17 @@ export function apply(ctx, config) {
               sessionOverridden: false,
               extra: true,
               extraName: name,
+              extraPlacement: placement,
             }
+            if (placement === 'user') {
+              // 加在每次用户消息末尾，不进入 system sections；inventory 只用于展示/会话开关。
+              const atIdentity = inventory.findIndex((section) => section.name === 'harness:identity')
+              if (atIdentity >= 0) inventory.splice(atIdentity + 1, 0, inventoryItem)
+              else inventory.push(inventoryItem)
+              continue
+            }
+            const item = { name: sectionName, text: value }
+            const at = mapped.findIndex((section) => section.name === 'harness:identity')
             if (at >= 0) {
               mapped.splice(at + 1, 0, item)
               inventory.splice(at + 1, 0, inventoryItem)
@@ -273,6 +284,46 @@ export function apply(ctx, config) {
       log('warn', `toggle sync failed: ${error instanceof Error ? error.message : String(error)}`)
     }
     return next()
+  })
+
+  /**
+   * 用户提示词（extraPrompts + placement: user）：追加到每条新用户消息末尾。
+   * 该 hook 只改本轮待接纳的 inbox 消息，不触碰历史消息；DSH 会把结果写入 user/message。
+   */
+  ctx.on('agent/pre-step', async ({ agent }, next) => {
+    const decision = await next()
+    try {
+      if (!decision || decision.kind !== 'enter' || !Array.isArray(decision.messages)) return decision
+      const sessionId = sessionIdOf(agent)
+      if (!sessionId) return decision
+      const extras = getGlobalExtraPrompts()
+      const placements = getGlobalExtraPromptPlacements()
+      const disabled = new Set(getSessionDisabledPrompts(sessionId))
+      const pieces = []
+      for (const [name, text] of Object.entries(extras)) {
+        if (placements[name] !== 'user') continue
+        const sectionName = name.startsWith('ctx-mon-and-con:extra:') ? name : `ctx-mon-and-con:extra:${name}`
+        if (disabled.has(sectionName)) continue
+        const value = typeof text === 'string' ? text : ''
+        if (value.trim().length === 0) continue
+        pieces.push(value)
+      }
+      if (pieces.length === 0) return decision
+      const suffix = pieces.join('\n\n')
+      let changed = false
+      const messages = decision.messages.map((message) => {
+        if (!message || message.role !== 'user' || message.source?.kind !== 'user') return message
+        const content = Array.isArray(message.content) ? message.content : []
+        const already = content.some((block) => block?.type === 'text' && typeof block.text === 'string' && block.text.includes(suffix))
+        if (already) return message
+        changed = true
+        return { ...message, content: [...content, { type: 'text', text: `\n\n${suffix}` }] }
+      })
+      return changed ? { ...decision, messages } : decision
+    } catch (error) {
+      log('warn', `user prompt append failed: ${error instanceof Error ? error.message : String(error)}`)
+      return decision
+    }
   })
 
   ctx.on('agent/created', ({ agent }) => {

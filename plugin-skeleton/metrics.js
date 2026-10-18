@@ -8,7 +8,7 @@
  */
 
 /** CNY per 1M tokens, used only for models we can name confidently. */
-export const MODEL_PRICING = [
+const MODEL_PRICING = [
   { match: /deepseek[-_/].*(reasoner|r1)/i, input: 4, cacheRead: 1, output: 8 },
   { match: /deepseek[-_/].*(chat|v3)/i, input: 2, cacheRead: 0.5, output: 3 },
 ]
@@ -344,5 +344,3 @@ export function sessionDetail(fold) {
     timeline: fold.timeline,
   }
 }
-
-export const __testing = { dateKey, usageOf, costOf }

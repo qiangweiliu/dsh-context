@@ -2,15 +2,12 @@
  * 检查输入框下方 ctx 指示器（conversation.composer.dock）是否渲染。
  * 用法：node scripts/ui-check-dock.mjs <url>
  */
-import { openCdp, sleep } from './lib/cdp.mjs'
+import { openPage, sleep } from './lib/cdp.mjs'
 
 const baseUrl = process.argv[2]
 const port = 9336
 
-const { send, evaluate, errors, close } = await openCdp({ port, profilePrefix: 'edge-dock-', captureConsole: true })
-await send('Runtime.enable'); await send('Page.enable'); await send('Page.navigate', { url: baseUrl })
-for (let i = 0; i < 60; i += 1) { await sleep(500); if (await evaluate("document.readyState === 'complete' && document.body && document.body.children.length > 0")) break }
-await sleep(2500)
+const { send, evaluate, errors, close } = await openPage(baseUrl, { port, profilePrefix: 'edge-dock-', captureConsole: true })
 
 // 新建会话（进入 composer 变体，dock 才会挂载）
 const newSession = await evaluate(`(async () => {

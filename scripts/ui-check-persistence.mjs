@@ -2,23 +2,15 @@
  * 持久化验证：全局提示词覆盖 / 全局工具禁用 → 重启后是否保留；会话级开关 → 重启后是否丢失。
  * 用法：node scripts/ui-check-persistence.mjs <url> <setup|verify>
  */
-import { openCdp, sleep } from './lib/cdp.mjs'
+import { openPage, sendMessage as sendText, sleep } from './lib/cdp.mjs'
 
 const baseUrl = process.argv[2]
 const phase = process.argv[3]
 const port = phase === 'setup' ? 9345 : 9346
-const { send, evaluate, errors, close } = await openCdp({ port, profilePrefix: `edge-persist-${phase}-` })
+const { send, evaluate, errors, close } = await openPage(baseUrl, { waitMs: 2000, port, profilePrefix: `edge-persist-${phase}-` })
 const OVERRIDE = 'PERSIST-TEST-PROMPT'
-const sendMessage = async (text) => {
-  await evaluate(`(async () => { const c = document.querySelector('textarea, [contenteditable="true"]'); if (c) c.focus() })()`)
-  await send('Input.insertText', { text })
-  await sleep(350)
-  await evaluate(`(async () => { const norm=(s)=>(s||'').replace(/\\s+/g,' ').trim(); const b=Array.from(document.querySelectorAll('button')).find((x)=>/发送消息/.test(norm(x.getAttribute('aria-label'))||'')); if (b) b.click() })()`)
-}
+const sendMessage = (text) => sendText({ send, evaluate }, text)
 
-await send('Runtime.enable'); await send('Page.enable'); await send('Page.navigate', { url: baseUrl })
-for (let i = 0; i < 60; i += 1) { await sleep(500); if (await evaluate("document.readyState === 'complete' && document.body && document.body.children.length > 0")) break }
-await sleep(2000)
 
 const api = async (path, body) => evaluate(`(async () => {
   const r = await fetch(${JSON.stringify(path)}, ${body === undefined ? '{ headers: { accept: "application/json" } }' : JSON.stringify({ method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify(body) })})

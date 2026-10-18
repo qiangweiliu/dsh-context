@@ -1,11 +1,8 @@
-import { openCdp, sleep } from './lib/cdp.mjs'
+import { openPage, sleep } from './lib/cdp.mjs'
 
 const baseUrl = process.argv[2]
 const port = 9342
-const { send, evaluate, close } = await openCdp({ port, profilePrefix: 'edge-papi-' })
-await send('Runtime.enable'); await send('Page.enable'); await send('Page.navigate', { url: baseUrl })
-for (let i = 0; i < 60; i += 1) { await sleep(500); if (await evaluate("document.readyState === 'complete' && document.body && document.body.children.length > 0")) break }
-await sleep(2000)
+const { send, evaluate, close } = await openPage(baseUrl, { waitMs: 2000, port, profilePrefix: 'edge-papi-' })
 const result = await evaluate(`(async () => {
   const inv = () => fetch('/api/ctx-mon-and-con/status/inventory', { headers: { accept: 'application/json' } }).then((r) => r.json()).catch((e) => ({ error: String(e) }))
   const before = await inv()

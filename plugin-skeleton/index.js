@@ -62,6 +62,22 @@ export const inject = ['commands', 'tokenMeter']
 const PLUGIN_VERSION = '0.17.0'
 
 /** 浏览器半侧 client.js 拉的只读状态接口；两处路径必须一致。 */
+const sendJson = (response, code, payload) => {
+  response.statusCode = code
+  response.setHeader('content-type', 'application/json; charset=utf-8')
+  response.setHeader('cache-control', 'no-store')
+  response.end(JSON.stringify(payload))
+}
+
+const jsonSender = (response) => (code, payload) => sendJson(response, code, payload)
+
+const requireMethod = (request, response, method) => {
+  if (request.method === method) return true
+  response.setHeader('allow', method)
+  sendJson(response, 405, { ok: false, error: 'method not allowed' })
+  return false
+}
+
 const STATUS_PATH = '/api/ctx-mon-and-con/status'
 
 /** 内存里最多保留多少条会话测量（进程内，重启即清空）。 */
@@ -592,16 +608,8 @@ export function apply(ctx, config) {
 
   /** GET 实时占用：按 sessionId 找到 Session，用 tokenMeter 现场测量。 */
   const liveHandler = (request, response) => {
-    const send = (code, payload) => {
-      response.statusCode = code
-      response.setHeader('content-type', 'application/json; charset=utf-8')
-      response.setHeader('cache-control', 'no-store')
-      response.end(JSON.stringify(payload))
-    }
-    if (request.method !== 'GET') {
-      response.setHeader('allow', 'GET')
-      return send(405, { ok: false, error: 'method not allowed' })
-    }
+    const send = jsonSender(response)
+    if (!requireMethod(request, response, 'GET')) return
     const requested = requestUrl(request).searchParams.get('sessionId') ?? ''
     let sessionId = requested
     let session
@@ -724,15 +732,8 @@ export function apply(ctx, config) {
   }
 
   const presetHandler = (request, response) => {
-    const send = (code, payload) => {
-      response.statusCode = code
-      response.setHeader('content-type', 'application/json; charset=utf-8')
-      response.end(JSON.stringify(payload))
-    }
-    if (request.method !== 'POST') {
-      response.setHeader('allow', 'POST')
-      return send(405, { ok: false, error: 'method not allowed' })
-    }
+    const send = jsonSender(response)
+    if (!requireMethod(request, response, 'POST')) return
     const editor = configEditor
     const entry = findPresetEntry()
     if (!editor || typeof editor.edit !== 'function' || !entry) {
@@ -828,16 +829,8 @@ export function apply(ctx, config) {
 
   /** GET /status/analytics?range=7d|30d|all|today&limit=40 —— 近 N 个会话的聚合。 */
   const analyticsHandler = async (request, response) => {
-    const send = (code, payload) => {
-      response.statusCode = code
-      response.setHeader('content-type', 'application/json; charset=utf-8')
-      response.setHeader('cache-control', 'no-store')
-      response.end(JSON.stringify(payload))
-    }
-    if (request.method !== 'GET') {
-      response.setHeader('allow', 'GET')
-      return send(405, { ok: false, error: 'method not allowed' })
-    }
+    const send = jsonSender(response)
+    if (!requireMethod(request, response, 'GET')) return
     if (!sessionQuery || typeof sessionQuery.listSessions !== 'function') {
       return send(503, { ok: false, error: 'sessionQuery unavailable in this host' })
     }
@@ -873,16 +866,8 @@ export function apply(ctx, config) {
 
   /** GET /status/session-detail?sessionId=... —— 当前会话的请求序列 + 事件。 */
   const sessionDetailHandler = async (request, response) => {
-    const send = (code, payload) => {
-      response.statusCode = code
-      response.setHeader('content-type', 'application/json; charset=utf-8')
-      response.setHeader('cache-control', 'no-store')
-      response.end(JSON.stringify(payload))
-    }
-    if (request.method !== 'GET') {
-      response.setHeader('allow', 'GET')
-      return send(405, { ok: false, error: 'method not allowed' })
-    }
+    const send = jsonSender(response)
+    if (!requireMethod(request, response, 'GET')) return
     if (!sessionQuery || typeof sessionQuery.observeSession !== 'function') {
       return send(503, { ok: false, error: 'sessionQuery unavailable in this host' })
     }
@@ -899,12 +884,7 @@ export function apply(ctx, config) {
 
 
   const statusHandler = (request, response) => {
-    if (request.method !== 'GET') {
-      response.statusCode = 405
-      response.setHeader('allow', 'GET')
-      response.end()
-      return
-    }
+    if (!requireMethod(request, response, 'GET')) return
     const body = JSON.stringify({
       plugin: 'ctx-mon-and-con',
       version: PLUGIN_VERSION,
@@ -1018,12 +998,7 @@ export function apply(ctx, config) {
 
   /** POST 配置：先 202 应答，再在后台让 configEditor 落盘并重挂（重挂会销毁本路由）。 */
   const configHandler = (request, response) => {
-    if (request.method !== 'POST') {
-      response.statusCode = 405
-      response.setHeader('allow', 'POST')
-      response.end()
-      return
-    }
+    if (!requireMethod(request, response, 'POST')) return
     const editor = configEditor
     if (!editor || typeof editor.edit !== 'function' || typeof editor.entries !== 'function') {
       response.statusCode = 501
@@ -1104,16 +1079,8 @@ export function apply(ctx, config) {
 
   /** GET 当前会话的工具/提示词清单与开关状态。 */
   const inventoryHandler = (request, response) => {
-    const send = (code, payload) => {
-      response.statusCode = code
-      response.setHeader('content-type', 'application/json; charset=utf-8')
-      response.setHeader('cache-control', 'no-store')
-      response.end(JSON.stringify(payload))
-    }
-    if (request.method !== 'GET') {
-      response.setHeader('allow', 'GET')
-      return send(405, { ok: false, error: 'method not allowed' })
-    }
+    const send = jsonSender(response)
+    if (!requireMethod(request, response, 'GET')) return
     const requested = requestUrl(request).searchParams.get('sessionId') ?? ''
     const session = requested && sessions && typeof sessions.get === 'function' ? sessions.get(requested) : latestSession()
     const sessionId = requested || session?.id
@@ -1136,15 +1103,8 @@ export function apply(ctx, config) {
 
   /** POST /inventory/toggle {kind, name, layer, enabled}。 */
   const inventoryToggleHandler = (request, response) => {
-    const send = (code, payload) => {
-      response.statusCode = code
-      response.setHeader('content-type', 'application/json; charset=utf-8')
-      response.end(JSON.stringify(payload))
-    }
-    if (request.method !== 'POST') {
-      response.setHeader('allow', 'POST')
-      return send(405, { ok: false, error: 'method not allowed' })
-    }
+    const send = jsonSender(response)
+    if (!requireMethod(request, response, 'POST')) return
     const chunks = []
     request.on('data', (chunk) => chunks.push(chunk))
     request.on('end', () => {
@@ -1193,15 +1153,8 @@ export function apply(ctx, config) {
 
   /** POST /inventory/reset {layer:'session'}：清空当前会话的全部开关。 */
   const inventoryResetHandler = (request, response) => {
-    const send = (code, payload) => {
-      response.statusCode = code
-      response.setHeader('content-type', 'application/json; charset=utf-8')
-      response.end(JSON.stringify(payload))
-    }
-    if (request.method !== 'POST') {
-      response.setHeader('allow', 'POST')
-      return send(405, { ok: false, error: 'method not allowed' })
-    }
+    const send = jsonSender(response)
+    if (!requireMethod(request, response, 'POST')) return
     const chunks = []
     request.on('data', (chunk) => chunks.push(chunk))
     request.on('end', () => {
@@ -1263,15 +1216,8 @@ export function apply(ctx, config) {
 
   /** POST /inventory/extra-prompt {name, text}：新增或更新一条额外 system section。 */
   const extraPromptHandler = (request, response) => {
-    const send = (code, payload) => {
-      response.statusCode = code
-      response.setHeader('content-type', 'application/json; charset=utf-8')
-      response.end(JSON.stringify(payload))
-    }
-    if (request.method !== 'POST') {
-      response.setHeader('allow', 'POST')
-      return send(405, { ok: false, error: 'method not allowed' })
-    }
+    const send = jsonSender(response)
+    if (!requireMethod(request, response, 'POST')) return
     const chunks = []
     request.on('data', (chunk) => chunks.push(chunk))
     request.on('end', () => {
@@ -1298,15 +1244,8 @@ export function apply(ctx, config) {
 
   /** POST /inventory/extra-prompt/reset {name?}：移除一条或全部额外 system section。 */
   const extraPromptResetHandler = (request, response) => {
-    const send = (code, payload) => {
-      response.statusCode = code
-      response.setHeader('content-type', 'application/json; charset=utf-8')
-      response.end(JSON.stringify(payload))
-    }
-    if (request.method !== 'POST') {
-      response.setHeader('allow', 'POST')
-      return send(405, { ok: false, error: 'method not allowed' })
-    }
+    const send = jsonSender(response)
+    if (!requireMethod(request, response, 'POST')) return
     const chunks = []
     request.on('data', (chunk) => chunks.push(chunk))
     request.on('end', () => {
@@ -1343,15 +1282,8 @@ export function apply(ctx, config) {
 
   /** POST /inventory/prompt {name, text}：全局覆盖一个提示词 section。 */
   const promptEditHandler = (request, response) => {
-    const send = (code, payload) => {
-      response.statusCode = code
-      response.setHeader('content-type', 'application/json; charset=utf-8')
-      response.end(JSON.stringify(payload))
-    }
-    if (request.method !== 'POST') {
-      response.setHeader('allow', 'POST')
-      return send(405, { ok: false, error: 'method not allowed' })
-    }
+    const send = jsonSender(response)
+    if (!requireMethod(request, response, 'POST')) return
     const chunks = []
     request.on('data', (chunk) => chunks.push(chunk))
     request.on('end', () => {
@@ -1369,15 +1301,8 @@ export function apply(ctx, config) {
 
   /** POST /inventory/prompt/reset {name?}：恢复一个或全部提示词原文。 */
   const promptResetHandler = (request, response) => {
-    const send = (code, payload) => {
-      response.statusCode = code
-      response.setHeader('content-type', 'application/json; charset=utf-8')
-      response.end(JSON.stringify(payload))
-    }
-    if (request.method !== 'POST') {
-      response.setHeader('allow', 'POST')
-      return send(405, { ok: false, error: 'method not allowed' })
-    }
+    const send = jsonSender(response)
+    if (!requireMethod(request, response, 'POST')) return
     const chunks = []
     request.on('data', (chunk) => chunks.push(chunk))
     request.on('end', () => {
@@ -1395,15 +1320,8 @@ export function apply(ctx, config) {
 
   /** 会话级提示词文本覆盖：POST /inventory/prompt/session {name, text, sessionId?}。 */
   const sessionPromptHandler = (request, response) => {
-    const send = (code, payload) => {
-      response.statusCode = code
-      response.setHeader('content-type', 'application/json; charset=utf-8')
-      response.end(JSON.stringify(payload))
-    }
-    if (request.method !== 'POST') {
-      response.setHeader('allow', 'POST')
-      return send(405, { ok: false, error: 'method not allowed' })
-    }
+    const send = jsonSender(response)
+    if (!requireMethod(request, response, 'POST')) return
     const chunks = []
     request.on('data', (chunk) => chunks.push(chunk))
     request.on('end', () => {
@@ -1424,15 +1342,8 @@ export function apply(ctx, config) {
 
   /** 清除会话级提示词文本覆盖：POST /inventory/prompt/session/reset {name?, sessionId?}。 */
   const sessionPromptResetHandler = (request, response) => {
-    const send = (code, payload) => {
-      response.statusCode = code
-      response.setHeader('content-type', 'application/json; charset=utf-8')
-      response.end(JSON.stringify(payload))
-    }
-    if (request.method !== 'POST') {
-      response.setHeader('allow', 'POST')
-      return send(405, { ok: false, error: 'method not allowed' })
-    }
+    const send = jsonSender(response)
+    if (!requireMethod(request, response, 'POST')) return
     const chunks = []
     request.on('data', (chunk) => chunks.push(chunk))
     request.on('end', () => {

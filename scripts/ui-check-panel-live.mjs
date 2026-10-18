@@ -2,15 +2,12 @@
  * 验证：不执行 /ctx 时，侧栏 ctx 整页也显示实时用量与四色构成（与 dock 同源）。
  * 用法：node scripts/ui-check-panel-live.mjs <url>
  */
-import { openCdp, sleep } from './lib/cdp.mjs'
+import { openPage, sleep } from './lib/cdp.mjs'
 
 const baseUrl = process.argv[2]
 const port = 9337
 
-const { send, evaluate, errors, close } = await openCdp({ port, profilePrefix: 'edge-live-', captureConsole: true })
-await send('Runtime.enable'); await send('Page.enable'); await send('Page.navigate', { url: baseUrl })
-for (let i = 0; i < 60; i += 1) { await sleep(500); if (await evaluate("document.readyState === 'complete' && document.body && document.body.children.length > 0")) break }
-await sleep(2500)
+const { send, evaluate, errors, close } = await openPage(baseUrl, { port, profilePrefix: 'edge-live-', captureConsole: true })
 
 await evaluate(`(async () => {
   const norm = (s) => (s || '').replace(/\\s+/g, ' ').trim()

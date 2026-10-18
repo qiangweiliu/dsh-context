@@ -23,6 +23,7 @@ import { createRequire } from 'node:module'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { fileURLToPath } from 'node:url'
+import { loadClient } from './client-harness.mjs'
 
 // 测试用临时 HOME：plugin 的落盘只写临时目录，不碰真实用户 profile。
 const testHome = mkdtempSync(join(tmpdir(), 'ctx-smoke-home-'))
@@ -252,60 +253,9 @@ check('dsh.bundle.patch 指向存在的文件', existsSync(new URL(`../${manifes
 
 // ── 7. 浏览器半侧：在 mock 的 __ModuleLoader__ 与 cordis 上下文里 apply ──────
 const client = (() => {
-  let registration
-  const dictionaries = {}
-  const effects = []
-  const slotInjects = []
-  const slotRegistrations = []
-  const react = {
-    createElement: () => null,
-    Fragment: Symbol('Fragment'),
-    useState: () => [null, () => {}],
-    useEffect: () => {},
-    useCallback: (fn) => fn,
-    useMemo: (fn) => fn(),
-  }
-  const require = (specifier) => {
-    if (specifier === 'react') return react
-    throw new Error(`unexpected require(${JSON.stringify(specifier)})`)
-  }
-  const fakeWindow = {
-    __ModuleLoader__: {
-      load(value) {
-        registration = value
-      },
-    },
-  }
-  // 宿主浏览器壳就是这么跑 bundle 的：先执行文件注册 factory，再物化模块。
-  new Function('window', 'require', clientSource)(fakeWindow, require)
-  check('client.js 通过 __ModuleLoader__.load 注册', typeof registration?.factory === 'function', registration?.id)
-  const moduleExports = registration.factory(require)
-  const ctx = {
-    effect(execute, label) {
-      effects.push({ label, dispose: execute() })
-    },
-    locale: {
-      register(namespace, values) {
-        dictionaries[namespace] = values
-        return () => delete dictionaries[namespace]
-      },
-      bind(namespace) {
-        // 真实 locale.bind 按当前 UI 语言挑词典；这里固定中文以验证 zh 词典。
-        return (key) => dictionaries[namespace]?.zh?.[key] ?? dictionaries[namespace]?.en?.[key] ?? key
-      },
-    },
-    slots: {
-      inject(name, callback) {
-        slotInjects.push({ name, callback })
-      },
-      register(definition, component) {
-        slotRegistrations.push({ definition, component })
-        return () => {}
-      },
-    },
-  }
-  moduleExports.apply(ctx)
-  return { moduleExports, registration, effects, slotInjects, slotRegistrations, dictionaries }
+  const loaded = loadClient(clientSource, { trackEffects: true })
+  check('client.js 通过 __ModuleLoader__.load 注册', typeof loaded.registration?.factory === 'function', loaded.registration?.id)
+  return loaded
 })()
 check('client exports inject = ["slots","locale"]', client.moduleExports.inject?.join(',') === 'slots,locale', JSON.stringify(client.moduleExports.inject))
 check('client 注册词典', Object.keys(client.dictionaries).join(',') === 'ctxMonAndCon', Object.keys(client.dictionaries).join(','))

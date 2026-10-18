@@ -2,17 +2,12 @@
  * 上下文超限测试：低预算触发 idle 自动压缩、UI 超限状态、压缩后会话可用、长文本压力。
  * 用法：node scripts/ui-check-limit.mjs <url>
  */
-import { openCdp, sleep } from './lib/cdp.mjs'
+import { openPage, sendMessage as sendText, sleep } from './lib/cdp.mjs'
 
 const baseUrl = process.argv[2]
 const port = 9354
-const { send, evaluate, errors, close } = await openCdp({ port, profilePrefix: 'edge-limit-', captureConsole: true })
-const sendMessage = async (text) => {
-  await evaluate(`(async () => { const c = document.querySelector('textarea, [contenteditable="true"]'); if (c) c.focus() })()`)
-  await send('Input.insertText', { text })
-  await sleep(400)
-  await evaluate(`(async () => { const norm=(s)=>(s||'').replace(/\\s+/g,' ').trim(); const b=Array.from(document.querySelectorAll('button')).find((x)=>/发送消息/.test(norm(x.getAttribute('aria-label'))||'')); if (b) b.click() })()`)
-}
+const { send, evaluate, errors, close } = await openPage(baseUrl, { port, profilePrefix: 'edge-limit-', captureConsole: true })
+const sendMessage = (text) => sendText({ send, evaluate }, text)
 const api = (path, body) => evaluate(`(async () => {
   const r = await fetch(${JSON.stringify(path)}, ${body === undefined ? '{ headers: { accept: "application/json" } }' : JSON.stringify({ method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify(body) })})
   return { status: r.status, body: await r.json().catch(() => null) }
@@ -20,9 +15,6 @@ const api = (path, body) => evaluate(`(async () => {
 const status = async () => (await api('/api/ctx-mon-and-con/status')).body
 const bool = (value) => Boolean(value)
 
-await send('Runtime.enable'); await send('Page.enable'); await send('Page.navigate', { url: baseUrl })
-for (let i = 0; i < 60; i += 1) { await sleep(500); if (await evaluate("document.readyState === 'complete' && document.body && document.body.children.length > 0")) break }
-await sleep(2500)
 await evaluate(`(async () => { const b = Array.from(document.querySelectorAll('button')).find((x) => /新建会话/.test(x.getAttribute('aria-label') || '')); if (b) b.click(); await new Promise((r) => setTimeout(r, 1000)) })()`)
 
 const out = { phases: {}, errors }

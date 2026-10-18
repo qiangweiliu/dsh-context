@@ -93,6 +93,13 @@ window.__ModuleLoader__.load({
       warnLabel: 'Warn ratio',
       errorLabel: 'Error ratio',
       meterAria: 'ctx context limit',
+      balance: 'Balance',
+      balanceTopped: 'Topped up',
+      balanceBonus: 'Granted',
+      balanceSignedOut: 'Sign in to view the balance',
+      balanceUnavailable: 'Balance unavailable',
+      balanceRefresh: 'DSH account balance; click to refresh',
+      balanceLoading: 'Loading balance…',
       synced: 'synced',
       inventoryTitle: 'Tools & prompt sections',
       inventoryTools: 'Tools',
@@ -267,6 +274,13 @@ window.__ModuleLoader__.load({
       warnLabel: '警告比例',
       errorLabel: '超限比例',
       meterAria: 'ctx 上下文',
+      balance: '余额',
+      balanceTopped: '充值',
+      balanceBonus: '赠金',
+      balanceSignedOut: '登录后查看余额',
+      balanceUnavailable: '余额不可用',
+      balanceRefresh: 'DSH 账户余额，点击刷新',
+      balanceLoading: '正在读取余额…',
       synced: '已同步',
       inventoryTitle: '工具与提示词',
       inventoryTools: '工具',
@@ -433,6 +447,28 @@ window.__ModuleLoader__.load({
       return Number.isFinite(number) ? `${(number * 100).toFixed(digits)}%` : '—'
     }
 
+    /** 与 DSH 账号页一致的金额格式：两位小数，低于一分钱时显示 <¥0.01。 */
+    function formatWalletAmount(amount, currency) {
+      const symbol = currency === 'USD' ? '$' : '¥'
+      const number = Number(amount)
+      if (!Number.isFinite(number)) return `${symbol}${amount}`
+      if (number === 0) return `${symbol}0.00`
+      if (number < 0) return `-${symbol}${number > -0.01 ? '0.01' : Math.abs(number).toFixed(2)}`
+      if (number < 0.01) return `<${symbol}0.01`
+      return `${symbol}${number.toFixed(2)}`
+    }
+
+    /** 充值余额 + 赠金余额按币种合并，供 dock 胶囊显示。 */
+    function walletSummary(balance) {
+      const totals = new Map()
+      for (const wallet of [...((balance && balance.value) || []), ...((balance && balance.bonusWallets) || [])]) {
+        const amount = Number(wallet && wallet.balance)
+        if (!Number.isFinite(amount)) continue
+        totals.set(wallet.currency, (totals.get(wallet.currency) || 0) + amount)
+      }
+      return [...totals.entries()].map(([currency, amount]) => formatWalletAmount(amount, currency)).join(' / ')
+    }
+
     function formatTime(iso) {
       if (typeof iso !== 'string' || iso.length === 0) return '—'
       const date = new Date(iso)
@@ -583,9 +619,6 @@ window.__ModuleLoader__.load({
       rows: { margin: '6px 0 0', padding: 0 },
       row: { justifyContent: 'space-between', alignItems: 'center', gap: '12px', padding: '2px 0', display: 'flex' },
       swatch: { verticalAlign: 'baseline', borderRadius: '2px', width: '8px', height: '8px', marginRight: '6px', display: 'inline-block' },
-      system: { background: 'var(--dsw-static-neutral-bluish-400)' },
-      tools: { background: '#a78bfa' },
-      messages: { background: 'var(--dsw-static-blue-450)' },
     }
 
     // ── 面板视觉（参考 dsh-context 的卡片/标题/chip/图例语义） ───────────────
@@ -945,6 +978,191 @@ window.__ModuleLoader__.load({
       return tick
     }
 
+    /** Dock 浮层的共用开关：点外面或 Esc 收起。 */
+    function useDockPopover() {
+      const [open, setOpen] = react.useState(false)
+      const rootRef = react.useRef(null)
+      react.useEffect(() => {
+        if (!open) return undefined
+        const onPointerDown = (event) => {
+          if (rootRef.current && !rootRef.current.contains(event.target)) setOpen(false)
+        }
+        const onKeyDown = (event) => {
+          if (event.key === 'Escape') setOpen(false)
+        }
+        document.addEventListener('pointerdown', onPointerDown)
+        document.addEventListener('keydown', onKeyDown)
+        return () => {
+          document.removeEventListener('pointerdown', onPointerDown)
+          document.removeEventListener('keydown', onKeyDown)
+        }
+      }, [open])
+      return { open, setOpen, rootRef }
+    }
+
+    // ── DSH 账号余额：remote.account 是可选服务，注入完成后再显示胶囊 ───────
+    let accountRemote = null
+    const accountSubscribers = new Set()
+    function publishAccountRemote(value) {
+      accountRemote = value
+      for (const subscriber of accountSubscribers) subscriber(value)
+    }
+    function useAccountRemote() {
+      const [value, setValue] = react.useState(accountRemote)
+      react.useEffect(() => {
+        accountSubscribers.add(setValue)
+        setValue(accountRemote)
+        return () => {
+          accountSubscribers.delete(setValue)
+        }
+      }, [])
+      return value
+    }
+
+    /** 余额弹层：充值/赠金分项 + 构成条，布局对齐内置 ContextMeter 面板。 */
+    function BalancePanel(props) {
+      const t = props.t
+      const snapshot = props.snapshot
+      const ready = Boolean(snapshot && snapshot.status === 'ready')
+      const toppedWallets = ready ? snapshot.value || [] : []
+      const bonusWallets = ready ? snapshot.bonusWallets || [] : []
+      const text = (wallets) => wallets.map((wallet) => formatWalletAmount(wallet.balance, wallet.currency)).join(' / ') || '—'
+      const currencies = new Set([...toppedWallets, ...bonusWallets].map((wallet) => wallet.currency))
+      const sum = (wallets) => wallets.reduce((total, wallet) => total + (Number(wallet.balance) || 0), 0)
+      const toppedAmount = sum(toppedWallets)
+      const bonusAmount = sum(bonusWallets)
+      const totalAmount = toppedAmount + bonusAmount
+      const detail = ready ? '' : props.failed ? t('balanceUnavailable') : snapshot === null ? t('balanceSignedOut') : t('balanceLoading')
+      return h(
+        'div',
+        { style: meter.panel, role: 'dialog', 'aria-label': t('balance'), 'data-ctx-balance-panel': '1' },
+        h(
+          'div',
+          { style: meter.header },
+          h('span', { style: meter.headline }, t('balance')),
+          h('span', { style: meter.percent }, ready ? walletSummary(snapshot) || '—' : '—'),
+        ),
+        ready && currencies.size <= 1 && totalAmount > 0
+          ? h(
+              'div',
+              { style: meter.bar },
+              toppedAmount > 0 ? h('div', { style: { ...meter.segment, width: `${(toppedAmount / totalAmount) * 100}%`, background: 'var(--dsw-static-blue-450)' } }) : null,
+              bonusAmount > 0 ? h('div', { style: { ...meter.segment, width: `${(bonusAmount / totalAmount) * 100}%`, background: '#a78bfa' } }) : null,
+            )
+          : null,
+        ready
+          ? h(
+              'dl',
+              { style: meter.rows },
+              h(
+                'div',
+                { style: meter.row },
+                h('dt', null, h('span', { style: { ...meter.swatch, background: 'var(--dsw-static-blue-450)' } }), t('balanceTopped')),
+                h('dd', { style: meter.figures }, text(toppedWallets)),
+              ),
+              h(
+                'div',
+                { style: meter.row },
+                h('dt', null, h('span', { style: { ...meter.swatch, background: '#a78bfa' } }), t('balanceBonus')),
+                h('dd', { style: meter.figures }, text(bonusWallets)),
+              ),
+            )
+          : h('p', { style: { margin: '6px 0 0', fontSize: '11px', opacity: 0.7 } }, detail),
+        h(
+          'div',
+          { style: { marginTop: '8px', paddingTop: '8px', borderTop: '0.5px solid var(--dsw-alias-border-l1)', display: 'flex', justifyContent: 'flex-end' } },
+          h('button', { type: 'button', style: styles.copyBtn, title: t('balanceRefresh'), onClick: props.read }, t('refresh')),
+        ),
+      )
+    }
+
+    /** 输入框下沿的只读余额胶囊；点击展开充值/赠金明细。 */
+    function BalanceDock(props) {
+      const t = props.t
+      const remote = useAccountRemote()
+      const [snapshot, setSnapshot] = react.useState(undefined)
+      const [failed, setFailed] = react.useState(false)
+      const { open, setOpen, rootRef } = useDockPopover()
+      const [hovered, setHovered] = react.useState(false)
+      const usageTick = useUsageActivity()
+
+      const read = react.useCallback(() => {
+        if (!remote) return undefined
+        let cancelled = false
+        remote.getBalance(props.meta()).then((result) => {
+          if (cancelled) return
+          if (!result || !result.ok) {
+            setFailed(true)
+            setSnapshot(undefined)
+            return
+          }
+          setFailed(false)
+          setSnapshot(result.value ?? null)
+        }).catch(() => {
+          if (cancelled) return
+          setFailed(true)
+          setSnapshot(undefined)
+        })
+        return () => {
+          cancelled = true
+        }
+      }, [remote, props.meta])
+
+      react.useEffect(() => read(), [read])
+      react.useEffect(() => {
+        const onVisible = () => {
+          if (document.visibilityState === 'visible') read()
+        }
+        document.addEventListener('visibilitychange', onVisible)
+        window.addEventListener('focus', onVisible)
+        return () => {
+          document.removeEventListener('visibilitychange', onVisible)
+          window.removeEventListener('focus', onVisible)
+        }
+      }, [read])
+      // 流式输出结束后再刷新一次余额，避免每个 DOM 变化都打账号接口。
+      react.useEffect(() => {
+        if (usageTick === 0) return undefined
+        const timer = setTimeout(() => read(), 5000)
+        return () => clearTimeout(timer)
+      }, [usageTick, read])
+      // 展开弹层时拉一次最新余额；点外面或按 Esc 收起。
+      react.useEffect(() => {
+        if (open) read()
+      }, [open, read])
+
+      if (!remote) return null
+      const ready = Boolean(snapshot && snapshot.status === 'ready')
+      const total = ready ? (walletSummary(snapshot) || '—') : '—'
+      const topped = ready ? ((snapshot.value || []).map((wallet) => formatWalletAmount(wallet.balance, wallet.currency)).join(' / ') || '—') : null
+      const bonus = ready ? (snapshot.bonusWallets || []).filter((wallet) => Number(wallet.balance) > 0).map((wallet) => formatWalletAmount(wallet.balance, wallet.currency)).join(' / ') : ''
+      const detail = ready
+        ? [`${t('balanceTopped')} ${topped}`, bonus ? `${t('balanceBonus')} ${bonus}` : ''].filter(Boolean).join(' · ')
+        : failed ? t('balanceUnavailable') : snapshot === null ? t('balanceSignedOut') : t('balanceLoading')
+      return h(
+        'span',
+        { ref: rootRef, style: meter.root },
+        h(
+          'button',
+          {
+            type: 'button',
+            style: { ...meter.trigger, ...(hovered || open ? meter.triggerHover : null) },
+            title: detail,
+            'aria-label': `${t('balance')} ${total}`,
+            'aria-haspopup': 'dialog',
+            'aria-expanded': open,
+            'data-ctx-balance': '1',
+            onClick: () => setOpen(!open),
+            onMouseEnter: () => setHovered(true),
+            onMouseLeave: () => setHovered(false),
+          },
+          h('span', null, t('balance')),
+          h('span', { style: { color: 'var(--dsw-alias-label-primary)', fontVariantNumeric: 'tabular-nums' } }, total),
+        ),
+        open ? h(BalancePanel, { t, snapshot, failed, read }) : null,
+      )
+    }
+
     /** 打开页面时同步一次 /live；重新可见/窗口聚焦或点刷新时再同步，不做定时轮询。 */
     function useLive(path, refreshKey) {
       const [state, setState] = react.useState({ data: null, at: null, error: null })
@@ -998,9 +1216,8 @@ window.__ModuleLoader__.load({
       const selectedSession = useCurrentSession()
       const sessionId = props.sessionId || (props.runtime && props.runtime.sessionId) || selectedSession || undefined
       const [data, setData] = react.useState(null)
-      const [open, setOpen] = react.useState(false)
+      const { open, setOpen, rootRef } = useDockPopover()
       const [hovered, setHovered] = react.useState(false)
-      const rootRef = react.useRef(null)
       const usageTick = useUsageActivity()
 
       const fetchLive = react.useCallback(() => {
@@ -1039,22 +1256,6 @@ window.__ModuleLoader__.load({
       react.useEffect(() => {
         if (usageTick > 0) fetchLive()
       }, [usageTick, fetchLive])
-
-      react.useEffect(() => {
-        if (!open) return undefined
-        const onPointerDown = (event) => {
-          if (rootRef.current && !rootRef.current.contains(event.target)) setOpen(false)
-        }
-        const onKeyDown = (event) => {
-          if (event.key === 'Escape') setOpen(false)
-        }
-        document.addEventListener('pointerdown', onPointerDown)
-        document.addEventListener('keydown', onKeyDown)
-        return () => {
-          document.removeEventListener('pointerdown', onPointerDown)
-          document.removeEventListener('keydown', onKeyDown)
-        }
-      }, [open])
 
       const budget = data && typeof data.budget === 'number' ? data.budget : null
       const used = data && typeof data.used === 'number' ? data.used : null
@@ -2436,8 +2637,18 @@ window.__ModuleLoader__.load({
         sessionService = sub?.sessions ?? null
         if (typeof sub.effect === 'function') sub.effect(() => () => { sessionService = null }, 'ctx-mon-and-con: sessions presence')
       })
+      // 账号余额来自 DSH 官方 remote.account；没有账号扩展时自动隐藏胶囊。
+      if (typeof ctx.inject === 'function') ctx.inject(['remote', 'remote.account'], (sub) => {
+        publishAccountRemote(sub?.remote?.account ?? null)
+        if (typeof sub.effect === 'function') sub.effect(() => () => { publishAccountRemote(null) }, 'ctx-mon-and-con: account presence')
+      })
       const t = ctx.locale.bind(NS)
       const face = () => ({ t })
+      const accountMeta = () => ({
+        version: '0.17.0',
+        locale: ctx.locale.getSnapshot?.()?.active || 'zh',
+        timezoneOffsetSeconds: -new Date().getTimezoneOffset() * 60,
+      })
 
       // 1) 设置 → 上下文长度
       ctx.slots.inject('settings.section', () =>
@@ -2471,6 +2682,14 @@ window.__ModuleLoader__.load({
           }, [])
           return h(CtxDock, { ...props, t, controlActive: active })
         }),
+      )
+
+      // 4) 同一个底部状态行里的 DSH 余额胶囊，排在 ctx 指示器之后。
+      ctx.slots.inject('conversation.composer.dock', () =>
+        ctx.slots.register(
+          { name: 'conversation.composer.dock', id: 'ctx-balance', order: 20, locale: NS, inject: face },
+          (props) => h(BalanceDock, { ...props, t, meta: accountMeta }),
+        ),
       )
     }
 

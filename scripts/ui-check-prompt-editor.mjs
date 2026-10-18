@@ -2,33 +2,16 @@
  * 提示词编辑 UI 点击探针：编辑 → 保存 → 确认 → 下一次请求生效 → 恢复原文。
  * 用法：node scripts/ui-check-prompt-editor.mjs <url>
  */
-import { openCdp, sleep } from './lib/cdp.mjs'
+import { openPage, sendMessage as sendText, sleep } from './lib/cdp.mjs'
 
 const baseUrl = process.argv[2]
 const port = 9344
 const TARGET = 'harness:identity'
 const EDITED = 'You are a TEST agent edited by the ctx UI probe.'
 
-const { send, evaluate, errors, close } = await openCdp({ port, profilePrefix: 'edge-pedit-', captureConsole: true })
-const sendMessage = async (text) => {
-  await evaluate(`(async () => { const c = document.querySelector('textarea, [contenteditable="true"]'); if (c) c.focus() })()`)
-  await send('Input.insertText', { text })
-  await sleep(350)
-  await evaluate(`(async () => {
-    const norm = (s) => (s || '').replace(/\\s+/g, ' ').trim()
-    const b = Array.from(document.querySelectorAll('button')).find((x) => /发送消息/.test(norm(x.getAttribute('aria-label')) || ''))
-    if (b) b.click()
-  })()`)
-}
+const { send, evaluate, errors, close } = await openPage(baseUrl, { port, profilePrefix: 'edge-pedit-', captureConsole: true })
+const sendMessage = (text) => sendText({ send, evaluate }, text)
 
-await send('Runtime.enable')
-await send('Page.enable')
-await send('Page.navigate', { url: baseUrl })
-for (let i = 0; i < 60; i += 1) {
-  await sleep(500)
-  if (await evaluate("document.readyState === 'complete' && document.body && document.body.children.length > 0")) break
-}
-await sleep(2500)
 
 // 1) 新会话 + 两条消息
 await evaluate(`(async () => {

@@ -2,21 +2,13 @@
  * 验证工具/提示词两级折叠 + 展开内容。
  * 用法：node scripts/ui-check-inventory-detail.mjs <url>
  */
-import { openCdp, sleep } from './lib/cdp.mjs'
+import { openPage, sendMessage as sendText, sleep } from './lib/cdp.mjs'
 
 const baseUrl = process.argv[2]
 const port = 9340
-const { send, evaluate, errors, close } = await openCdp({ port, profilePrefix: 'edge-det-', captureConsole: true })
-const sendMessage = async (text) => {
-  await evaluate(`(async () => { const c = document.querySelector('textarea, [contenteditable="true"]'); if (c) c.focus() })()`)
-  await send('Input.insertText', { text })
-  await sleep(300)
-  await evaluate(`(async () => { const norm=(s)=>(s||'').replace(/\\s+/g,' ').trim(); const b=Array.from(document.querySelectorAll('button')).find((x)=>/发送消息/.test(norm(x.getAttribute('aria-label'))||'')); if (b) b.click() })()`)
-}
+const { send, evaluate, errors, close } = await openPage(baseUrl, { port, profilePrefix: 'edge-det-', captureConsole: true })
+const sendMessage = (text) => sendText({ send, evaluate }, text)
 
-await send('Runtime.enable'); await send('Page.enable'); await send('Page.navigate', { url: baseUrl })
-for (let i = 0; i < 60; i += 1) { await sleep(500); if (await evaluate("document.readyState === 'complete' && document.body && document.body.children.length > 0")) break }
-await sleep(2500)
 await evaluate(`(async () => { const b=Array.from(document.querySelectorAll('button')).find((x)=>/新建会话/.test(x.getAttribute('aria-label')||'')); if (b) b.click(); await new Promise((r)=>setTimeout(r,1000)) })()`)
 await sendMessage('hi')
 await sleep(11000)

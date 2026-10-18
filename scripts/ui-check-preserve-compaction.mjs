@@ -2,11 +2,11 @@
  * 验证：pre-step 触发压缩（compactIfNeeded pressure 优先 + compactRegion 保留最近 tokens），
  * 不打断当前任务、第二条消息仍正常回复。
  */
-import { openCdp, sleep } from './lib/cdp.mjs'
+import { openPage, sleep } from './lib/cdp.mjs'
 
 const baseUrl = process.argv[2]
 const port = 9358
-const { send, evaluate, errors, close } = await openCdp({ port, profilePrefix: 'edge-preserve-' })
+const { send, evaluate, errors, close } = await openPage(baseUrl, { port, profilePrefix: 'edge-preserve-' })
 const api = (path, body) => evaluate(`(async () => {
   const r = await fetch(${JSON.stringify(path)}, ${body === undefined ? '{ headers: { accept: "application/json" } }' : JSON.stringify({ method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify(body) })})
   return { status: r.status, body: await r.json().catch(() => null) }
@@ -17,9 +17,6 @@ const sendText = async (text) => {
   await sleep(400)
   await evaluate(`(async () => { const norm=(s)=>(s||'').replace(/\\s+/g,' ').trim(); const b=Array.from(document.querySelectorAll('button')).find((x)=>/发送消息/.test(norm(x.getAttribute('aria-label'))||'')); if (b) b.click() })()`)
 }
-await send('Runtime.enable'); await send('Page.enable'); await send('Page.navigate', { url: baseUrl })
-for (let i = 0; i < 60; i += 1) { await sleep(500); if (await evaluate("document.readyState === 'complete' && document.body && document.body.children.length > 0")) break }
-await sleep(2500)
 await evaluate(`(async () => { const b = Array.from(document.querySelectorAll('button')).find((x) => /新建会话/.test(x.getAttribute('aria-label') || '')); if (b) b.click(); await new Promise((r) => setTimeout(r, 1000)) })()`)
 await api('/api/ctx-mon-and-con/status/config', { contextWindowTokens: 3000, warnAt: 0.7, errorAt: 0.9 })
 await sleep(6000)

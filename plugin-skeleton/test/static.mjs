@@ -10,6 +10,7 @@
  */
 import { existsSync, readFileSync } from 'node:fs'
 import { createRequire } from 'node:module'
+import { loadClient } from './client-harness.mjs'
 
 const checks = []
 function check(name, condition, detail) {
@@ -152,63 +153,11 @@ check('client.js 语法可编译', (() => {
   }
 })())
 const client = (() => {
-  let registration
-  const dictionaries = {}
-  const slotInjects = []
-  const slotRegistrations = []
-  const react = {
-    createElement: () => null,
-    Fragment: Symbol('Fragment'),
-    useState: () => [null, () => {}],
-    useEffect: () => {},
-    useCallback: (fn) => fn,
-    useMemo: (fn) => fn(),
-  }
-  const require = (specifier) => {
-    if (specifier === 'react') return react
-    throw new Error(`unexpected require(${JSON.stringify(specifier)})`)
-  }
-  const fakeWindow = {
-    __ModuleLoader__: {
-      load(value) {
-        registration = value
-      },
-    },
-  }
-  new Function('window', 'require', clientSource)(fakeWindow, require)
-  check('client.js 通过 __ModuleLoader__.load 注册', typeof registration?.factory === 'function', registration?.id)
-  const moduleExports = registration.factory(require)
-  const ctx = {
-    effect(execute) {
-      execute()
-    },
-    locale: {
-      register(namespace, values) {
-        dictionaries[namespace] = values
-        return () => delete dictionaries[namespace]
-      },
-      bind(namespace) {
-        return (key) => dictionaries[namespace]?.zh?.[key] ?? dictionaries[namespace]?.en?.[key] ?? key
-      },
-    },
-    slots: {
-      inject(name, callback) {
-        slotInjects.push({ name, callback })
-      },
-      register(definition, component) {
-        slotRegistrations.push({ definition, component })
-        return () => {}
-      },
-    },
-    configForms: {
-      get() {
-        checks.push({ name: '不再使用 configForms（改为宿主配置路由）', ok: false, detail: 'unexpected call' })
-        return null
-      },
-    },
-  }
-  moduleExports.apply(ctx)
-  return { moduleExports, slotInjects, slotRegistrations, dictionaries }
+  const loaded = loadClient(clientSource, {
+    onConfigForms: () => checks.push({ name: '不再使用 configForms（改为宿主配置路由）', ok: false, detail: 'unexpected call' }),
+  })
+  check('client.js 通过 __ModuleLoader__.load 注册', typeof loaded.registration?.factory === 'function', loaded.registration?.id)
+  return loaded
 })()
 check('client exports inject', client.moduleExports.inject?.join(',') === 'slots,locale', JSON.stringify(client.moduleExports.inject))
 for (const inject of client.slotInjects) inject.callback()
@@ -230,6 +179,10 @@ check('sidebar.panellist 标题是 ctx', panelEntry.label?.() === 'ctx', panelEn
 const dockEntry = bySlot('conversation.composer.dock').definition ?? {}
 check('client 注册 composer dock 指示器', dockEntry.name === 'conversation.composer.dock' && dockEntry.id === 'ctx-usage', JSON.stringify(dockEntry))
 check('dock 指示器组件是函数', typeof bySlot('conversation.composer.dock').component === 'function', typeof bySlot('conversation.composer.dock').component)
+const balanceEntry = client.slotRegistrations.find((entry) => entry.definition.id === 'ctx-balance')?.definition ?? {}
+check('client 注册 DSH 余额 dock 胶囊', balanceEntry.name === 'conversation.composer.dock' && balanceEntry.order > dockEntry.order, JSON.stringify(balanceEntry))
+check('余额胶囊使用 data-ctx-balance 标记', clientSource.includes("'data-ctx-balance': '1'"))
+check('余额弹层使用 data-ctx-balance-panel 标记', clientSource.includes("'data-ctx-balance-panel': '1'"))
 check('sidebar.panellist 图标组件是函数', typeof bySlot('sidebar.panellist').component === 'function', typeof bySlot('sidebar.panellist').component)
 
 const stateModule = await import(new URL('../state.js', import.meta.url).href)

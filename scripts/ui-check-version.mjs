@@ -2,7 +2,7 @@
  * 验证 ctx 页面标题旁显示插件版本号（data-ctx-version）。
  * 用法：node scripts/ui-check-version.mjs "<baseUrl 含 token>"
  */
-import { openCdp, sleep } from './lib/cdp.mjs'
+import { openPage, sleep } from './lib/cdp.mjs'
 
 const baseUrl = process.argv[2]
 if (!baseUrl) {
@@ -11,16 +11,8 @@ if (!baseUrl) {
 }
 const port = 9347
 
-const { send, evaluate, errors, close } = await openCdp({ port, profilePrefix: 'edge-version-' })
+const { send, evaluate, errors, close } = await openPage(baseUrl, { port, profilePrefix: 'edge-version-' })
 
-await send('Runtime.enable')
-await send('Page.enable')
-await send('Page.navigate', { url: baseUrl })
-for (let i = 0; i < 60; i += 1) {
-  await sleep(500)
-  if (await evaluate("document.readyState === 'complete' && document.body && document.body.children.length > 0")) break
-}
-await sleep(2500)
 
 const result = await evaluate(`(async () => {
   const norm = (s) => (s || '').replace(/\\s+/g, ' ').trim()

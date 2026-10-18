@@ -95,3 +95,43 @@ export async function openCdp({ port, profilePrefix = 'edge-dsh-', captureConsol
 
   return { page, ws, child, profile, send, evaluate, errors, consoleLines, exceptions, close }
 }
+
+/** Open a page and wait until the app shell has rendered. */
+export async function openPage(url, options = {}) {
+  const { waitMs = 2500, ...cdpOptions } = options
+  const client = await openCdp(cdpOptions)
+  const { send, evaluate } = client
+  await send('Runtime.enable')
+  await send('Page.enable')
+  await send('Page.navigate', { url })
+  for (let i = 0; i < 60; i += 1) {
+    await sleep(500)
+    if (await evaluate("document.readyState === 'complete' && document.body && document.body.children.length > 0")) break
+  }
+  await sleep(waitMs)
+  return client
+}
+
+/** Focus the composer, type text, and click the send button. */
+export async function sendMessage({ send, evaluate }, text, waitMs = 350) {
+  await evaluate(`(() => { const c = document.querySelector('textarea, [contenteditable="true"]'); if (c) c.focus() })()`)
+  await send('Input.insertText', { text })
+  await sleep(waitMs)
+  await evaluate(`(() => {
+    const norm = (s) => (s || '').replace(/\\s+/g, ' ').trim()
+    const b = Array.from(document.querySelectorAll('button')).find((x) => /发送消息/.test(norm(x.getAttribute('aria-label')) || ''))
+    if (b) b.click()
+  })()`)
+}
+
+/** Click the first button whose label or visible text matches. */
+export async function clickButton(evaluate, pattern) {
+  return evaluate(`(() => {
+    const re = new RegExp(${JSON.stringify(pattern)})
+    const norm = (s) => (s || '').replace(/\\s+/g, ' ').trim()
+    const b = Array.from(document.querySelectorAll('button, [role="button"]')).find((el) => re.test(norm(el.getAttribute('aria-label')) || '') || re.test(norm(el.textContent)))
+    if (!b) return false
+    b.click()
+    return true
+  })()`)
+}

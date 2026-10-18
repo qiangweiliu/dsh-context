@@ -374,26 +374,6 @@ export function getSessionPromptTextMap(sessionId) {
   return sessionPromptText.get(sessionId) ?? null
 }
 
-export function snapshotSessionPromptText() {
-  const out = {}
-  for (const [sessionId, map] of sessionPromptText) {
-    if (map.size === 0) continue
-    out[sessionId] = Object.fromEntries(map)
-  }
-  return out
-}
-
-export function hydrateSessionPromptText(data) {
-  sessionPromptText.clear()
-  if (!data || typeof data !== "object") return
-  for (const [sessionId, entries] of Object.entries(data)) {
-    if (!entries || typeof entries !== "object") continue
-    const map = new Map()
-    for (const [name, text] of Object.entries(entries)) if (typeof text === "string") map.set(name, text)
-    if (map.size > 0) sessionPromptText.set(sessionId, map)
-  }
-}
-
 /** 是否自动把控制行补挂进 agent preset（面板手动停用后置 false，存 session-toggles.json）。 */
 let autoMountControl = true
 

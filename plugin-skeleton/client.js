@@ -1959,6 +1959,7 @@ window.__ModuleLoader__.load({
               'div',
               { style: styles.emptyState, 'data-ctx-inventory-empty': '1' },
               h('p', { style: styles.emptyText }, t('inventoryEmpty')),
+              h('div', { style: { display: 'flex', justifyContent: 'center', padding: '2px 0' } }, extraForm),
               refreshButton,
             )
           : null,

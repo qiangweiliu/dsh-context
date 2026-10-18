@@ -37,6 +37,7 @@ import {
   getInventory,
   getSessionDisabledPrompts,
   getSessionDisabledTools,
+  getSessionPromptTextMap,
   setSessionPromptEnabled,
   setAutoMountControl,
   setSessionPromptText,
@@ -1077,6 +1078,33 @@ export function apply(ctx, config) {
     return Array.isArray(all) && all.length > 0 ? all[all.length - 1] : undefined
   }
 
+  /**
+   * 把当前运行时的全局/会话覆盖叠到最近一次请求的旧快照上。
+   * 否则改完提示词、还没发下一条消息时，面板仍会拿旧快照判断“有没有覆盖”，
+   * 导致“保存到本会话”后复位按钮走了全局复位（删掉全局覆盖）。
+   */
+  const withLivePromptState = (inventory, sessionId) => {
+    if (!inventory || !Array.isArray(inventory.sections)) return inventory
+    const sessionTexts = sessionId ? getSessionPromptTextMap(sessionId) : null
+    const sections = inventory.sections.map((section) => {
+      const globalOverridden = Object.prototype.hasOwnProperty.call(runtimePromptOverrides, section.name)
+      const sessionOverridden = Boolean(sessionTexts && sessionTexts.has(section.name))
+      const text = sessionOverridden
+        ? String(sessionTexts.get(section.name))
+        : globalOverridden
+          ? String(runtimePromptOverrides[section.name])
+          : section.text
+      return {
+        ...section,
+        text,
+        overridden: Boolean(section.overridden || globalOverridden || sessionOverridden),
+        globalOverridden,
+        sessionOverridden,
+      }
+    })
+    return { ...inventory, sections }
+  }
+
   /** GET 当前会话的工具/提示词清单与开关状态。 */
   const inventoryHandler = (request, response) => {
     const send = jsonSender(response)
@@ -1089,12 +1117,13 @@ export function apply(ctx, config) {
       sessionId,
       inventory: sessionId ? (() => {
         const found = getInventory(sessionId)
-        return found ? { ...found, sources: sourcesFor(found) } : null
+        const merged = found ? withLivePromptState(found, sessionId) : null
+        return merged ? { ...merged, sources: sourcesFor(merged) } : null
       })() : null,
       disabledSessionTools: sessionId ? getSessionDisabledTools(sessionId) : [],
       disabledSessionPrompts: sessionId ? getSessionDisabledPrompts(sessionId) : [],
       disabledTools: Array.isArray(config.disabledTools) ? config.disabledTools : [],
-      promptOverrides: config.promptOverrides || {},
+      promptOverrides: runtimePromptOverrides,
       extraPrompts: runtimeExtraPrompts,
       extraPromptPlacements: runtimeExtraPromptPlacements,
       applied: sessionId ? getAppliedTools(sessionId) : null,
@@ -1177,13 +1206,23 @@ export function apply(ctx, config) {
         const editor = configEditor
         const entry = editor && typeof editor.entries === 'function' ? editor.entries().find((candidate) => candidate?.options?.id === 'ctx-mon-and-con') : undefined
         if (!editor || typeof editor.edit !== 'function' || !entry) return send(501, { ok: false, error: 'config editor unavailable in this profile' })
+        runtimePromptOverrides = {}
         runtimeExtraPrompts = {}
         runtimeExtraPromptPlacements = {}
+        setGlobalPromptOverrides({})
         setGlobalExtraPrompts({})
         setGlobalExtraPromptPlacements({})
         send(202, { ok: true, layer })
-        void editor
-          .edit(entry, (value) => ({ ...(value ?? {}), disabledTools: [], promptOverrides: {}, extraPrompts: {}, extraPromptPlacements: {} }))
+        void queuePromptWrite(() => editor.edit(entry, (value) => ({
+          ...(value ?? {}),
+          disabledTools: [],
+          promptOverrides: runtimePromptOverrides,
+          extraPrompts: runtimeExtraPrompts,
+          extraPromptPlacements: runtimeExtraPromptPlacements,
+        })))
+          .then(() => {
+            promptWrite = { at: new Date().toISOString(), promptOverrides: {}, extraPrompts: {}, extraPromptPlacements: {} }
+          })
           .catch((error) => {
             promptWrite = { at: new Date().toISOString(), error: error instanceof Error ? error.message : String(error) }
           })
@@ -1194,8 +1233,18 @@ export function apply(ctx, config) {
   }
 
   let promptWrite = null
+  let runtimePromptOverrides = { ...(config.promptOverrides || {}) }
   let runtimeExtraPrompts = { ...(config.extraPrompts || {}) }
   let runtimeExtraPromptPlacements = { ...(config.extraPromptPlacements || {}) }
+
+  // 串行化 profile 写入：连续点两次“保存”时，后一次必须覆盖前一次，
+  // 而不是两个异步 edit 互相覆盖。每次真正落盘时都读当前运行时状态。
+  let promptWriteQueue = Promise.resolve()
+  const queuePromptWrite = (task) => {
+    const run = promptWriteQueue.then(task, task)
+    promptWriteQueue = run.catch(() => {})
+    return run
+  }
 
   /** 把 extraPrompts / placements 写回 profile config；运行时先同步，避免等待重挂。 */
   const writeExtraPrompts = (next, placements, response, send) => {
@@ -1204,11 +1253,17 @@ export function apply(ctx, config) {
     if (!editor || typeof editor.edit !== 'function' || !entry) return send(501, { ok: false, error: 'config editor unavailable in this profile' })
     runtimeExtraPrompts = { ...next }
     runtimeExtraPromptPlacements = { ...placements }
-    setGlobalExtraPrompts(next)
-    setGlobalExtraPromptPlacements(placements)
-    send(202, { ok: true, accepted: next, placements })
-    void editor
-      .edit(entry, (value) => ({ ...(value ?? {}), extraPrompts: next, extraPromptPlacements: placements }))
+    setGlobalExtraPrompts(runtimeExtraPrompts)
+    setGlobalExtraPromptPlacements(runtimeExtraPromptPlacements)
+    send(202, { ok: true, accepted: runtimeExtraPrompts, placements: runtimeExtraPromptPlacements })
+    void queuePromptWrite(() => editor.edit(entry, (value) => ({
+      ...(value ?? {}),
+      extraPrompts: runtimeExtraPrompts,
+      extraPromptPlacements: runtimeExtraPromptPlacements,
+    })))
+      .then(() => {
+        promptWrite = { at: new Date().toISOString(), extraPrompts: runtimeExtraPrompts, extraPromptPlacements: runtimeExtraPromptPlacements }
+      })
       .catch((error) => {
         promptWrite = { at: new Date().toISOString(), error: error instanceof Error ? error.message : String(error) }
       })
@@ -1269,11 +1324,15 @@ export function apply(ctx, config) {
     const editor = configEditor
     const entry = editor && typeof editor.entries === 'function' ? editor.entries().find((candidate) => candidate?.options?.id === 'ctx-mon-and-con') : undefined
     if (!editor || typeof editor.edit !== 'function' || !entry) return send(501, { ok: false, error: 'config editor unavailable in this profile' })
-    send(202, { ok: true, accepted: next })
-    void editor
-      .edit(entry, (value) => ({ ...(value ?? {}), promptOverrides: next }))
+    runtimePromptOverrides = { ...next }
+    setGlobalPromptOverrides(runtimePromptOverrides)
+    send(202, { ok: true, accepted: runtimePromptOverrides })
+    void queuePromptWrite(() => editor.edit(entry, (value) => ({
+      ...(value ?? {}),
+      promptOverrides: runtimePromptOverrides,
+    })))
       .then(() => {
-        promptWrite = { at: new Date().toISOString(), promptOverrides: next }
+        promptWrite = { at: new Date().toISOString(), promptOverrides: runtimePromptOverrides }
       })
       .catch((error) => {
         promptWrite = { at: new Date().toISOString(), error: error instanceof Error ? error.message : String(error) }
@@ -1294,7 +1353,7 @@ export function apply(ctx, config) {
         return send(400, { ok: false, error: 'invalid body' })
       }
       if (typeof input?.name !== 'string' || input.name.length === 0 || typeof input.text !== 'string') return send(400, { ok: false, error: 'name/text are required' })
-      const next = { ...(config.promptOverrides || {}), [input.name]: input.text }
+      const next = { ...runtimePromptOverrides, [input.name]: input.text }
       writePromptOverrides(next, response, send)
     })
   }
@@ -1312,7 +1371,7 @@ export function apply(ctx, config) {
       } catch {
         return send(400, { ok: false, error: 'invalid body' })
       }
-      const current = { ...(config.promptOverrides || {}) }
+      const current = { ...runtimePromptOverrides }
       const next = typeof input?.name === 'string' && input.name.length > 0 ? Object.fromEntries(Object.entries(current).filter(([key]) => key !== input.name)) : {}
       writePromptOverrides(next, response, send)
     })

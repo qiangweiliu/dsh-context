@@ -122,6 +122,121 @@ if (selector === 'none') {
     if (trigger) trigger.click()
     await new Promise((r) => setTimeout(r, 1200))
   })()`)
+} else if (selector === 'collapse') {
+  await evaluate(`(async () => {
+    const norm = (s) => (s || '').replace(/\\s+/g, ' ').trim()
+    const ctxBtn = Array.from(document.querySelectorAll('button')).find((b) => norm(b.getAttribute('aria-label')) === 'ctx' || norm(b.textContent) === 'ctx')
+    if (ctxBtn) ctxBtn.click()
+    await new Promise((r) => setTimeout(r, 1500))
+    const toggle = document.querySelector('[data-ctx-card-toggle="inventory"]')
+    if (toggle) toggle.click()
+    await new Promise((r) => setTimeout(r, 600))
+  })()`)
+  await send('Page.reload')
+  await sleep(3200)
+  await evaluate(`(async () => {
+    const norm = (s) => (s || '').replace(/\\s+/g, ' ').trim()
+    const ctxBtn = Array.from(document.querySelectorAll('button')).find((b) => norm(b.getAttribute('aria-label')) === 'ctx' || norm(b.textContent) === 'ctx')
+    if (ctxBtn) ctxBtn.click()
+    await new Promise((r) => setTimeout(r, 1500))
+  })()`)
+  const collapseState = await evaluate(`(() => {
+    const card = document.querySelector('[data-ctx-card="inventory"]')
+    return JSON.stringify({
+      collapsed: card ? card.getAttribute('data-ctx-collapsed') : null,
+      stored: localStorage.getItem('ctx-mon-and-con:collapsed:v1'),
+    })
+  })()`)
+  console.log('collapse-state', collapseState)
+} else if (selector === 'theme-probe') {
+  const themeInfo = await evaluate(`(() => JSON.stringify({
+    htmlAttrs: Array.from(document.documentElement.attributes).map((a) => [a.name, a.value]),
+    bodyClass: document.body.className,
+    keys: Object.keys(localStorage),
+    stored: Object.fromEntries(Object.keys(localStorage).map((k) => [k, String(localStorage.getItem(k)).slice(0, 120)])),
+  }))()`)
+  console.log('theme-info', themeInfo)
+} else if (selector === 'light') {
+  const themeInfo = await evaluate(`(() => JSON.stringify({
+    attrs: Array.from(document.documentElement.attributes).map((a) => [a.name, a.value]),
+    bodyClass: document.body.className,
+  }))()`)
+  console.log('light-before', themeInfo)
+  await evaluate(`(() => {
+    document.documentElement.setAttribute('data-ds-theme-source', 'light')
+    document.documentElement.style.colorScheme = 'light'
+    const body = document.body
+    body.removeAttribute('data-ds-dark-theme')
+    for (let index = body.style.length - 1; index >= 0; index -= 1) {
+      const name = body.style[index]
+      if (name.startsWith('--')) body.style.removeProperty(name)
+    }
+  })()`)
+  await sleep(600)
+  const applied = await evaluate(`(() => JSON.stringify({ attrs: Array.from(document.documentElement.attributes).map((a) => [a.name, a.value]), bodyClass: document.body.className }))()`)
+  console.log('light-after', applied)
+  await evaluate(`(async () => {
+    const norm = (s) => (s || '').replace(/\\s+/g, ' ').trim()
+    const ctxBtn = Array.from(document.querySelectorAll('button')).find((b) => norm(b.getAttribute('aria-label')) === 'ctx' || norm(b.textContent) === 'ctx')
+    if (ctxBtn) ctxBtn.click()
+    await new Promise((r) => setTimeout(r, 1500))
+  })()`)
+} else if (selector === 'lightpopulate') {
+  await evaluate(`(async () => {
+    const norm = (s) => (s || '').replace(/\\s+/g, ' ').trim()
+    const btn = Array.from(document.querySelectorAll('button')).find((b) => /新建会话/.test(norm(b.getAttribute('aria-label')) || '') || /新建会话/.test(norm(b.textContent)))
+    if (btn) btn.click()
+    await new Promise((r) => setTimeout(r, 1200))
+    const composer = document.querySelector('textarea, [contenteditable="true"]')
+    if (composer) composer.focus()
+  })()`)
+  await send('Input.insertText', { text: 'hi' })
+  await sleep(500)
+  await evaluate(`(async () => {
+    const norm = (s) => (s || '').replace(/\\s+/g, ' ').trim()
+    const b = Array.from(document.querySelectorAll('button')).find((x) => /发送消息/.test(norm(x.getAttribute('aria-label')) || ''))
+    if (b) b.click()
+    await new Promise((r) => setTimeout(r, 300))
+  })()`)
+  await sleep(15000)
+  await evaluate(`(() => {
+    document.documentElement.setAttribute('data-ds-theme-source', 'light')
+    document.documentElement.style.colorScheme = 'light'
+    const body = document.body
+    body.removeAttribute('data-ds-dark-theme')
+    for (let index = body.style.length - 1; index >= 0; index -= 1) {
+      const name = body.style[index]
+      if (name.startsWith('--')) body.style.removeProperty(name)
+    }
+  })()`)
+  await sleep(600)
+  await evaluate(`(async () => {
+    const norm = (s) => (s || '').replace(/\\s+/g, ' ').trim()
+    const ctxBtn = Array.from(document.querySelectorAll('button')).find((b) => norm(b.getAttribute('aria-label')) === 'ctx' || norm(b.textContent) === 'ctx')
+    if (ctxBtn) ctxBtn.click()
+    await new Promise((r) => setTimeout(r, 1800))
+  })()`)
+} else if (selector === 'reduced') {
+  await evaluate(`(async () => {
+    const norm = (s) => (s || '').replace(/\\s+/g, ' ').trim()
+    const ctxBtn = Array.from(document.querySelectorAll('button')).find((b) => norm(b.getAttribute('aria-label')) === 'ctx' || norm(b.textContent) === 'ctx')
+    if (ctxBtn) ctxBtn.click()
+    await new Promise((r) => setTimeout(r, 1500))
+  })()`)
+  await send('Emulation.setEmulatedMedia', { features: [{ name: 'prefers-reduced-motion', value: 'reduce' }] })
+  await sleep(600)
+  const reduced = await evaluate(`(() => {
+    const style = document.getElementById('ctx-mon-and-con-reduced-motion')
+    const ring = document.querySelector('[data-ctx-ring] svg circle:last-child')
+    const kpis = Array.from(document.querySelectorAll('[data-ctx-panel] [title]')).map((el) => el.getAttribute('title')).filter(Boolean)
+    return JSON.stringify({
+      styleInjected: Boolean(style),
+      rule: style ? style.textContent.slice(0, 90) : null,
+      ringTransitionDuration: ring ? getComputedStyle(ring).transitionDuration : null,
+      sampleTitles: kpis.slice(0, 4),
+    })
+  })()`)
+  console.log('reduced-motion', reduced)
 } else if (selector) {
   await evaluate(`(() => { const el = document.querySelector(${JSON.stringify(selector)}); if (el) el.scrollIntoView({block:'start'}) })()`)
   await sleep(600)

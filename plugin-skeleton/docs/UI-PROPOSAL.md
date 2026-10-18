@@ -1,6 +1,6 @@
 # UI 优化提案（同类插件调研 + 改动方案）
 
-> 状态：**P0/P1 已实施**，版本 `ctx-mon-and-con@0.14.14`；用户已确认：概览卡用环形图、内容多时默认折叠、Dock 加「打开完整面板」、只做「仅看已启用」筛选（搜索后置）。
+> 状态：**P0/P1 已实施**，版本 `ctx-mon-and-con@0.14.15`；用户已确认：概览卡用环形图、内容多时默认折叠、Dock 加「打开完整面板」、只做「仅看已启用」筛选（搜索后置）。
 >
 > 调研日期：2026-10-18；参考版本：`ctx-mon-and-con@0.14.13`
 
@@ -88,7 +88,7 @@ dsh-context 的客户端样式大量使用 DSH 主题变量与过渡变量（统
 3. Dock 弹层底部加「**打开完整面板**」按钮，点击跳到侧栏 ctx 页。
 4. 列表只做「**仅看已启用**」筛选，搜索后置。
 
-## 6. 实施记录（v0.14.14）
+## 6. 实施记录（v0.14.15）
 
 | 改动 | 文件位置 |
 | --- | --- |
@@ -100,14 +100,25 @@ dsh-context 的客户端样式大量使用 DSH 主题变量与过渡变量（统
 | 工具与提示词：加载 skeleton、错误态（重试）、空态虚线框；「仅看已启用」筛选 + 启用/总数；≤6 项自动展开 | `InventoryCard` / `useLive` |
 | Dock：警告/超限状态进 tooltip，弹层底部加「打开完整面板」 | `CtxDock` / `openCtxPanelPage` |
 | 修正 `--dsw-alias-state-warning-primary` → 实际存在的 `--dsw-alias-state-warn-primary`（原先阈值颜色不生效） | `ratioColor` |
+| P2：卡片头加折叠按钮，折叠状态记忆到 `localStorage`（key `ctx-mon-and-con:collapsed:v1`），刷新后保持 | `Card` / `COLLAPSED_STORAGE_KEY` |
+| P2：`prefers-reduced-motion: reduce` 时关闭面板与 dock 的过渡/动画（注入独立 `<style>`，不改宿主样式） | `apply`（reduced motion effect） |
+| P2：精确 token 数 tooltip（环形图、KPI、图例、dock 触发器） | `BigRing` / `OverviewCard` / `LegendGrid` |
+| P2：概览新增「较上次同步」增量 KPI（同会话内两次刷新的差值，切换会话时重置） | `OverviewCard` |
 
 实施后截图：
 
-- 有真实用量：`docs/ui/current-panel-session.png`（本文件下方）
+- 有真实用量（1400px，暗色）：`docs/ui/current-panel-session.png`
 - 空会话：`docs/ui/current-panel-empty.png`
+- 浅色主题：`docs/ui/current-panel-light.png`
+- 900px / 600px 窄屏：`docs/ui/current-panel-900.png`、`docs/ui/current-panel-600.png`
+- 卡片折叠（刷新后仍保持）：`docs/ui/current-panel-collapsed.png`
 - Dock 弹层：`docs/ui/current-dock-popover.png`
 
 ![实施后的 ctx 面板（有真实用量）](ui/current-panel-session.png)
+
+![浅色主题](ui/current-panel-light.png)
+
+![卡片折叠（刷新后保持）](ui/current-panel-collapsed.png)
 
 ![实施后的空态](ui/current-panel-empty.png)
 

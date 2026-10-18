@@ -45,6 +45,9 @@ window.__ModuleLoader__.load({
       recent: 'Recent /ctx measurements',
       loading: 'Loading…',
       refresh: 'Refresh',
+      collapse: 'Collapse',
+      expand: 'Expand',
+      lastDelta: 'Since last sync',
       retry: 'Retry',
       error: 'Could not load status',
       hint: 'Tip: /ctx <tokens> temporarily overrides this session; /ctx reset restores the default.',
@@ -145,6 +148,9 @@ window.__ModuleLoader__.load({
       recent: '最近的 /ctx 测量',
       loading: '加载中…',
       refresh: '刷新',
+      collapse: '收起',
+      expand: '展开',
+      lastDelta: '较上次同步',
       retry: '重试',
       error: '读取状态失败',
       hint: '提示：/ctx <tokens> 临时覆盖本会话上下文；/ctx reset 恢复默认。',
@@ -449,6 +455,7 @@ window.__ModuleLoader__.load({
       cardFill: { flex: '1 1 320px', minWidth: 'min(260px, 100%)' },
       cardHead: { display: 'flex', alignItems: 'center', gap: '8px' },
       cardTitle: { margin: 0, fontSize: '13px', fontWeight: 600, color: 'var(--dsw-alias-label-primary)' },
+      cardToggle: { display: 'inline-flex', alignItems: 'center', justifyContent: 'center', width: '18px', height: '18px', flex: 'none', border: 'none', background: 'transparent', color: 'var(--dsw-alias-label-tertiary)', padding: 0, borderRadius: '4px', cursor: 'pointer', fontSize: '14px', lineHeight: 1 },
       cardSub: { marginLeft: 'auto', fontSize: '11.5px', color: 'var(--dsw-alias-label-tertiary)', fontVariantNumeric: 'tabular-nums' },
       chipRow: { display: 'flex', flexWrap: 'wrap', gap: '6px' },
       chip: { display: 'inline-flex', alignItems: 'center', gap: '5px', borderRadius: '6px', background: 'var(--dsw-alias-interactive-bg-hover)', padding: '1px 6px', fontSize: '12px', color: 'var(--dsw-alias-label-secondary)', minWidth: 0 },
@@ -548,7 +555,7 @@ window.__ModuleLoader__.load({
       const circumference = 2 * Math.PI * radius
       return h(
         'div',
-        { style: styles.ringWrap, 'data-ctx-ring': String(Math.round(percent)) },
+        { style: styles.ringWrap, 'data-ctx-ring': String(Math.round(percent)), title: props.title },
         h(
           'svg',
           { viewBox: '0 0 104 104', width: 104, height: 104, style: styles.ringSvg, 'aria-hidden': true },
@@ -625,18 +632,61 @@ window.__ModuleLoader__.load({
       )
     }
 
+    // ── 卡片折叠状态（记忆到 localStorage，按卡片 id 存） ──────────────────
+    const COLLAPSED_STORAGE_KEY = 'ctx-mon-and-con:collapsed:v1'
+
+    function readCollapsedMap() {
+      try {
+        if (typeof window === 'undefined' || !window.localStorage) return {}
+        const raw = window.localStorage.getItem(COLLAPSED_STORAGE_KEY)
+        const parsed = raw ? JSON.parse(raw) : null
+        return parsed && typeof parsed === 'object' ? parsed : {}
+      } catch {
+        return {}
+      }
+    }
+
     function Card(props) {
+      const cardId = typeof props.id === 'string' ? props.id : null
+      const [collapsed, setCollapsed] = react.useState(() => Boolean(cardId && readCollapsedMap()[cardId]))
+      const t = props.t
+      const toggle = () => {
+        const next = !collapsed
+        setCollapsed(next)
+        if (!cardId) return
+        try {
+          if (typeof window === 'undefined' || !window.localStorage) return
+          const map = readCollapsedMap()
+          map[cardId] = next
+          window.localStorage.setItem(COLLAPSED_STORAGE_KEY, JSON.stringify(map))
+        } catch {}
+      }
       return h(
         'div',
-        { style: { ...styles.card, ...(props.style || {}) } },
+        { style: { ...styles.card, ...(props.style || {}) }, 'data-ctx-card': cardId || undefined, 'data-ctx-collapsed': collapsed ? '1' : '0' },
         h(
           'div',
           { style: styles.cardHead },
+          cardId && typeof t === 'function'
+            ? h(
+                'button',
+                {
+                  type: 'button',
+                  style: styles.cardToggle,
+                  title: collapsed ? t('expand') : t('collapse'),
+                  'aria-label': collapsed ? t('expand') : t('collapse'),
+                  'aria-expanded': !collapsed,
+                  'data-ctx-card-toggle': cardId,
+                  onClick: toggle,
+                },
+                h('span', { style: { display: 'inline-block', transform: collapsed ? 'none' : 'rotate(90deg)', transition: 'transform .15s ease' } }, '›'),
+              )
+            : null,
           h('h3', { style: styles.cardTitle }, props.title),
           props.sub !== undefined ? h('span', { style: styles.cardSub }, props.sub) : null,
           props.action !== undefined ? props.action : null,
         ),
-        props.children,
+        collapsed ? null : props.children,
       )
     }
 
@@ -892,19 +942,44 @@ window.__ModuleLoader__.load({
       const breakdown = (live && live.breakdown) || (liveUsed === null && latest ? latest.breakdown : null)
       const categories = breakdownCategories(t, breakdown)
       const sub = live ? `${t('synced')} ${formatTime(props.liveAt)}` : latest ? formatTime(latest.at) : undefined
+      // 增量：同会话内这次刷新相对上次刷新的变化（切换会话时重新计）。
+      const previousRef = react.useRef({ sessionId: null, used: null })
+      const sessionKey = live && live.sessionId ? live.sessionId : latest && latest.id ? latest.id : null
+      const delta = used !== null && previousRef.current.used !== null && previousRef.current.sessionId === sessionKey ? used - previousRef.current.used : null
+      react.useEffect(() => {
+        if (used === null) return
+        previousRef.current = { sessionId: sessionKey, used }
+      }, [sessionKey, used])
+      const exact = (value) => (typeof value === 'number' ? `${formatTokens(value)} ${t('tokens')}` : '—')
       return h(
         Card,
-        { title: t('budget'), sub, action: h(StatusBadge, { t, state }) },
+        { title: t('budget'), sub, action: h(StatusBadge, { t, state }), id: 'overview', t },
         h(
           'div',
           { style: styles.heroBody },
-          h(BigRing, { percent: ratio === null ? 0 : ratio * 100, color, label: t('ratio') }),
+          h(BigRing, { percent: ratio === null ? 0 : ratio * 100, color, label: t('ratio'), title: used === null ? '—' : `${formatTokens(used)} / ${formatTokens(budgetTokens)} ${t('tokens')}` }),
           h(
             'div',
             { style: styles.kpiGrid },
-            h('div', { style: styles.kpi }, h('span', { style: styles.kpiLabel }, t('used')), h('span', { style: styles.kpiValue }, compactTokens(used)), h('span', { style: styles.kpiSub }, `${t('tokens')} · ${formatPercent(ratio, 0)}`)),
-            h('div', { style: styles.kpi }, h('span', { style: styles.kpiLabel }, t('budget')), h('span', { style: styles.kpiValue }, compactTokens(budgetTokens)), h('span', { style: styles.kpiSub }, t('tokens'))),
-            h('div', { style: styles.kpi }, h('span', { style: styles.kpiLabel }, t('remaining')), h('span', { style: styles.kpiValue }, compactTokens(remaining)), h('span', { style: styles.kpiSub }, t('tokens'))),
+            h('div', { style: styles.kpi, title: exact(used) }, h('span', { style: styles.kpiLabel }, t('used')), h('span', { style: styles.kpiValue }, compactTokens(used)), h('span', { style: styles.kpiSub }, `${t('tokens')} · ${formatPercent(ratio, 0)}`)),
+            h('div', { style: styles.kpi, title: exact(budgetTokens) }, h('span', { style: styles.kpiLabel }, t('budget')), h('span', { style: styles.kpiValue }, compactTokens(budgetTokens)), h('span', { style: styles.kpiSub }, t('tokens'))),
+            h('div', { style: styles.kpi, title: exact(remaining) }, h('span', { style: styles.kpiLabel }, t('remaining')), h('span', { style: styles.kpiValue }, compactTokens(remaining)), h('span', { style: styles.kpiSub }, t('tokens'))),
+            h(
+              'div',
+              { style: styles.kpi, title: delta === null ? '—' : exact(delta) },
+              h('span', { style: styles.kpiLabel }, t('lastDelta')),
+              h(
+                'span',
+                {
+                  style: {
+                    ...styles.kpiValue,
+                    color: delta === null ? 'var(--dsw-alias-label-tertiary)' : delta > 0 ? 'var(--dsw-alias-state-warn-primary)' : 'var(--dsw-alias-state-success-primary)',
+                  },
+                },
+                delta === null ? '—' : `${delta > 0 ? '+' : ''}${compactTokens(delta)}`,
+              ),
+              h('span', { style: styles.kpiSub }, t('tokens')),
+            ),
           ),
         ),
         h(SegmentedBar, { usedRatio: ratio ?? 0, categories }),
@@ -1259,7 +1334,7 @@ window.__ModuleLoader__.load({
       if (loading) {
         return h(
           Card,
-          { title: t('inventoryTitle') },
+          { title: t('inventoryTitle'), id: 'inventory', t },
           h(
             'div',
             { style: styles.skeletonStack, 'data-ctx-inventory-loading': '1' },
@@ -1272,7 +1347,7 @@ window.__ModuleLoader__.load({
       if (loadError) {
         return h(
           Card,
-          { title: t('inventoryTitle') },
+          { title: t('inventoryTitle'), id: 'inventory', t },
           h(
             'div',
             { style: styles.emptyState, 'data-ctx-inventory-error': '1' },
@@ -1283,7 +1358,7 @@ window.__ModuleLoader__.load({
       }
       return h(
         Card,
-        { title: t('inventoryTitle'), sub: data.sessionId ? String(data.sessionId).slice(0, 8) : undefined },
+        { title: t('inventoryTitle'), sub: data.sessionId ? String(data.sessionId).slice(0, 8) : undefined, id: 'inventory', t },
         empty
           ? h(
               'div',
@@ -1390,6 +1465,8 @@ window.__ModuleLoader__.load({
         {
           title: t('control'),
           style: styles.cardFill,
+          id: 'control',
+          t,
           action: control.active
             ? h(StatusBadge, { t, state: 'ok' })
             : h('span', { style: { ...styles.badge, color: 'var(--dsw-alias-label-tertiary)', borderColor: 'var(--dsw-alias-border-l2)' } }, t('controlOff')),
@@ -1485,7 +1562,7 @@ window.__ModuleLoader__.load({
       const source = typeof budget.source === 'string' && budget.source !== '' ? budget.source : null
       return h(
         Card,
-        { title: t('configTitle'), style: styles.cardFill, sub: editable ? undefined : t('configUnavailable') },
+        { title: t('configTitle'), style: styles.cardFill, sub: editable ? undefined : t('configUnavailable'), id: 'config', t },
         editable
           ? h(
               'div',
@@ -1651,6 +1728,23 @@ window.__ModuleLoader__.load({
     /** @param {unknown} ctx - 浏览器 cordis 上下文（slots / locale） */
     function apply(ctx) {
       ctx.effect(() => ctx.locale.register(NS, { en, zh }), 'ctx-mon-and-con: dictionaries')
+
+      // prefers-reduced-motion：关闭本插件面板 / dock 的过渡与动画（不改宿主样式）。
+      ctx.effect(() => {
+        if (typeof document === 'undefined' || !document.head) return () => {}
+        const styleId = 'ctx-mon-and-con-reduced-motion'
+        if (document.getElementById(styleId)) return () => {}
+        const style = document.createElement('style')
+        style.id = styleId
+        style.textContent =
+          '@media (prefers-reduced-motion: reduce){[data-ctx-panel],[data-ctx-panel] *,[data-ctx-dock],[data-ctx-dock] *{transition-duration:0.01ms !important;animation-duration:0.01ms !important;animation-iteration-count:1 !important;scroll-behavior:auto !important}}'
+        document.head.appendChild(style)
+        return () => {
+          try {
+            style.remove()
+          } catch {}
+        }
+      }, 'ctx-mon-and-con: reduced motion')
 
       // 事件驱动刷新：监听会话区域的 DOM 变化（流式输出、消息更新、切换会话），2s 节流。
       // 忽略本插件自己的 UI（dock/面板），避免自触发循环。

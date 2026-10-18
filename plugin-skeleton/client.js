@@ -1477,6 +1477,18 @@ window.__ModuleLoader__.load({
       const [localEdits, setLocalEdits] = react.useState({})
       const [notice, setNotice] = react.useState(null)
 
+      const readPromptResult = (response) =>
+        response
+          .json()
+          .catch(() => ({}))
+          .then((payload) => {
+            if (!response.ok || (payload && payload.ok === false)) {
+              throw new Error((payload && payload.error) || `HTTP ${response.status}`)
+            }
+            return payload || {}
+          })
+      const promptFailure = (failure) => setNotice(`${t('saveFailed')}: ${String((failure && failure.message) || failure)}`)
+
       const post = (body) => {
         setBusy(body)
         fetch(`${STATUS_PATH}/inventory/toggle`, {
@@ -1514,12 +1526,16 @@ window.__ModuleLoader__.load({
           headers: { 'content-type': 'application/json' },
           body: JSON.stringify({ layer: 'all' }),
         })
-          .then((response) => response.json().catch(() => ({})))
+          .then(readPromptResult)
           .then(() => {
             setRestorePending(false)
+            setNotice(null)
             setTimeout(() => props.reload && props.reload(), 1800)
           })
-          .catch(() => setRestorePending(false))
+          .catch((failure) => {
+            setRestorePending(false)
+            promptFailure(failure)
+          })
       }
 
       const copy = (key, text) => {
@@ -1539,7 +1555,7 @@ window.__ModuleLoader__.load({
           headers: { 'content-type': 'application/json' },
           body: JSON.stringify(body),
         })
-          .then((response) => response.json().catch(() => ({})))
+          .then(readPromptResult)
           .then(() => {
             setPromptBusy(false)
             setEditDraft(null)
@@ -1549,7 +1565,10 @@ window.__ModuleLoader__.load({
             else setLocalEdits({})
             setTimeout(() => props.reload && props.reload(), 1200)
           })
-          .catch(() => setPromptBusy(false))
+          .catch((failure) => {
+            setPromptBusy(false)
+            promptFailure(failure)
+          })
       }
 
       const postSessionPrompt = (name, text) => {
@@ -1559,7 +1578,7 @@ window.__ModuleLoader__.load({
           headers: { 'content-type': 'application/json' },
           body: JSON.stringify({ name, text, ...(props.sessionId ? { sessionId: props.sessionId } : {}) }),
         })
-          .then((response) => response.json().catch(() => ({})))
+          .then(readPromptResult)
           .then(() => {
             setPromptBusy(false)
             setEditDraft(null)
@@ -1568,7 +1587,10 @@ window.__ModuleLoader__.load({
             setNotice(t('savedSession'))
             setTimeout(() => props.reload && props.reload(), 800)
           })
-          .catch(() => setPromptBusy(false))
+          .catch((failure) => {
+            setPromptBusy(false)
+            promptFailure(failure)
+          })
       }
 
       const postSessionPromptReset = (name) => {
@@ -1578,7 +1600,7 @@ window.__ModuleLoader__.load({
           headers: { 'content-type': 'application/json' },
           body: JSON.stringify({ name, ...(props.sessionId ? { sessionId: props.sessionId } : {}) }),
         })
-          .then((response) => response.json().catch(() => ({})))
+          .then(readPromptResult)
           .then(() => {
             setPromptBusy(false)
             setLocalEdits((prev) => {
@@ -1589,7 +1611,10 @@ window.__ModuleLoader__.load({
             setNotice(null)
             setTimeout(() => props.reload && props.reload(), 800)
           })
-          .catch(() => setPromptBusy(false))
+          .catch((failure) => {
+            setPromptBusy(false)
+            promptFailure(failure)
+          })
       }
 
       const postExtraPrompt = (name, text, placement = 'system') => {
@@ -1599,7 +1624,7 @@ window.__ModuleLoader__.load({
           headers: { 'content-type': 'application/json' },
           body: JSON.stringify({ name, text, placement }),
         })
-          .then((response) => response.json().catch(() => ({})))
+          .then(readPromptResult)
           .then((payload) => {
             setExtraBusy(false)
             if (!payload || !payload.ok) {
@@ -1612,7 +1637,10 @@ window.__ModuleLoader__.load({
             setNotice(t('extraPromptSaved'))
             setTimeout(() => props.reload && props.reload(), 900)
           })
-          .catch(() => setExtraBusy(false))
+          .catch((failure) => {
+            setExtraBusy(false)
+            promptFailure(failure)
+          })
       }
 
       const postExtraPromptReset = (name) => {
@@ -1622,14 +1650,17 @@ window.__ModuleLoader__.load({
           headers: { 'content-type': 'application/json' },
           body: JSON.stringify({ name }),
         })
-          .then((response) => response.json().catch(() => ({})))
+          .then(readPromptResult)
           .then(() => {
             setExtraBusy(false)
             setExtraDeletePending(null)
             setNotice(null)
             setTimeout(() => props.reload && props.reload(), 900)
           })
-          .catch(() => setExtraBusy(false))
+          .catch((failure) => {
+            setExtraBusy(false)
+            promptFailure(failure)
+          })
       }
 
       const switchNode = (kind, name, layer, enabled) => {
@@ -1849,7 +1880,6 @@ window.__ModuleLoader__.load({
             ),
           ),
           isOpen ? editorNode : null,
-          isOpen && notice ? h('p', { style: styles.cardSub }, notice) : null,
           isOpen && editing
             ? h('div', { style: { display: 'flex', gap: '6px', alignItems: 'center', flexWrap: 'wrap' } },
                 isExtra
@@ -1960,6 +1990,7 @@ window.__ModuleLoader__.load({
               { style: styles.emptyState, 'data-ctx-inventory-empty': '1' },
               h('p', { style: styles.emptyText }, t('inventoryEmpty')),
               h('div', { style: { display: 'flex', justifyContent: 'center', padding: '2px 0' } }, extraForm),
+              notice ? h('p', { style: styles.cardSub, 'data-ctx-prompt-notice': '1' }, notice) : null,
               refreshButton,
             )
           : null,
@@ -2004,6 +2035,7 @@ window.__ModuleLoader__.load({
                   chevron(open.prompts), t('inventoryPrompts'), h('span', { style: styles.cardSub }, onlyEnabled ? `${visibleSections.length}/${sections.length}` : String(sections.length)),
                 ),
                 open.prompts ? extraForm : null,
+                open.prompts && notice ? h('p', { style: styles.cardSub, 'data-ctx-prompt-notice': '1' }, notice) : null,
                 open.prompts ? (visibleSections.length === 0 ? h('p', { style: styles.emptyText }, t('noneEnabled')) : h('ul', { style: styles.inventoryList }, visibleSections.map(promptRow))) : null,
               ),
               h('p', { style: styles.text }, t('inventoryRisk')),

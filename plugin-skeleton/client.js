@@ -60,7 +60,7 @@ window.__ModuleLoader__.load({
       controlPresetHint: 'Writes one row into preset-standard; the preset config becomes a profile override.',
       controlBusy: 'Applying…',
       controlWriteFailed: 'Could not update the agent preset',
-      controlEnabled: 'Auto-compaction is now enforced with this context limit.',
+      controlEnabled: 'Auto-compaction is now enforced with this context limit.',\n      controlError: 'Last compaction issue',
       controlDisabled: 'Auto-compaction row removed from the agent preset.',
       configTitle: 'Global configuration',
       configHint: 'Writes to the profile’s config row; the plugin reloads with the new values.',
@@ -152,7 +152,7 @@ window.__ModuleLoader__.load({
       controlPresetHint: '会往 preset-standard 里加一行；preset 配置会变成 profile 覆盖层。',
       controlBusy: '正在应用…',
       controlWriteFailed: '更新 agent preset 失败',
-      controlEnabled: '自动压缩已启用，按当前上下文执行。',
+      controlEnabled: '自动压缩已启用，按当前上下文执行。',\n      controlError: '最近压缩未生效',
       controlDisabled: '已从 agent preset 移除自动压缩行。',
       configTitle: '全局配置',
       configHint: '写入 profile 里本插件的 config 行，保存后插件会按新配置重挂。',
@@ -1173,7 +1173,7 @@ window.__ModuleLoader__.load({
               `${t('controlLast')}: ${compactTokens(control.lastCompaction.before)} → ${compactTokens(control.lastCompaction.after)} ${t('tokens')} · ${formatTime(control.lastCompactionAt)}`,
             )
           : null,
-        control.presetMountable ? h('p', { style: styles.text }, t('controlPresetHint')) : null,
+        control.lastError ? h('p', { style: styles.error, 'data-ctx-lasterror': '1' }, ${t('controlError')}: ) : null,\n        control.presetMountable ? h('p', { style: styles.text }, t('controlPresetHint')) : null,
         control.presetMountable
           ? h(
               'button',

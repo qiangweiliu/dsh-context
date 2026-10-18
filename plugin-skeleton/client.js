@@ -60,7 +60,7 @@ window.__ModuleLoader__.load({
       controlPresetHint: 'Writes one row into preset-standard; the preset config becomes a profile override.',
       controlBusy: 'Applying…',
       controlWriteFailed: 'Could not update the agent preset',
-      controlEnabled: 'Auto-compaction is now enforced with this context limit.'
+      controlEnabled: 'Auto-compaction is now enforced with this context limit.',
       controlError: 'Last compaction issue',
       controlDisabled: 'Auto-compaction row removed from the agent preset.',
       configTitle: 'Global configuration',
@@ -1175,7 +1175,10 @@ window.__ModuleLoader__.load({
               `${t('controlLast')}: ${compactTokens(control.lastCompaction.before)} → ${compactTokens(control.lastCompaction.after)} ${t('tokens')} · ${formatTime(control.lastCompactionAt)}`,
             )
           : null,
-        control.lastError ? h('p', { style: styles.error, 'data-ctx-lasterror': '1' }, ${t('controlError')}: ) : null,\n        control.presetMountable ? h('p', { style: styles.text }, t('controlPresetHint')) : null,
+        control.lastError
+          ? h('p', { style: styles.error, 'data-ctx-lasterror': '1' }, `${t('controlError')}: ${control.lastError}`)
+          : null,
+        control.presetMountable ? h('p', { style: styles.text }, t('controlPresetHint')) : null,
         control.presetMountable
           ? h(
               'button',

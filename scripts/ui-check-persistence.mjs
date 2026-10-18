@@ -2,37 +2,13 @@
  * 持久化验证：全局提示词覆盖 / 全局工具禁用 → 重启后是否保留；会话级开关 → 重启后是否丢失。
  * 用法：node scripts/ui-check-persistence.mjs <url> <setup|verify>
  */
-import { spawn } from 'node:child_process'
-import { mkdtempSync, rmSync } from 'node:fs'
-import { tmpdir } from 'node:os'
-import { join } from 'node:path'
+import { openCdp, sleep } from './lib/cdp.mjs'
 
 const baseUrl = process.argv[2]
 const phase = process.argv[3]
-const edge = 'C:\\Program Files (x86)\\Microsoft\\Edge\\Application\\msedge.exe'
 const port = phase === 'setup' ? 9345 : 9346
-const profile = mkdtempSync(join(tmpdir(), `edge-persist-${phase}-`))
-const child = spawn(edge, ['--headless=new', '--disable-gpu', '--no-first-run', '--no-default-browser-check', `--remote-debugging-port=${port}`, `--user-data-dir=${profile}`, 'about:blank'], { stdio: 'ignore' })
-const sleep = (ms) => new Promise((r) => setTimeout(r, ms))
+const { send, evaluate, errors, close } = await openCdp({ port, profilePrefix: `edge-persist-${phase}-` })
 const OVERRIDE = 'PERSIST-TEST-PROMPT'
-
-let page
-for (let i = 0; i < 60 && !page; i += 1) {
-  try { page = (await (await fetch(`http://127.0.0.1:${port}/json/list`)).json()).find((t) => t.type === 'page' && t.webSocketDebuggerUrl) } catch {}
-  if (!page) await sleep(200)
-}
-const ws = new WebSocket(page.webSocketDebuggerUrl)
-await new Promise((resolve, reject) => { ws.addEventListener('open', resolve, { once: true }); ws.addEventListener('error', reject, { once: true }) })
-let seq = 0
-const pending = new Map()
-const errors = []
-ws.addEventListener('message', (event) => {
-  const m = JSON.parse(event.data)
-  if (m.id !== undefined) { const e = pending.get(m.id); if (e) { pending.delete(m.id); m.error ? e.reject(new Error(JSON.stringify(m.error))) : e.resolve(m.result) } return }
-  if (m.method === 'Runtime.exceptionThrown') errors.push(String(m.params.exceptionDetails?.exception?.description || '').slice(0, 200))
-})
-const send = (method, params = {}) => new Promise((resolve, reject) => { const id = ++seq; pending.set(id, { resolve, reject }); ws.send(JSON.stringify({ id, method, params })) })
-const evaluate = async (expression) => { const r = await send('Runtime.evaluate', { expression, awaitPromise: true, returnByValue: true, userGesture: true }); if (r.exceptionDetails) throw new Error(r.exceptionDetails.text); return r.result.value }
 const sendMessage = async (text) => {
   await evaluate(`(async () => { const c = document.querySelector('textarea, [contenteditable="true"]'); if (c) c.focus() })()`)
   await send('Input.insertText', { text })
@@ -98,7 +74,5 @@ if (phase === 'setup') {
 }
 
 console.log(JSON.stringify(out, null, 2))
-try { await send('Browser.close') } catch {}
-ws.close(); child.kill(); await sleep(300)
-try { rmSync(profile, { recursive: true, force: true }) } catch {}
+await close()
 process.exit(0)

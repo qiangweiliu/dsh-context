@@ -7,10 +7,7 @@
  * 依赖：Windows 自带 Edge；Node 22+ 的全局 WebSocket/fetch。
  * 用法：node scripts/ui-probe.mjs "http://127.0.0.1:3080/?token=..." [要查找的文本...]
  */
-import { spawn } from 'node:child_process'
-import { mkdtempSync, rmSync } from 'node:fs'
-import { tmpdir } from 'node:os'
-import { join } from 'node:path'
+import { openCdp, sleep } from './lib/cdp.mjs'
 
 const baseUrl = process.argv[2]
 const rest = process.argv.slice(3)
@@ -23,87 +20,8 @@ if (!baseUrl) {
   console.error('usage: node ui-probe.mjs <url> [needle...]')
   process.exit(2)
 }
-const edge = 'C:\\Program Files (x86)\\Microsoft\\Edge\\Application\\msedge.exe'
 const port = 9333
-const profile = mkdtempSync(join(tmpdir(), 'edge-dsh-'))
-
-const child = spawn(edge, [
-  '--headless=new',
-  '--disable-gpu',
-  '--no-first-run',
-  '--no-default-browser-check',
-  `--remote-debugging-port=${port}`,
-  `--user-data-dir=${profile}`,
-  'about:blank',
-], { stdio: 'ignore', detached: false })
-
-const sleep = (ms) => new Promise((r) => setTimeout(r, ms))
-
-async function targets() {
-  for (let i = 0; i < 50; i += 1) {
-    try {
-      const res = await fetch(`http://127.0.0.1:${port}/json/list`)
-      const list = await res.json()
-      const page = list.find((t) => t.type === 'page' && t.webSocketDebuggerUrl)
-      if (page) return page
-    } catch {}
-    await sleep(200)
-  }
-  throw new Error('Edge remote debugging did not come up')
-}
-
-const page = await targets()
-const ws = new WebSocket(page.webSocketDebuggerUrl)
-await new Promise((resolve, reject) => {
-  ws.addEventListener('open', resolve, { once: true })
-  ws.addEventListener('error', reject, { once: true })
-})
-
-let nextId = 0
-const pending = new Map()
-const consoleLines = []
-const exceptions = []
-ws.addEventListener('message', (event) => {
-  const msg = JSON.parse(event.data)
-  if (msg.id !== undefined) {
-    const entry = pending.get(msg.id)
-    if (entry) {
-      pending.delete(msg.id)
-      msg.error ? entry.reject(new Error(JSON.stringify(msg.error))) : entry.resolve(msg.result)
-    }
-    return
-  }
-  if (msg.method === 'Runtime.consoleAPICalled') {
-    const text = msg.params.args.map((a) => a.value ?? a.description ?? a.type).join(' ')
-    consoleLines.push(`[${msg.params.type}] ${text}`)
-  }
-  if (msg.method === 'Runtime.exceptionThrown') {
-    const d = msg.params.exceptionDetails
-    exceptions.push(`${d.text} ${d.exception?.description ?? ''}`.trim().slice(0, 600))
-  }
-})
-
-function send(method, params = {}) {
-  const id = ++nextId
-  return new Promise((resolve, reject) => {
-    pending.set(id, { resolve, reject })
-    ws.send(JSON.stringify({ id, method, params }))
-  })
-}
-
-async function evaluate(expression) {
-  const result = await send('Runtime.evaluate', {
-    expression,
-    awaitPromise: true,
-    returnByValue: true,
-    userGesture: true,
-  })
-  if (result.exceptionDetails) {
-    const d = result.exceptionDetails
-    throw new Error(`evaluate failed: ${d.text} ${d.exception?.description ?? ''}`)
-  }
-  return result.result.value
-}
+const { send, evaluate, consoleLines, exceptions, close } = await openCdp({ port, profilePrefix: 'edge-dsh-', captureAllConsole: true })
 
 await send('Runtime.enable')
 await send('Page.enable')
@@ -256,9 +174,5 @@ console.log(JSON.stringify({
   exceptionCount: exceptions.length,
 }, null, 2))
 
-try { await send('Browser.close') } catch {}
-ws.close()
-child.kill()
-await sleep(500)
-try { rmSync(profile, { recursive: true, force: true }) } catch {}
+await close()
 process.exit(0)

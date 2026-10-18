@@ -2,45 +2,18 @@
  * 给当前 UI 截图（用于 UI 对比/提案）。
  * 用法：node scripts/ui-screenshot.mjs "<url>" <out.png> [selector]
  */
-import { spawn } from 'node:child_process'
-import { mkdtempSync, rmSync, writeFileSync } from 'node:fs'
-import { tmpdir } from 'node:os'
-import { join } from 'node:path'
+import { writeFileSync } from 'node:fs'
+import { openCdp, sleep } from './lib/cdp.mjs'
 
 const [baseUrl, outPath, selector, widthArg] = process.argv.slice(2)
 if (!baseUrl || !outPath) {
   console.error('usage: node scripts/ui-screenshot.mjs <url> <out.png> [selector]')
   process.exit(2)
 }
-const edge = 'C:\\Program Files (x86)\\Microsoft\\Edge\\Application\\msedge.exe'
 const viewportWidth = Number(widthArg) > 0 ? Number(widthArg) : 1400
 const port = 9351
-const profile = mkdtempSync(join(tmpdir(), 'edge-shot-'))
-const child = spawn(edge, ['--headless=new', '--disable-gpu', '--no-first-run', '--no-default-browser-check', `--remote-debugging-port=${port}`, `--user-data-dir=${profile}`, 'about:blank'], { stdio: 'ignore' })
-const sleep = (ms) => new Promise((r) => setTimeout(r, ms))
 
-let page
-for (let i = 0; i < 60 && !page; i += 1) {
-  try { page = (await (await fetch(`http://127.0.0.1:${port}/json/list`)).json()).find((t) => t.type === 'page' && t.webSocketDebuggerUrl) } catch {}
-  if (!page) await sleep(200)
-}
-if (!page) { console.error('no devtools page'); process.exit(1) }
-const ws = new WebSocket(page.webSocketDebuggerUrl)
-await new Promise((resolve, reject) => { ws.addEventListener('open', resolve, { once: true }); ws.addEventListener('error', reject, { once: true }) })
-let seq = 0
-const pending = new Map()
-const runtimeErrors = []
-ws.addEventListener('message', (event) => {
-  const m = JSON.parse(event.data)
-  if (m.id !== undefined) { const e = pending.get(m.id); if (e) { pending.delete(m.id); m.error ? e.reject(new Error(JSON.stringify(m.error))) : e.resolve(m.result) } }
-})
-const send = (method, params = {}) => new Promise((resolve, reject) => { const id = ++seq; pending.set(id, { resolve, reject }); ws.send(JSON.stringify({ id, method, params })) })
-const evaluate = async (expression) => {
-  const r = await send('Runtime.evaluate', { expression, awaitPromise: true, returnByValue: true, userGesture: true })
-  if (r.exceptionDetails) throw new Error(r.exceptionDetails.text)
-  return r.result.value
-}
-
+const { send, evaluate, errors: runtimeErrors, close } = await openCdp({ port, profilePrefix: 'edge-shot-' })
 await send('Runtime.enable')
 await send('Page.enable')
 await send('Emulation.setDeviceMetricsOverride', { width: viewportWidth, height: 1500, deviceScaleFactor: 1, mobile: false })
@@ -538,6 +511,4 @@ if (selector === 'none') {
 const shot = await send('Page.captureScreenshot', { format: 'png', captureBeyondViewport: true })
 writeFileSync(outPath, Buffer.from(shot.data, 'base64'))
 console.log('saved', outPath)
-try { await send('Browser.close') } catch {}
-ws.close(); child.kill(); await sleep(300)
-try { rmSync(profile, { recursive: true, force: true }) } catch {}
+await close()

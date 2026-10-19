@@ -3,7 +3,7 @@
 # 放置路径：data/plugins/qiangweiliu__dsh-context--plugin-skeleton.yml
 # 文件名规则：<owner>__<repo>--<子目录路径，斜杠换成连字符>.yml
 url: https://github.com/qiangweiliu/dsh-context/tree/main/plugin-skeleton
-name: qiangweiliu/dsh-context#plugin-skeleton
+name: qiangweiliu/dsh-context#ctx-mon-and-con
 category: session
 description:
   en: 'Package: `ctx-mon-and-con`. Context monitoring, compaction, and prompt/tool control for DeepSeek Harness: token breakdowns, trend/event views, budget-based auto-compaction, /ctx controls, and session/global toggles. Read-only monitoring; only the official seam rewrites history.'

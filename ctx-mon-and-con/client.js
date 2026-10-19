@@ -180,6 +180,8 @@ window.__ModuleLoader__.load({
       coverageShort: '{scanned}/{total} scanned',
       dailyTitle: 'Tokens per day',
       heatmapTitle: 'Activity',
+      heatLow: 'Less',
+      heatHigh: 'More',
       sessionsTitle: 'Recent sessions',
       searchSessions: 'Search title / workspace / id',
       noSessions: 'No sessions in this range',
@@ -367,6 +369,8 @@ window.__ModuleLoader__.load({
       coverageShort: '{scanned}/{total} 已扫描',
       dailyTitle: '每日 tokens',
       heatmapTitle: '活跃度',
+      heatLow: '少',
+      heatHigh: '多',
       sessionsTitle: '最近会话',
       searchSessions: '搜索标题 / 工作区 / id',
       noSessions: '该范围内没有会话',
@@ -563,7 +567,7 @@ window.__ModuleLoader__.load({
         return () => cancelAnimationFrame(frame)
       }, [signature])
       if (filled.length === 0) return h(MeterBar, { percent: usedRatio * 100, color: ratioColor(usedRatio, props.warnAt, props.errorAt) })
-      return h(
+      const bar = h(
         'div',
         { style: styles.bar },
         filled.map((row) =>
@@ -580,6 +584,10 @@ window.__ModuleLoader__.load({
           }),
         ),
       )
+      // 阈值刻度直接画在水位条上，省掉一排 chip；0%/100% 分别是条两端，不重复画。
+      if (!props.ticks) return bar
+      const tick = (ratio, color) => (typeof ratio === 'number' && ratio > 0 && ratio < 1 ? h('i', { key: ratio, style: { ...styles.barTick, left: `${ratio * 100}%`, background: color } }) : null)
+      return h('div', { style: styles.barWrap }, bar, tick(props.warnAt, 'var(--dsw-alias-state-warn-primary)'), tick(props.errorAt, 'var(--dsw-alias-state-error-primary)'))
     }
 
     // ── 内置 ContextMeter 的视觉规格（trigger / panel / bar / rows） ────────
@@ -636,12 +644,14 @@ window.__ModuleLoader__.load({
     // ── 面板视觉（参考 dsh-context 的卡片/标题/chip/图例语义） ───────────────
     const styles = {
       page: { height: '100%', minHeight: 0, overflow: 'auto', background: 'var(--dsw-alias-bg-base)', color: 'var(--dsw-alias-label-primary)' },
-      pageInner: { maxWidth: '1040px', margin: '0 auto', padding: '24px clamp(16px, 4vw, 40px) 48px', display: 'flex', flexDirection: 'column', gap: '14px' },
+      pageInner: { maxWidth: '1040px', margin: '0 auto', padding: '24px clamp(16px, 4vw, 40px) 48px', display: 'flex', flexDirection: 'column', gap: '16px' },
       root: { display: 'flex', flexDirection: 'column', gap: '12px' },
-      title: { margin: 0, fontSize: '22px', fontWeight: 600, lineHeight: '30px', letterSpacing: '-0.01em' },
+      title: { margin: 0, fontSize: '21px', fontWeight: 600, lineHeight: '29px', letterSpacing: '-0.01em' },
       versionChip: { display: 'inline-flex', alignItems: 'center', borderRadius: '999px', border: '0.5px solid var(--dsw-alias-border-l1)', background: 'var(--dsw-alias-bg-layer-1)', padding: '1px 8px', fontSize: '11.5px', lineHeight: '18px', color: 'var(--dsw-alias-label-tertiary)', fontVariantNumeric: 'tabular-nums' },
       subtitle: { margin: 0, fontSize: '12px', lineHeight: 1.6, color: 'var(--dsw-alias-label-tertiary)' },
       cols: { display: 'flex', flexWrap: 'wrap', gap: '12px', alignItems: 'flex-start' },
+      chartWide: { flex: '2 1 380px', minWidth: 'min(320px, 100%)' },
+      chartNarrow: { flex: '1 1 240px', minWidth: 'min(240px, 100%)' },
       card: {
         minWidth: 'min(260px, 100%)',
         boxSizing: 'border-box',
@@ -694,17 +704,19 @@ window.__ModuleLoader__.load({
       label: { color: 'var(--dsw-alias-label-secondary)' },
       input: { width: '100%', boxSizing: 'border-box', border: '0.5px solid var(--dsw-alias-border-l2)', borderRadius: '8px', background: 'var(--dsw-alias-bg-base)', color: 'inherit', padding: '5px 9px', fontSize: '12.5px' },
       // ── 概览 hero / 环形图 / KPI / 图例 ───────────────────────────────────
-      heroBody: { display: 'flex', alignItems: 'center', gap: '18px', flexWrap: 'wrap' },
-      ringWrap: { position: 'relative', width: '104px', height: '104px', flex: 'none' },
-      ringSvg: { width: '104px', height: '104px', transform: 'rotate(-90deg)' },
+      heroBody: { display: 'flex', alignItems: 'center', gap: '20px', flexWrap: 'wrap' },
+      ringWrap: { position: 'relative', width: '84px', height: '84px', flex: 'none' },
+      ringSvg: { width: '84px', height: '84px', transform: 'rotate(-90deg)' },
       ringCenter: { position: 'absolute', inset: 0, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: '1px' },
-      ringPercent: { fontSize: '21px', fontWeight: 600, lineHeight: '25px', fontVariantNumeric: 'tabular-nums' },
-      ringLabel: { fontSize: '10.5px', color: 'var(--dsw-alias-label-tertiary)' },
-      kpiGrid: { display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(104px, 1fr))', gap: '8px', flex: '1 1 260px', minWidth: '210px' },
+      ringPercent: { fontSize: '19px', fontWeight: 600, lineHeight: '24px', fontVariantNumeric: 'tabular-nums' },
+      ringLabel: { fontSize: '10px', color: 'var(--dsw-alias-label-tertiary)' },
+      // hero 用无框统计格；控制卡沿用带底色的 kpi 块。
+      statRow: { display: 'grid', gridTemplateColumns: 'repeat(4, minmax(0, 1fr))', gap: '2px 18px', flex: '1 1 420px', minWidth: '240px', margin: 0 },
+      stat: { display: 'flex', flexDirection: 'column', gap: '1px', minWidth: 0 },
       kpi: { display: 'flex', flexDirection: 'column', gap: '2px', padding: '8px 10px', borderRadius: '8px', background: 'var(--dsw-alias-bg-layer-2)', minWidth: 0 },
       kpiLabel: { fontSize: '10.5px', lineHeight: '15px', color: 'var(--dsw-alias-label-tertiary)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' },
-      kpiValue: { fontSize: '15px', lineHeight: '21px', fontWeight: 600, fontVariantNumeric: 'tabular-nums' },
-      kpiSub: { fontSize: '10.5px', lineHeight: '15px', color: 'var(--dsw-alias-label-tertiary)', fontVariantNumeric: 'tabular-nums' },
+      kpiValue: { fontSize: '17px', lineHeight: '23px', fontWeight: 600, fontVariantNumeric: 'tabular-nums', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' },
+      kpiSub: { fontSize: '10px', lineHeight: '14px', color: 'var(--dsw-alias-label-tertiary)', fontVariantNumeric: 'tabular-nums' },
       legend: { display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(150px, 1fr))', gap: '5px 14px', margin: '2px 0 0', padding: 0 },
       legendItem: { display: 'flex', alignItems: 'center', gap: '7px', minWidth: 0, fontSize: '12px', color: 'var(--dsw-alias-label-secondary)' },
       legendName: { whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' },
@@ -714,8 +726,11 @@ window.__ModuleLoader__.load({
       badgeOk: { color: 'var(--dsw-alias-state-success-primary)', borderColor: 'var(--dsw-alias-state-success-primary)' },
       badgeWarn: { color: 'var(--dsw-alias-state-warn-primary)', borderColor: 'var(--dsw-alias-state-warn-primary)' },
       badgeError: { color: 'var(--dsw-alias-state-error-primary)', borderColor: 'var(--dsw-alias-state-error-primary)' },
-      thresholds: { display: 'flex', flexWrap: 'wrap', gap: '6px' },
-      thresholdChip: { display: 'inline-flex', alignItems: 'center', gap: '4px', fontSize: '11.5px', lineHeight: '18px', color: 'var(--dsw-alias-label-tertiary)', background: 'var(--dsw-alias-interactive-bg-hover)', borderRadius: '6px', padding: '0 7px', fontVariantNumeric: 'tabular-nums' },
+      thresholds: { display: 'flex', alignItems: 'center', gap: '12px', flexWrap: 'wrap' },
+      thresholdChip: { display: 'inline-flex', alignItems: 'center', gap: '4px', fontSize: '11px', lineHeight: '18px', color: 'var(--dsw-alias-label-tertiary)', fontVariantNumeric: 'tabular-nums' },
+      thresholdValue: { fontWeight: 600, color: 'var(--dsw-alias-label-secondary)', fontVariantNumeric: 'tabular-nums' },
+      barWrap: { position: 'relative' },
+      barTick: { position: 'absolute', top: '-2px', bottom: '-2px', width: '1px', background: 'var(--dsw-alias-label-tertiary)', opacity: 0.55, pointerEvents: 'none' },
       // ── 加载 / 空态 / 错误态 ─────────────────────────────────────────────
       skeletonStack: { display: 'flex', flexDirection: 'column', gap: '8px', padding: '2px 0' },
       skeleton: { height: '12px', borderRadius: '6px', background: 'var(--dsw-alias-interactive-bg-hover)' },
@@ -742,21 +757,24 @@ window.__ModuleLoader__.load({
       rangeRow: { display: 'flex', alignItems: 'center', gap: '6px', flexWrap: 'wrap' },
       rangeBtn: { border: '0.5px solid var(--dsw-alias-border-l2)', background: 'transparent', color: 'var(--dsw-alias-label-secondary)', borderRadius: '999px', padding: '1px 10px', fontSize: '11.5px', lineHeight: '19px', cursor: 'pointer' },
       rangeBtnOn: { background: 'var(--dsw-alias-brand-primary)', borderColor: 'transparent', color: 'var(--dsw-alias-label-primary-foreground, #fff)' },
-      kpiBand: { display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(124px, 1fr))', gap: '10px' },
-      kpiCard: { padding: '10px 12px', borderRadius: '10px', background: 'var(--dsw-alias-bg-layer-1)', border: '0.5px solid var(--dsw-alias-border-l1)', display: 'flex', flexDirection: 'column', gap: '3px', minWidth: 0 },
-      kpiCardLabel: { fontSize: '11px', color: 'var(--dsw-alias-label-tertiary)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' },
-      kpiCardValue: { fontSize: '19px', lineHeight: '26px', fontWeight: 600, fontVariantNumeric: 'tabular-nums', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' },
-      kpiCardSub: { fontSize: '10.5px', lineHeight: '15px', color: 'var(--dsw-alias-label-tertiary)', fontVariantNumeric: 'tabular-nums' },
+      kpiBand: { display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(112px, 1fr))', background: 'var(--dsw-alias-bg-layer-1)', border: '0.5px solid var(--dsw-alias-border-l1)', borderRadius: '12px', overflow: 'hidden' },
+      kpiCard: { padding: '10px 12px', display: 'flex', flexDirection: 'column', gap: '1px', minWidth: 0 },
+      kpiCardDivider: { borderLeft: '0.5px solid var(--dsw-alias-border-l1)' },
+      kpiCardLabel: { fontSize: '10.5px', lineHeight: '15px', color: 'var(--dsw-alias-label-tertiary)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' },
+      kpiCardValue: { fontSize: '15.5px', lineHeight: '22px', fontWeight: 600, fontVariantNumeric: 'tabular-nums', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' },
+      kpiCardSub: { fontSize: '10px', lineHeight: '14px', color: 'var(--dsw-alias-label-tertiary)', fontVariantNumeric: 'tabular-nums' },
       chartWrap: { display: 'flex', flexDirection: 'column', gap: '6px', minWidth: 0 },
-      chartBars: { display: 'flex', alignItems: 'flex-end', gap: '4px', height: '92px', paddingTop: '6px', overflowX: 'auto' },
+      chartBars: { display: 'flex', alignItems: 'flex-end', gap: '6px', height: '96px', paddingTop: '6px', overflowX: 'auto' },
       chartBarCol: { flex: '1 1 0', minWidth: '14px', display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '3px', height: '100%', justifyContent: 'flex-end' },
-      chartBar: { width: '100%', maxWidth: '34px', borderRadius: '4px 4px 2px 2px', background: 'var(--dsw-alias-brand-primary)', minHeight: '2px', opacity: 0.85 },
+      chartBar: { width: '100%', maxWidth: '26px', borderRadius: '4px 4px 1px 1px', background: 'var(--dsw-alias-brand-primary)', minHeight: '2px', opacity: 0.88 },
       chartBarZero: { background: 'var(--dsw-alias-interactive-bg-hover)' },
       chartLabel: { fontSize: '9.5px', color: 'var(--dsw-alias-label-tertiary)', whiteSpace: 'nowrap', fontVariantNumeric: 'tabular-nums' },
-      heatGrid: { display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(18px, 1fr))', gap: '3px' },
-      heatCell: { aspectRatio: '1 / 1', borderRadius: '3px', background: 'var(--dsw-alias-interactive-bg-hover)', minWidth: '14px' },
-      sessionList: { display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(250px, 1fr))', gap: '10px' },
-      sessionCard: { textAlign: 'left', border: '0.5px solid var(--dsw-alias-border-l1)', background: 'var(--dsw-alias-bg-layer-1)', borderRadius: '10px', padding: '10px 12px', display: 'flex', flexDirection: 'column', gap: '6px', cursor: 'pointer', color: 'inherit', minWidth: 0 },
+      heatGrid: { display: 'flex', flexWrap: 'wrap', gap: '4px', alignContent: 'flex-start' },
+      heatCell: { width: '20px', height: '20px', flex: 'none', borderRadius: '3px', background: 'var(--dsw-alias-interactive-bg-hover)' },
+      heatScale: { display: 'flex', alignItems: 'center', gap: '4px', marginTop: 'auto', fontSize: '10px', color: 'var(--dsw-alias-label-tertiary)' },
+      heatScaleCell: { width: '12px', height: '12px', borderRadius: '2px', flex: 'none' },
+      sessionList: { display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(240px, 1fr))', gap: '8px' },
+      sessionCard: { textAlign: 'left', border: '0.5px solid var(--dsw-alias-border-l1)', background: 'transparent', borderRadius: '10px', padding: '10px 12px', display: 'flex', flexDirection: 'column', gap: '5px', cursor: 'pointer', color: 'inherit', minWidth: 0 },
       sessionCardOn: { borderColor: 'var(--dsw-alias-brand-primary)' },
       sessionTitle: { margin: 0, fontSize: '12.5px', fontWeight: 600, lineHeight: '18px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' },
       sessionMeta: { fontSize: '10.5px', color: 'var(--dsw-alias-label-tertiary)', fontVariantNumeric: 'tabular-nums', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' },
@@ -775,7 +793,7 @@ window.__ModuleLoader__.load({
       eventMain: { flex: '1 1 auto', minWidth: 0, fontSize: '11.5px', color: 'var(--dsw-alias-label-secondary)', wordBreak: 'break-word' },
       eventAside: { flex: 'none', fontSize: '10.5px', color: 'var(--dsw-alias-label-tertiary)', fontVariantNumeric: 'tabular-nums', whiteSpace: 'nowrap' },
       searchInput: { width: '100%', boxSizing: 'border-box', border: '0.5px solid var(--dsw-alias-border-l2)', borderRadius: '8px', background: 'var(--dsw-alias-bg-base)', color: 'inherit', padding: '5px 9px', fontSize: '12px' },
-      linkAction: { marginLeft: 'auto', fontSize: '10.5px', color: 'var(--dsw-alias-label-tertiary)', cursor: 'pointer', textDecoration: 'underline', textUnderlineOffset: '2px' },
+      linkAction: { marginLeft: 'auto', fontSize: '10.5px', color: 'var(--dsw-alias-label-tertiary)', cursor: 'pointer' },
       banner: { display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap', padding: '6px 10px', borderRadius: '8px', background: 'var(--dsw-alias-bg-layer-2)', fontSize: '11.5px', color: 'var(--dsw-alias-label-secondary)' },
     })
 
@@ -1455,14 +1473,14 @@ window.__ModuleLoader__.load({
           { style: styles.heroBody },
           h(BigRing, { percent: ratio === null ? 0 : ratio * 100, color, label: t('ratio'), title: used === null ? '—' : `${formatTokens(used)} / ${formatTokens(budgetTokens)} ${t('tokens')}` }),
           h(
-            'div',
-            { style: styles.kpiGrid },
-            h('div', { style: styles.kpi, title: exact(used) }, h('span', { style: styles.kpiLabel }, t('used')), h('span', { style: styles.kpiValue }, compactTokens(used)), h('span', { style: styles.kpiSub }, `${t('tokens')} · ${formatPercent(ratio, 0)}`)),
-            h('div', { style: styles.kpi, title: exact(budgetTokens) }, h('span', { style: styles.kpiLabel }, t('budget')), h('span', { style: styles.kpiValue }, compactTokens(budgetTokens)), h('span', { style: styles.kpiSub }, t('tokens'))),
-            h('div', { style: styles.kpi, title: exact(remaining) }, h('span', { style: styles.kpiLabel }, t('remaining')), h('span', { style: styles.kpiValue }, compactTokens(remaining)), h('span', { style: styles.kpiSub }, t('tokens'))),
+            'dl',
+            { style: styles.statRow },
+            h('div', { style: styles.stat, title: exact(used) }, h('span', { style: styles.kpiLabel }, t('used')), h('span', { style: styles.kpiValue }, compactTokens(used)), h('span', { style: styles.kpiSub }, `${t('tokens')} · ${formatPercent(ratio, 0)}`)),
+            h('div', { style: styles.stat, title: exact(budgetTokens) }, h('span', { style: styles.kpiLabel }, t('budget')), h('span', { style: styles.kpiValue }, compactTokens(budgetTokens)), h('span', { style: styles.kpiSub }, t('tokens'))),
+            h('div', { style: styles.stat, title: exact(remaining) }, h('span', { style: styles.kpiLabel }, t('remaining')), h('span', { style: styles.kpiValue }, compactTokens(remaining)), h('span', { style: styles.kpiSub }, t('tokens'))),
             h(
               'div',
-              { style: styles.kpi, title: delta === null ? '—' : exact(delta) },
+              { style: styles.stat, title: delta === null ? '—' : exact(delta) },
               h('span', { style: styles.kpiLabel }, t('lastDelta')),
               h(
                 'span',
@@ -1478,16 +1496,16 @@ window.__ModuleLoader__.load({
             ),
           ),
         ),
-        h(SegmentedBar, { usedRatio: ratio ?? 0, categories, warnAt, errorAt }),
-        h(LegendGrid, { categories, tokensLabel: t('tokens') }),
+        h(SegmentedBar, { usedRatio: ratio ?? 0, categories, warnAt, errorAt, ticks: true }),
         h(
           'div',
           { style: styles.thresholds },
-          h('span', { style: { ...styles.thresholdChip, color: 'var(--dsw-alias-state-warn-primary)' } }, `${t('warnAt')} ${formatPercent(warnAt, 0)}`),
-          h('span', { style: { ...styles.thresholdChip, color: 'var(--dsw-alias-state-error-primary)' } }, `${t('errorAt')} ${formatPercent(errorAt, 0)}`),
-          h('span', { style: { ...styles.thresholdChip, color: triggerAt < 1 ? 'var(--dsw-alias-state-warn-primary)' : 'var(--dsw-alias-label-tertiary)' } }, `${t('triggerAt')} ${formatPercent(triggerAt, 0)}`),
-          h('span', { style: { ...styles.thresholdChip, color: 'var(--dsw-alias-label-tertiary)' } }, `${t('targetAt')} ${formatPercent(targetAt, 0)}`),
+          h('span', { style: styles.thresholdChip }, `${t('warnAt')} `, h('span', { style: styles.thresholdValue }, formatPercent(warnAt, 0))),
+          h('span', { style: styles.thresholdChip }, `${t('errorAt')} `, h('span', { style: styles.thresholdValue }, formatPercent(errorAt, 0))),
+          h('span', { style: styles.thresholdChip }, `${t('triggerAt')} `, h('span', { style: styles.thresholdValue }, formatPercent(triggerAt, 0))),
+          h('span', { style: styles.thresholdChip }, `${t('targetAt')} `, h('span', { style: styles.thresholdValue }, formatPercent(targetAt, 0))),
         ),
+        h(LegendGrid, { categories, tokensLabel: t('tokens') }),
         h('p', { style: styles.text }, t('hint')),
       )
     }
@@ -2401,7 +2419,7 @@ window.__ModuleLoader__.load({
         { key: 'active', label: t('kpiActive'), value: formatDurationMs(kpi.activeMs), sub: '' },
         { key: 'compactions', label: t('kpiCompactions'), value: formatTokens(kpi.compactions), sub: kpi.injections ? `${formatTokens(kpi.injections)} inject` : '' },
       ]
-      return h('div', { style: styles.kpiBand, 'data-ctx-kpis': '1' }, items.map((item) => h('div', { key: item.key, style: styles.kpiCard, 'data-ctx-kpi': item.key },
+      return h('div', { style: styles.kpiBand, 'data-ctx-kpis': '1' }, items.map((item, index) => h('div', { key: item.key, style: index > 0 ? { ...styles.kpiCard, ...styles.kpiCardDivider } : styles.kpiCard, 'data-ctx-kpi': item.key },
         h('span', { style: styles.kpiCardLabel }, item.label),
         h('strong', { style: styles.kpiCardValue }, item.value),
         item.sub ? h('span', { style: styles.kpiCardSub }, item.sub) : null,
@@ -2435,6 +2453,17 @@ window.__ModuleLoader__.load({
           const ratio = (Number(day.tokens) || 0) / max
           return h('div', { key: day.date, style: { ...styles.heatCell, opacity: ratio === 0 ? 1 : 0.2 + ratio * 0.8, background: ratio === 0 ? undefined : 'var(--dsw-alias-brand-primary)' }, title: `${day.date} · ${formatTokens(day.tokens)} tok · ${day.requests} req` })
         })),
+        daily.length > 0
+          ? h(
+              'div',
+              { style: styles.heatScale },
+              h('span', null, t('heatLow')),
+              h('i', { style: { ...styles.heatScaleCell, background: 'var(--dsw-alias-brand-primary)', opacity: 0.25 } }),
+              h('i', { style: { ...styles.heatScaleCell, background: 'var(--dsw-alias-brand-primary)', opacity: 0.55 } }),
+              h('i', { style: { ...styles.heatScaleCell, background: 'var(--dsw-alias-brand-primary)', opacity: 0.9 } }),
+              h('span', null, t('heatHigh')),
+            )
+          : null,
       )
     }
 
@@ -2675,8 +2704,8 @@ window.__ModuleLoader__.load({
         }
         if (analytics) {
           children.push(h('div', { key: 'charts', style: styles.cols },
-            h('div', { style: { ...styles.card, ...styles.cardFill } }, h(DailyChart, { t, daily: analytics.daily })),
-            h('div', { style: { ...styles.card, ...styles.cardFill } }, h(Heatmap, { t, daily: analytics.daily })),
+            h('div', { style: { ...styles.card, ...styles.chartWide } }, h(DailyChart, { t, daily: analytics.daily })),
+            h('div', { style: { ...styles.card, ...styles.chartNarrow } }, h(Heatmap, { t, daily: analytics.daily })),
           ))
         }
         children.push(h(OverviewCard, { key: 'overview', t, budget, latest, live, liveAt: liveState.at, controlActive: Boolean(control.active) }))

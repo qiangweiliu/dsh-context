@@ -33,6 +33,7 @@ window.__ModuleLoader__.load({
       versionLabel: 'Plugin version',
       description: 'Monitors this session’s context usage and edits the plugin’s global context limit.',
       budget: 'Context limit',
+      budgetLimit: 'Budget cap',
       used: 'Measured',
       remaining: 'Remaining',
       ratio: 'Used',
@@ -222,6 +223,7 @@ window.__ModuleLoader__.load({
       versionLabel: '插件版本',
       description: '监控当前会话的上下文占用，并编辑插件的全局上下文配置。',
       budget: '上下文',
+      budgetLimit: '预算上限',
       used: '实测用量',
       remaining: '剩余',
       ratio: '已用',
@@ -578,6 +580,7 @@ window.__ModuleLoader__.load({
             style: {
               ...styles.barSegment,
               width: `${(grown ? usedRatio * row.share * 100 : 0).toFixed(3)}%`,
+              minWidth: grown && usedRatio > 0 ? '2px' : 0,
               background: row.color,
               transition: 'width .7s cubic-bezier(.22,.61,.36,1)',
             },
@@ -887,6 +890,8 @@ window.__ModuleLoader__.load({
           style: {
             ...styles.barFill,
             width: `${grown ? percent : 0}%`,
+            // 0% 时不画 2px 残留色块，空条就应该是空的。
+            minWidth: grown && percent > 0 ? '2px' : 0,
             background: props.color || 'var(--dsw-alias-brand-primary)',
             transition: 'width .7s cubic-bezier(.22,.61,.36,1)',
           },
@@ -1476,7 +1481,7 @@ window.__ModuleLoader__.load({
             'dl',
             { style: styles.statRow },
             h('div', { style: styles.stat, title: exact(used) }, h('span', { style: styles.kpiLabel }, t('used')), h('span', { style: styles.kpiValue }, compactTokens(used)), h('span', { style: styles.kpiSub }, `${t('tokens')} · ${formatPercent(ratio, 0)}`)),
-            h('div', { style: styles.stat, title: exact(budgetTokens) }, h('span', { style: styles.kpiLabel }, t('budget')), h('span', { style: styles.kpiValue }, compactTokens(budgetTokens)), h('span', { style: styles.kpiSub }, t('tokens'))),
+            h('div', { style: styles.stat, title: exact(budgetTokens) }, h('span', { style: styles.kpiLabel }, t('budgetLimit')), h('span', { style: styles.kpiValue }, compactTokens(budgetTokens)), h('span', { style: styles.kpiSub }, t('tokens'))),
             h('div', { style: styles.stat, title: exact(remaining) }, h('span', { style: styles.kpiLabel }, t('remaining')), h('span', { style: styles.kpiValue }, compactTokens(remaining)), h('span', { style: styles.kpiSub }, t('tokens'))),
             h(
               'div',
@@ -2693,6 +2698,8 @@ window.__ModuleLoader__.load({
       }
 
       if (tab === 'overview') {
+        // 先答"还剩多少"，再给跨会话统计与图表。
+        children.push(h(OverviewCard, { key: 'overview', t, budget, latest, live, liveAt: liveState.at, controlActive: Boolean(control.active) }))
         children.push(h(KpiBand, { key: 'kpis', t, kpi: analytics ? analytics.kpi : {}, coverage: analytics ? analytics.coverage : null }))
         if (analyticsState.error && !analytics) {
           children.push(h('div', { key: 'analyticsError', style: styles.emptyState },
@@ -2708,7 +2715,6 @@ window.__ModuleLoader__.load({
             h('div', { style: { ...styles.card, ...styles.chartNarrow } }, h(Heatmap, { t, daily: analytics.daily })),
           ))
         }
-        children.push(h(OverviewCard, { key: 'overview', t, budget, latest, live, liveAt: liveState.at, controlActive: Boolean(control.active) }))
         children.push(h(SessionCards, { key: 'sessions', t, sessions: analytics ? analytics.sessions : [], selected: detailSession, onSelect: (id) => { setSelected(id); setTab('trend') }, onOpen: (item) => { openSessionInSidebar(item.title || shortSessionId(item.id)) } }))
         if (analytics && Array.isArray(analytics.warnings) && analytics.warnings.length > 0) {
           children.push(h('div', { key: 'warnings', style: styles.banner, title: analytics.warnings.join(' | ') }, `${t('coverage').replace('{scanned}', analytics.coverage.scanned).replace('{total}', analytics.coverage.total)} · ${t('readFailures').replace('{count}', String(analytics.warnings.length))}`))

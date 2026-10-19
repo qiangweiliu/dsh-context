@@ -45,16 +45,37 @@
 
 沿用既有的水位条 `width .7s cubic-bezier(.22,.61,.36,1)` 与环形 `stroke-dasharray .6s`，未新增动效（工具面板不做入场动画）。
 
-## 证据与局限
+## 证据
 
-- `explore/panel-v2.html`：按最终样式重建的静态设计稿（宿主 token 取自 `dsh-client-ui-theme`，深色取值）。
-- `explore/shots/v2-final.png`：设计稿 1400×1500 截图。
-- `explore/shots/before-after.png`：`docs/ui/0.15-overview.png`（宿主机实拍）与设计稿并排。
-- **未验证**：宿主内真实渲染。本机 `dsh web` 面板需要带 token 的地址，自动化拿不到；改动只动样式与排版，业务行为未改，测试全绿（static 68 / metrics 18 / control 51 / smoke 48 / prompt-state 9）。
-- 浅色主题未出稿：面板全部走宿主语义变量（仅四桶构成色是既有硬编码），浅色由宿主自动接管。
+- `explore/panel-v2.html`：设计稿（按最终样式重建的静态复刻，宿主 token 取自 `dsh-client-ui-theme`）。
+- `explore/shots/host-overview.png`、`host-settings.png`：**WSL 里真实 `dsh web` 实例的实拍**（1400×1500，概览页 / 设置页）。
+- `explore/shots/before-after.png`：左 `docs/ui/0.15-overview.png`（旧版宿主实拍）vs 右本次改动（宿主实拍）。
+- `explore/shots/v2-final.png`：设计稿截图（留档）。
+
+## 宿主复核（WSL，2026-10-19）
+
+在 WSL 的 `web` profile（`~/dsh-plugins/ctx-mon-and-con`，3080 端口实例）上同步源码后实测：
+
+| 检查 | 结果 |
+| --- | --- |
+| 环形图尺寸 | 84×84（旧 104） |
+| KPI | 单容器 7 格，容器底色为 `bg-layer-1`，格间 0.5px 分隔线 |
+| 热力图 | 格子固定 20px，「少 / 多」图例在 |
+| 会话卡 | 底色透明（不再是一块块浅色磁贴） |
+| 会话动作 | `text-decoration: none` |
+| 横向溢出 | `scrollWidth == clientWidth == 1400`，无控制台报错 |
+
+**宿主上发现并修掉的两个问题**（设计稿没暴露出来的）：
+
+1. `CtxPanel` 里概览页的推送顺序仍是 KPI → 图 → 上下文，hero 并没有真的前置；已改成 上下文 → KPI → 图。
+2. 0% 用量时水位条左侧露出 2px 残留色块（`min-width: 2px` 让空条也有一截颜色）；已在 `MeterBar` 与 `SegmentedBar` 里改成 0% 不画。
+3. 中文下「上下文」标签与卡片标题、与「剩余」撞词，改为新键 `budgetLimit`（预算上限 / Budget cap）。
 
 ## 未做
 
-- 趋势 / 事件 / 设置三个 tab 未逐屏重排（共享样式已受益）。
+- 趋势 / 事件 / 设置三个 tab 未逐屏重排（共享样式已受益；设置页已实拍确认无回归）。
 - 侧栏面板与输入框 dock 未改（沿用同一套 token）。
 - 版本号未提升。
+- hero 的**非零用量**渲染未在宿主上取到（该实例当前活动会话为 0 token，历史会话不会进入 live 数据）；这一状态由设计稿与静态断言覆盖，代码路径与旧版一致，只改了 `min-width` 与阈值刻度。
+- 浅色主题未出稿：面板全部走宿主语义变量（仅四桶构成色是既有硬编码），浅色由宿主自动接管。
+

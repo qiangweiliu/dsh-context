@@ -311,7 +311,30 @@ export function summarizeFolds(folds, options = {}) {
 
 /** Build the per-session trend payload (requests + compaction markers). */
 export function sessionDetail(fold) {
-  const compacted = fold.compactions.filter((compaction) => typeof compaction.endedAt === 'number')
+  const compacted = fold.compactions
+    .filter((compaction) => typeof compaction.endedAt === 'number')
+    .sort((a, b) => a.endedAt - b.endedAt)
+  // 请求按时间正序：每个请求带上"它之前最近一次已结束的压缩"。
+  let marker = 0
+  let latestCompaction = null
+  const requests = fold.requests.map((request) => {
+    while (marker < compacted.length && compacted[marker].endedAt <= request.time) {
+      latestCompaction = compacted[marker]
+      marker += 1
+    }
+    return {
+      time: request.time,
+      turn: request.turn,
+      step: request.step,
+      model: request.model,
+      prompt: request.usage.prompt,
+      output: request.usage.output,
+      total: request.usage.total,
+      cacheRead: request.usage.cacheRead,
+      cost: request.cost,
+      compaction: latestCompaction,
+    }
+  })
   return {
     session: {
       id: fold.id,
@@ -322,18 +345,7 @@ export function sessionDetail(fold) {
       createdAt: fold.createdAt,
       lastActivityAt: fold.lastActivityAt,
     },
-    requests: fold.requests.map((request) => ({
-      time: request.time,
-      turn: request.turn,
-      step: request.step,
-      model: request.model,
-      prompt: request.usage.prompt,
-      output: request.usage.output,
-      total: request.usage.total,
-      cacheRead: request.usage.cacheRead,
-      cost: request.cost,
-      compaction: compacted.find((item) => item.endedAt !== null && item.endedAt <= request.time && item.endedAt > request.time - 1) ?? null,
-    })),
+    requests,
     compactions: compacted.map((item) => ({
       at: item.endedAt,
       startedAt: item.startedAt,

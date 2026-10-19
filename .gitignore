@@ -1,7 +1,7 @@
 # 本仓库只提交源码与文档；以下为本地侦察/依赖产物
 .probe/
 node_modules/
-test/deps/
+**/test/deps/
 pnpm-store/
 .pnpm-store/
 

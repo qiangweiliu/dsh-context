@@ -149,7 +149,7 @@ dsh-context 的客户端样式大量使用 DSH 主题变量与过渡变量（统
 | P0 压缩记录可解释 | 前→后、target、轮次、耗时、成功/失败筛选；`state.js` 持久化新字段 | `docs/ui/0.15-events.png` |
 | P0 逐轮趋势 | 请求 prompt/output 柱状 + 压缩标记 + 压缩耗时列表 | `docs/ui/0.15-trend.png` |
 | P0 加载/错误/空态/重试 | 各 tab 的 skeleton、错误 banner、retry；空态文案 | 截图与 static 测试 |
-| P1 宿主聚合 | `/status/analytics`、`/status/session-detail`；`sessionQuery` + `metrics.js` 纯折叠 | `test/metrics.mjs` 17/17 |
+| P1 宿主聚合 | `/status/analytics`、`/status/session-detail`；`sessionQuery` + `metrics.js` 纯折叠 | `test/metrics.mjs` 18/18 |
 | P1 KPI 带 | 会话/tokens/缓存命中/费用估算/工具调用/活跃时长/压缩次数 | `docs/ui/0.15-overview.png` |
 | P1 每日图 + 会话卡 | 7/30 天每日 tokens、活跃度热力；搜索/排序/展开/点击看趋势/打开会话 | 同上 |
 | P1 设置合并 | 控制 + 全局配置 + 工具与提示词集中到设置 tab | `docs/ui/0.15-settings.png` |

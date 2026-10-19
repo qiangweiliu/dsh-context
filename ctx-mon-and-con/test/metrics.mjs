@@ -60,6 +60,7 @@ check('会话卡片字段', summary.sessions[0].id === 'session-test' && summary
 const detail = sessionDetail(fold)
 check('会话详情：请求序列', detail.requests.length === 2 && detail.requests[0].prompt === 1000, detail.requests)
 check('会话详情：压缩标记', detail.compactions.length === 1 && detail.compactions[0].shadowedTokens === 1234, detail.compactions)
+check('会话详情：请求带上最近一次压缩', detail.requests[0].compaction === null && detail.requests[1].compaction?.shadowedTokens === 1234, detail.requests.map((request) => request.compaction))
 
 const unknown = foldSession({ id: 's2' }, [
   { type: 'assistant/message', seq: 1, time: now, data: { usage: { inputTokens: 1, outputTokens: 1, totalTokens: 2 }, message: { source: { provider: 'agnes', model: 'agnes-3.0-flash' } } } },

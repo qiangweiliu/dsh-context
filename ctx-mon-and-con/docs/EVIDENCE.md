@@ -1,6 +1,6 @@
 # 验收证据（ctx-mon-and-con）
 
-- 仓库：<https://github.com/qiangweiliu/dsh-context>（插件目录 `plugin-skeleton/`）
+- 仓库：<https://github.com/qiangweiliu/dsh-context>（插件目录 `ctx-mon-and-con/`）
 - 版本：`0.17.0`（本文件随 manifest 兼容性声明一起提交）
 - 采集日期：2026-10-18
 - 证据层级说明：`verified` = 本次固定源码上实际执行并记录结果；`partial` = 只在明确边界内验证；`unknown` = 未取得证据。**这些证据不构成独立安全审计，也不替代商城的专项审阅。**
@@ -13,6 +13,8 @@
 | B | WSL2 Ubuntu 24.04，`dsh 0.2.0-rc.2` | `v26.10.0` | `web`（一次性测试 profile） | 安装/启动/卸载/UI 自动化验证 |
 
 ## E1. 离线契约与测试（verified）
+
+> 下列数字是本文档采集日期（2026-10-18）的快照；当前源码的最新计数见 [IMPLEMENTATION.md](IMPLEMENTATION.md#9-测试)。
 
 ```text
 node test/static.mjs   → [static] 56/56 项通过
@@ -84,7 +86,7 @@ ok   - --dump-config 不再出现该行
 
 ## E5. Windows 桌面真实 profile（partial）
 
-- 安装组合已注册：`profiles/desktop/package.json` 的 `dependencies` 含 `"ctx-mon-and-con": "link:C:/Users/40410/Desktop/context/plugin-skeleton"`，`dsh.profile.bundles` 含 `ctx-mon-and-con`；已安装副本版本 `0.14.19`。
+- 安装组合已注册：`profiles/desktop/package.json` 的 `dependencies` 含 `"ctx-mon-and-con": "link:C:/Users/40410/Desktop/context/ctx-mon-and-con"`，`dsh.profile.bundles` 含 `ctx-mon-and-con`；已安装副本版本 `0.14.19`。
 - 桌面版不允许 CLI 管理该 profile（`profile "desktop" is managed exclusively by the Electron application`），由 Electron 启动时加载；历史运行实例已验证：status 路由 HTTP 200、`version` 与已安装副本一致、`control.active: true`、`presetMounted: true`，并真实执行过压缩（一次记录：before `215229` → after `80639`，`lastError: null`）。
 - **当前运行实例是旧版本（0.14.11），0.14.19 需重启桌面版后生效**；重启后应出现「上下文监控 / v0.14.19」与 `data-ctx-version` 标签。
 

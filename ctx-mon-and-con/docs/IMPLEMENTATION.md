@@ -189,21 +189,23 @@ powershell -NoProfile -ExecutionPolicy Bypass -File scripts/verify-uninstall.ps1
 ## 9. 测试
 
 ```powershell
-node test/static.mjs          # 静态：导出、Config、exports、locale、client mock
-node test/metrics.mjs         # 指标折叠
-node test/prepare-deps.mjs    # 从 app.asar 解出 cordis（首次）
-node test/smoke.mjs           # 真实 Cordis 集成
-node test/control.mjs         # 控制半侧
+npm test                      # static + metrics（不依赖 DSH 运行时）
+npm run test:integration      # prepare-deps + control + smoke + prompt-state（需要本机 app.asar）
 node --check index.js
 node --check control.js
 node --check client.js
 ```
 
+`test/prepare-deps.mjs` 默认读取本机 DSH 的 `app.asar`，可用 `DSH_ASAR` 环境变量指定其他路径。
+
 当前结果：
 
 ```text
-static 58/58
-smoke  48/48
+static       68/68
+metrics      18/18
+control      51/51
+smoke        48/48
+prompt-state  9/9
 ```
 
 UI 证据与历史版本验收见 [EVIDENCE.md](EVIDENCE.md)。

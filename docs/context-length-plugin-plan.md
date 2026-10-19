@@ -154,7 +154,7 @@ export default class MyCompaction extends BasicCompactionEngine {
 > 上面这行 `import BasicCompactionEngine from '@deepseek-ai/dsh-compaction-basic'` 只有在以下条件之一成立时才有用：
 > ① 用 esbuild/tsup 把该包**打进**你的产物（`billion-context` 就是这么做的：2.3 MB 单文件 bundle）；
 > ② 把依赖源码复制进插件目录用**相对路径**引入。
-> 纯 JS 骨架请坚持「零 import」——只用 `ctx` 上注入的服务（这也是本仓库 `plugin-skeleton/index.js` 的做法）。
+> 纯 JS 骨架请坚持「零 import」——只用 `ctx` 上注入的服务（这也是本仓库 `ctx-mon-and-con/index.js` 的做法）。
 
 **L3-b：完全自研后端**（继承 `CompactionEngine`，自己实现 `compactIfNeeded` / `compactNow` / `compactRegion`）。
 需要正确实现：`compaction/*` 事件、surface replace、影子价（heuristic 与路由价两种口径）、`replaceGeneration` 前进、
@@ -344,7 +344,7 @@ window.__ModuleLoader__.load({
 
 ## 7. 已交付的骨架与验证证据
 
-[`plugin-skeleton/`](../plugin-skeleton) 是一个**可直接安装运行**的最小骨架（L1 路线）：
+[`ctx-mon-and-con/`](../ctx-mon-and-con) 是一个**可直接安装运行**的最小骨架（L1 路线）：
 
 | 文件 | 作用 |
 |---|---|
@@ -371,7 +371,7 @@ window.__ModuleLoader__.load({
 
 | # | 内容 | 路径 |
 |---|---|---|
-| 1 | 可安装的最小骨架（L1） | [`plugin-skeleton/`](../plugin-skeleton)（含 README 的装法/验证/限制） |
+| 1 | 可安装的最小骨架（L1） | [`ctx-mon-and-con/`](../ctx-mon-and-con)（含 README 的装法/验证/限制） |
 
 | 内容 | 路径 |
 |---|---|

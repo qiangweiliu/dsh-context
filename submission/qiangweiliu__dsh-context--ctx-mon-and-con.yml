@@ -1,8 +1,8 @@
 # 收录申请文件（PR 用）
 # 目标仓库：https://github.com/awesome-dsh-plugin/awesome-dsh-plugin
-# 放置路径：data/plugins/qiangweiliu__dsh-context--plugin-skeleton.yml
+# 放置路径：data/plugins/qiangweiliu__dsh-context--ctx-mon-and-con.yml
 # 文件名规则：<owner>__<repo>--<子目录路径，斜杠换成连字符>.yml
-url: https://github.com/qiangweiliu/dsh-context/tree/main/plugin-skeleton
+url: https://github.com/qiangweiliu/dsh-context/tree/main/ctx-mon-and-con
 name: qiangweiliu/dsh-context#ctx-mon-and-con
 category: session
 description:

@@ -98,6 +98,8 @@ window.__ModuleLoader__.load({
       balanceBonus: 'Granted',
       balanceSignedOut: 'Sign in to view the balance',
       balanceUnavailable: 'Balance unavailable',
+      balanceCheckPlatform: 'View on the platform',
+      balanceTopUp: 'Top up',
       balanceRefresh: 'DSH account balance; click to refresh',
       balanceLoading: 'Loading balance…',
       balanceToggleTitle: 'Balance capsule',
@@ -283,6 +285,8 @@ window.__ModuleLoader__.load({
       balanceBonus: '赠金',
       balanceSignedOut: '登录后查看余额',
       balanceUnavailable: '余额不可用',
+      balanceCheckPlatform: '前往开放平台查看',
+      balanceTopUp: '充值',
       balanceRefresh: 'DSH 账户余额，点击刷新',
       balanceLoading: '正在读取余额…',
       balanceToggleTitle: '余额胶囊',
@@ -986,9 +990,10 @@ window.__ModuleLoader__.load({
       return tick
     }
 
-    /** Dock 浮层的共用开关：点外面或 Esc 收起。 */
-    function useDockPopover() {
+    /** Dock 浮层共用状态：开关、点外面/Esc 收起、触发按钮的 hover/展开样式。 */
+    function useDock() {
       const [open, setOpen] = react.useState(false)
+      const [hovered, setHovered] = react.useState(false)
       const rootRef = react.useRef(null)
       react.useEffect(() => {
         if (!open) return undefined
@@ -1005,7 +1010,49 @@ window.__ModuleLoader__.load({
           document.removeEventListener('keydown', onKeyDown)
         }
       }, [open])
-      return { open, setOpen, rootRef }
+      const triggerProps = {
+        type: 'button',
+        style: { ...meter.trigger, ...(hovered || open ? meter.triggerHover : null) },
+        'aria-haspopup': 'dialog',
+        'aria-expanded': open,
+        onClick: () => setOpen(!open),
+        onMouseEnter: () => setHovered(true),
+        onMouseLeave: () => setHovered(false),
+      }
+      return { open, setOpen, rootRef, triggerProps }
+    }
+
+    /** Dock 弹层骨架：标题/百分比/总量 + 内容 + 右下角动作。 */
+    function DockPanel(props) {
+      return h(
+        'div',
+        { style: meter.panel, role: 'dialog', 'aria-label': props.label, ...props.attrs },
+        h(
+          'div',
+          { style: meter.header },
+          h('span', { style: meter.headline }, props.title),
+          props.percent === undefined ? null : h('span', { style: meter.percent }, props.percent),
+          props.figures === undefined ? null : h('span', { style: meter.figures }, props.figures),
+        ),
+        props.children,
+        props.action
+          ? h(
+              'div',
+              { style: { marginTop: '8px', paddingTop: '8px', borderTop: '0.5px solid var(--dsw-alias-border-l1)', display: 'flex', justifyContent: 'flex-end' } },
+              props.action,
+            )
+          : null,
+      )
+    }
+
+    /** Dock 弹层明细行：色块 + 名称 + 数值。 */
+    function DockRow(props) {
+      return h(
+        'div',
+        { style: meter.row },
+        h('dt', null, props.color ? h('span', { style: { ...meter.swatch, background: props.color } }, null) : null, props.label),
+        h('dd', { style: meter.figures, title: props.title }, props.value),
+      )
     }
 
     // ── DSH 账号余额：remote.account 是可选服务，注入完成后再显示胶囊 ───────
@@ -1029,6 +1076,8 @@ window.__ModuleLoader__.load({
 
     // ── 余额胶囊显示偏好：默认关闭，本机持久化 ───────────────────────────
     const BALANCE_ENABLED_KEY = 'ctx-mon-and-con:balance-enabled:v1'
+    /** 常驻 dock 的最小重读间隔：官方无轮询，这里也只在触发点后跳过过密的读。 */
+    const BALANCE_READ_MIN_MS = 30000
     const balanceEnabledSubscribers = new Set()
     function readBalanceEnabled() {
       try {
@@ -1064,10 +1113,11 @@ window.__ModuleLoader__.load({
       return enabled
     }
 
-    /** 余额弹层：充值/赠金分项 + 构成条，布局对齐内置 ContextMeter 面板。 */
+    /** 余额弹层：充值/赠金分项 + 构成条 + 充值入口，布局对齐内置 ContextMeter 面板。 */
     function BalancePanel(props) {
       const t = props.t
       const snapshot = props.snapshot
+      const links = props.links || {}
       const ready = Boolean(snapshot && snapshot.status === 'ready')
       const toppedWallets = ready ? snapshot.value || [] : []
       const bonusWallets = ready ? snapshot.bonusWallets || [] : []
@@ -1077,16 +1127,28 @@ window.__ModuleLoader__.load({
       const toppedAmount = sum(toppedWallets)
       const bonusAmount = sum(bonusWallets)
       const totalAmount = toppedAmount + bonusAmount
-      const detail = ready ? '' : props.failed ? t('balanceUnavailable') : snapshot === null ? t('balanceSignedOut') : t('balanceLoading')
+      // 账号接口失败时官方给的是"前往开放平台查看"链接，而不是一句死文案。
+      const failure = props.failed
+        ? links.usageUrl
+          ? h('a', { href: links.usageUrl, target: '_blank', rel: 'noreferrer', style: { color: 'inherit' } }, t('balanceCheckPlatform'))
+          : t('balanceUnavailable')
+        : snapshot === null ? t('balanceSignedOut') : t('balanceLoading')
       return h(
-        'div',
-        { style: meter.panel, role: 'dialog', 'aria-label': t('balance'), 'data-ctx-balance-panel': '1' },
-        h(
-          'div',
-          { style: meter.header },
-          h('span', { style: meter.headline }, t('balance')),
-          h('span', { style: meter.percent }, ready ? walletSummary(snapshot) || '—' : '—'),
-        ),
+        DockPanel,
+        {
+          label: t('balance'),
+          title: t('balance'),
+          percent: ready ? walletSummary(snapshot) || '—' : '—',
+          attrs: { 'data-ctx-balance-panel': '1' },
+          action: h(
+            'div',
+            { style: { display: 'flex', gap: '8px', alignItems: 'center' } },
+            links.topUpUrl
+              ? h('a', { href: links.topUpUrl, target: '_blank', rel: 'noreferrer', style: { ...styles.copyBtn, display: 'inline-flex', alignItems: 'center', textDecoration: 'none' } }, t('balanceTopUp'))
+              : null,
+            h('button', { type: 'button', style: styles.copyBtn, title: t('balanceRefresh'), onClick: () => props.read(true) }, t('refresh')),
+          ),
+        },
         ready && currencies.size <= 1 && totalAmount > 0
           ? h(
               'div',
@@ -1099,25 +1161,10 @@ window.__ModuleLoader__.load({
           ? h(
               'dl',
               { style: meter.rows },
-              h(
-                'div',
-                { style: meter.row },
-                h('dt', null, h('span', { style: { ...meter.swatch, background: 'var(--dsw-static-blue-450)' } }), t('balanceTopped')),
-                h('dd', { style: meter.figures }, text(toppedWallets)),
-              ),
-              h(
-                'div',
-                { style: meter.row },
-                h('dt', null, h('span', { style: { ...meter.swatch, background: '#a78bfa' } }), t('balanceBonus')),
-                h('dd', { style: meter.figures }, text(bonusWallets)),
-              ),
+              h(DockRow, { color: 'var(--dsw-static-blue-450)', label: t('balanceTopped'), value: text(toppedWallets) }),
+              h(DockRow, { color: '#a78bfa', label: t('balanceBonus'), value: text(bonusWallets) }),
             )
-          : h('p', { style: { margin: '6px 0 0', fontSize: '11px', opacity: 0.7 } }, detail),
-        h(
-          'div',
-          { style: { marginTop: '8px', paddingTop: '8px', borderTop: '0.5px solid var(--dsw-alias-border-l1)', display: 'flex', justifyContent: 'flex-end' } },
-          h('button', { type: 'button', style: styles.copyBtn, title: t('balanceRefresh'), onClick: props.read }, t('refresh')),
-        ),
+          : h('p', { style: { margin: '6px 0 0', fontSize: '11px', opacity: 0.7 } }, failure),
       )
     }
 
@@ -1127,23 +1174,42 @@ window.__ModuleLoader__.load({
       const remote = useAccountRemote()
       const balanceEnabled = useBalanceEnabled()
       const [snapshot, setSnapshot] = react.useState(undefined)
+      const [account, setAccount] = react.useState(null)
       const [failed, setFailed] = react.useState(false)
-      const { open, setOpen, rootRef } = useDockPopover()
-      const [hovered, setHovered] = react.useState(false)
+      const { open, setOpen, rootRef, triggerProps } = useDock()
       const usageTick = useUsageActivity()
+      const lastReadRef = react.useRef(0)
 
-      const read = react.useCallback(() => {
+      // 登录态与充值/用量链接：与余额分开取，未登录也能拿到链接。
+      const readAccount = react.useCallback(() => {
+        if (!remote) return undefined
+        let cancelled = false
+        remote.getState().then((result) => {
+          if (!cancelled && result && result.ok) setAccount(result.value ?? null)
+        }).catch(() => {})
+        return () => {
+          cancelled = true
+        }
+      }, [remote])
+
+      // 常驻 dock 不做轮询：可见性/流式结束只触发，30s 内直接跳过；展开弹层和点刷新强制读。
+      const read = react.useCallback((force) => {
         if (!remote || !balanceEnabled) return undefined
+        const now = Date.now()
+        if (!force && now - lastReadRef.current < BALANCE_READ_MIN_MS) return undefined
+        lastReadRef.current = now
         let cancelled = false
         remote.getBalance(props.meta()).then((result) => {
           if (cancelled) return
-          if (!result || !result.ok) {
+          const value = result && result.ok ? result.value ?? null : undefined
+          if (value === undefined || value.status === 'failed') {
             setFailed(true)
             setSnapshot(undefined)
             return
           }
           setFailed(false)
-          setSnapshot(result.value ?? null)
+          setSnapshot(value)
+          if (value === null) readAccount()
         }).catch(() => {
           if (cancelled) return
           setFailed(true)
@@ -1152,9 +1218,10 @@ window.__ModuleLoader__.load({
         return () => {
           cancelled = true
         }
-      }, [remote, props.meta, balanceEnabled])
+      }, [remote, props.meta, balanceEnabled, readAccount])
 
-      react.useEffect(() => read(), [read])
+      react.useEffect(() => readAccount(), [readAccount])
+      react.useEffect(() => read(true), [read])
       react.useEffect(() => {
         const onVisible = () => {
           if (document.visibilityState === 'visible') read()
@@ -1174,7 +1241,7 @@ window.__ModuleLoader__.load({
       }, [usageTick, read])
       // 展开弹层时拉一次最新余额；点外面或按 Esc 收起。
       react.useEffect(() => {
-        if (open) read()
+        if (open) read(true)
       }, [open, read])
 
       if (!remote || !balanceEnabled) return null
@@ -1191,26 +1258,20 @@ window.__ModuleLoader__.load({
         h(
           'button',
           {
-            type: 'button',
-            style: { ...meter.trigger, ...(hovered || open ? meter.triggerHover : null) },
+            ...triggerProps,
             title: detail,
             'aria-label': `${t('balance')} ${total}`,
-            'aria-haspopup': 'dialog',
-            'aria-expanded': open,
             'data-ctx-balance': '1',
-            onClick: () => setOpen(!open),
-            onMouseEnter: () => setHovered(true),
-            onMouseLeave: () => setHovered(false),
           },
           h('span', null, t('balance')),
           h('span', { style: { color: 'var(--dsw-alias-label-primary)', fontVariantNumeric: 'tabular-nums' } }, total),
         ),
-        open ? h(BalancePanel, { t, snapshot, failed, read }) : null,
+        open ? h(BalancePanel, { t, snapshot, failed, links: account && account.links, read }) : null,
       )
     }
 
     /** 打开页面时同步一次 /live；重新可见/窗口聚焦或点刷新时再同步，不做定时轮询。 */
-    function useLive(path, refreshKey) {
+    function useLive(path, refreshKey, enabled = true) {
       const [state, setState] = react.useState({ data: null, at: null, error: null })
       const reload = react.useCallback(() => {
         fetch(path, { headers: { accept: 'application/json' } })
@@ -1225,6 +1286,7 @@ window.__ModuleLoader__.load({
           .catch((error) => setState((previous) => ({ ...previous, error: String((error && error.message) || error) })))
       }, [path])
       react.useEffect(() => {
+        if (!enabled) return undefined
         reload()
         const onVisible = () => {
           if (document.visibilityState === 'visible') reload()
@@ -1235,7 +1297,7 @@ window.__ModuleLoader__.load({
           document.removeEventListener('visibilitychange', onVisible)
           window.removeEventListener('focus', onVisible)
         }
-      }, [reload, refreshKey])
+      }, [reload, refreshKey, enabled])
       return [state, reload]
     }
 
@@ -1262,8 +1324,7 @@ window.__ModuleLoader__.load({
       const selectedSession = useCurrentSession()
       const sessionId = props.sessionId || (props.runtime && props.runtime.sessionId) || selectedSession || undefined
       const [data, setData] = react.useState(null)
-      const { open, setOpen, rootRef } = useDockPopover()
-      const [hovered, setHovered] = react.useState(false)
+      const { open, setOpen, rootRef, triggerProps } = useDock()
       const usageTick = useUsageActivity()
 
       const fetchLive = react.useCallback(() => {
@@ -1321,54 +1382,35 @@ window.__ModuleLoader__.load({
         h(
           'button',
           {
-            type: 'button',
-            style: { ...meter.trigger, ...(hovered || open ? meter.triggerHover : null) },
-            'aria-haspopup': 'dialog',
-            'aria-expanded': open,
+            ...triggerProps,
             'aria-label': `${t('meterAria')}${percent === null ? '' : ` ${percent}%`}`,
             title: used !== null && budget !== null ? `${formatTokens(used)} / ${formatTokens(budget)} ${t('tokens')}${state === 'error' ? ` · ${t('statusError')}` : state === 'warn' ? ` · ${t('statusWarn')}` : ''}` : t('meterAria'),
             'data-ctx-dock': '1',
-            onClick: () => setOpen(!open),
-            onMouseEnter: () => setHovered(true),
-            onMouseLeave: () => setHovered(false),
           },
           h(Ring, { percent: percent ?? 0, color }),
           h('span', { style: { color } }, label),
         ),
         open
           ? h(
-              'div',
-              { style: meter.panel, role: 'dialog', 'aria-label': t('meterAria') },
-              h(
-                'div',
-                { style: meter.header },
-                h('span', { style: meter.headline }, t('budget')),
-                h('span', { style: meter.percent }, percent === null ? '—' : `${percent}%`),
-                h('span', { style: meter.figures }, `~${compactTokens(used)} / ${compactTokens(budget)}`),
-              ),
+              DockPanel,
+              {
+                label: t('meterAria'),
+                title: t('budget'),
+                percent: percent === null ? '—' : `${percent}%`,
+                figures: `~${compactTokens(used)} / ${compactTokens(budget)}`,
+                action: h(
+                  'button',
+                  { type: 'button', style: styles.copyBtn, 'data-ctx-open-panel': '1', onClick: () => { setOpen(false); openCtxPanelPage() } },
+                  t('openPanel'),
+                ),
+              },
               h(SegmentedBar, { usedRatio: ratio ?? 0, categories, warnAt, errorAt }),
               h(
                 'dl',
                 { style: meter.rows },
-                categories.map((row) =>
-                  h(
-                    'div',
-                    { key: row.key, style: meter.row },
-                    h('dt', null, h('span', { style: { ...meter.swatch, background: row.color } }), row.label),
-                    h('dd', { style: meter.figures }, `${compactTokens(row.tokens)} · ${formatPercent(row.share)}`),
-                  ),
-                ),
-                h('div', { style: meter.row }, h('dt', null, t('control')), h('dd', { style: meter.figures }, props.controlActive ? t('controlOn') : t('controlOff'))),
+                categories.map((row) => h(DockRow, { key: row.key, color: row.color, label: row.label, value: `${compactTokens(row.tokens)} · ${formatPercent(row.share)}` })),
+                h(DockRow, { label: t('control'), value: props.controlActive ? t('controlOn') : t('controlOff') }),
                 h('p', { style: { margin: '6px 0 0', fontSize: '11px', opacity: 0.7 } }, t('compositionHint')),
-                h(
-                  'div',
-                  { style: { marginTop: '8px', paddingTop: '8px', borderTop: '0.5px solid var(--dsw-alias-border-l1)', display: 'flex', justifyContent: 'flex-end' } },
-                  h(
-                    'button',
-                    { type: 'button', style: styles.copyBtn, 'data-ctx-open-panel': '1', onClick: () => { setOpen(false); openCtxPanelPage() } },
-                    t('openPanel'),
-                  ),
-                ),
               ),
             )
           : null,
@@ -1454,7 +1496,7 @@ window.__ModuleLoader__.load({
     function InventoryCard(props) {
       const t = props.t
       const data = props.data || {}
-      const sources = data.sources || {}
+      const sources = (data.inventory && data.inventory.sources) || {}
       const sourceOf = (name) => (sources.sections && sources.sections[name]) || null
       const inventory = data.inventory
       const disabledSessionTools = Array.isArray(data.disabledSessionTools) ? data.disabledSessionTools : []
@@ -1488,14 +1530,16 @@ window.__ModuleLoader__.load({
             return payload || {}
           })
       const promptFailure = (failure) => setNotice(`${t('saveFailed')}: ${String((failure && failure.message) || failure)}`)
-
-      const post = (body) => {
-        setBusy(body)
-        fetch(`${STATUS_PATH}/inventory/toggle`, {
+      const postJson = (path, body) =>
+        fetch(`${STATUS_PATH}${path}`, {
           method: 'POST',
           headers: { 'content-type': 'application/json' },
           body: JSON.stringify(body),
         })
+
+      const post = (body) => {
+        setBusy(body)
+        postJson('/inventory/toggle', body)
           .then((response) => response.json().catch(() => ({})))
           .then(() => {
             setBusy(null)
@@ -1521,11 +1565,7 @@ window.__ModuleLoader__.load({
       }
 
       const restore = () => {
-        fetch(`${STATUS_PATH}/inventory/reset`, {
-          method: 'POST',
-          headers: { 'content-type': 'application/json' },
-          body: JSON.stringify({ layer: 'all' }),
-        })
+        postJson('/inventory/reset', { layer: 'all' })
           .then(readPromptResult)
           .then(() => {
             setRestorePending(false)
@@ -1550,11 +1590,7 @@ window.__ModuleLoader__.load({
 
       const postPrompt = (suffix, body) => {
         setPromptBusy(true)
-        fetch(`${STATUS_PATH}/inventory/prompt${suffix}`, {
-          method: 'POST',
-          headers: { 'content-type': 'application/json' },
-          body: JSON.stringify(body),
-        })
+        postJson(`/inventory/prompt${suffix}`, body)
           .then(readPromptResult)
           .then(() => {
             setPromptBusy(false)
@@ -1573,11 +1609,7 @@ window.__ModuleLoader__.load({
 
       const postSessionPrompt = (name, text) => {
         setPromptBusy(true)
-        fetch(`${STATUS_PATH}/inventory/prompt/session`, {
-          method: 'POST',
-          headers: { 'content-type': 'application/json' },
-          body: JSON.stringify({ name, text, ...(props.sessionId ? { sessionId: props.sessionId } : {}) }),
-        })
+        postJson('/inventory/prompt/session', { name, text, ...(props.sessionId ? { sessionId: props.sessionId } : {}) })
           .then(readPromptResult)
           .then(() => {
             setPromptBusy(false)
@@ -1595,11 +1627,7 @@ window.__ModuleLoader__.load({
 
       const postSessionPromptReset = (name) => {
         setPromptBusy(true)
-        fetch(`${STATUS_PATH}/inventory/prompt/session/reset`, {
-          method: 'POST',
-          headers: { 'content-type': 'application/json' },
-          body: JSON.stringify({ name, ...(props.sessionId ? { sessionId: props.sessionId } : {}) }),
-        })
+        postJson('/inventory/prompt/session/reset', { name, ...(props.sessionId ? { sessionId: props.sessionId } : {}) })
           .then(readPromptResult)
           .then(() => {
             setPromptBusy(false)
@@ -1619,11 +1647,7 @@ window.__ModuleLoader__.load({
 
       const postExtraPrompt = (name, text, placement = 'system') => {
         setExtraBusy(true)
-        fetch(`${STATUS_PATH}/inventory/extra-prompt`, {
-          method: 'POST',
-          headers: { 'content-type': 'application/json' },
-          body: JSON.stringify({ name, text, placement }),
-        })
+        postJson('/inventory/extra-prompt', { name, text, placement })
           .then(readPromptResult)
           .then((payload) => {
             setExtraBusy(false)
@@ -1645,11 +1669,7 @@ window.__ModuleLoader__.load({
 
       const postExtraPromptReset = (name) => {
         setExtraBusy(true)
-        fetch(`${STATUS_PATH}/inventory/extra-prompt/reset`, {
-          method: 'POST',
-          headers: { 'content-type': 'application/json' },
-          body: JSON.stringify({ name }),
-        })
+        postJson('/inventory/extra-prompt/reset', { name })
           .then(readPromptResult)
           .then(() => {
             setExtraBusy(false)
@@ -2580,9 +2600,9 @@ window.__ModuleLoader__.load({
       const detailSession = selected || activeSession
       const detailPath = detailSession ? `${STATUS_PATH}/session-detail?sessionId=${encodeURIComponent(detailSession)}` : `${STATUS_PATH}/session-detail`
       const [liveState, reloadLive] = useLive(livePath, usageTick)
-      const [invState, reloadInv] = useLive(inventoryPath, usageTick)
-      const [analyticsState, reloadAnalytics] = useLive(analyticsPath)
-      const [detailState, reloadDetail] = useLive(detailPath)
+      const [invState, reloadInv] = useLive(inventoryPath, usageTick, tab === 'settings')
+      const [analyticsState, reloadAnalytics] = useLive(analyticsPath, undefined, tab === 'overview')
+      const [detailState, reloadDetail] = useLive(detailPath, undefined, tab === 'trend' || tab === 'events')
       const live = liveState.data
       const data = state.phase === 'ready' ? state.data || {} : null
       const budget = data ? data.budget || {} : {}
@@ -2591,7 +2611,13 @@ window.__ModuleLoader__.load({
       const latest = measurements.length > 0 ? measurements[0] : null
       const analytics = analyticsState.data || null
       const detail = detailState.data || null
-      const reloadAll = () => { load(); reloadLive(); reloadInv(); reloadAnalytics(); reloadDetail() }
+      const reloadAll = () => {
+        load()
+        reloadLive()
+        if (tab === 'settings') reloadInv()
+        if (tab === 'overview') reloadAnalytics()
+        if (tab === 'trend' || tab === 'events') reloadDetail()
+      }
 
       const tabs = [
         ['overview', t('tabsOverview')],
@@ -2800,8 +2826,6 @@ window.__ModuleLoader__.load({
       )
     }
 
-    exports.NS = NS
-    exports.PANEL_ID = PANEL_ID
     exports.apply = apply
     exports.inject = inject
     return module.exports

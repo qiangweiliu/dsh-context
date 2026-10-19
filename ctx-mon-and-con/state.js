@@ -155,25 +155,28 @@ const compactionLogListeners = new Set()
 
 const numberOrNull = (value) => (typeof value === 'number' && Number.isFinite(value) ? value : null)
 const integerOrNull = (value) => (Number.isInteger(value) && value >= 0 ? value : null)
+const freshLogId = () => `${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 8)}`
+
+/** 把一条压缩结果/磁盘记录归一化为内存条目。 */
+const normalizeCompactionEntry = (source, id, at) => ({
+  id: typeof id === 'string' ? id : freshLogId(),
+  at: typeof at === 'string' ? at : new Date().toISOString(),
+  outcome: source.outcome === 'failure' ? 'failure' : 'success',
+  trigger: typeof source.trigger === 'string' && source.trigger.length > 0 ? source.trigger : null,
+  sessionId: typeof source.sessionId === 'string' && source.sessionId.length > 0 ? source.sessionId : null,
+  before: numberOrNull(source.before),
+  after: numberOrNull(source.after),
+  budget: numberOrNull(source.budget),
+  target: numberOrNull(source.target),
+  durationMs: numberOrNull(source.durationMs),
+  rounds: integerOrNull(source.rounds),
+  shadowed: numberOrNull(source.shadowed),
+  message: typeof source.message === 'string' && source.message.length > 0 ? source.message : null,
+})
 
 /** 记录一条压缩结果（成功或失败），返回写入的条目。 */
 export function recordCompactionEvent(event) {
-  const source = event && typeof event === 'object' ? event : {}
-  const entry = {
-    id: `${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 8)}`,
-    at: new Date().toISOString(),
-    outcome: source.outcome === 'failure' ? 'failure' : 'success',
-    trigger: typeof source.trigger === 'string' && source.trigger.length > 0 ? source.trigger : null,
-    sessionId: typeof source.sessionId === 'string' && source.sessionId.length > 0 ? source.sessionId : null,
-    before: numberOrNull(source.before),
-    after: numberOrNull(source.after),
-    budget: numberOrNull(source.budget),
-    target: numberOrNull(source.target),
-    durationMs: numberOrNull(source.durationMs),
-    rounds: integerOrNull(source.rounds),
-    shadowed: numberOrNull(source.shadowed),
-    message: typeof source.message === 'string' && source.message.length > 0 ? source.message : null,
-  }
+  const entry = normalizeCompactionEntry(event && typeof event === 'object' ? event : {})
   compactionLog.push(entry)
   while (compactionLog.length > COMPACTION_LOG_MAX) compactionLog.shift()
   for (const listener of compactionLogListeners) {
@@ -195,21 +198,7 @@ export function hydrateCompactionLog(entries) {
   if (!Array.isArray(entries)) return
   for (const entry of entries.slice(-COMPACTION_LOG_MAX)) {
     if (!entry || typeof entry !== 'object') continue
-    compactionLog.push({
-      id: typeof entry.id === 'string' ? entry.id : `${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 8)}`,
-      at: typeof entry.at === 'string' ? entry.at : new Date().toISOString(),
-      outcome: entry.outcome === 'failure' ? 'failure' : 'success',
-      trigger: typeof entry.trigger === 'string' && entry.trigger.length > 0 ? entry.trigger : null,
-      sessionId: typeof entry.sessionId === 'string' && entry.sessionId.length > 0 ? entry.sessionId : null,
-      before: numberOrNull(entry.before),
-      after: numberOrNull(entry.after),
-      budget: numberOrNull(entry.budget),
-      target: numberOrNull(entry.target),
-      durationMs: numberOrNull(entry.durationMs),
-      rounds: integerOrNull(entry.rounds),
-      shadowed: numberOrNull(entry.shadowed),
-      message: typeof entry.message === 'string' && entry.message.length > 0 ? entry.message : null,
-    })
+    compactionLog.push(normalizeCompactionEntry(entry, entry.id, entry.at))
   }
 }
 
@@ -237,6 +226,15 @@ const sessionPrompts = new Map()
 const inventories = new Map()
 /** sessionId -> 最近一次实际应用的工具黑名单 */
 const applied = new Map()
+
+/** 只保留最近 N 个会话的派生缓存，避免长进程无限增长。 */
+const MAX_INVENTORIES = 20
+const MAX_APPLIED = 50
+const remember = (map, key, value, max) => {
+  map.delete(key)
+  map.set(key, value)
+  while (map.size > max) map.delete(map.keys().next().value)
+}
 
 function toggleSet(map, sessionId, name, enabled) {
   let set = map.get(sessionId)
@@ -271,7 +269,7 @@ export function clearSessionToggles(sessionId) {
 }
 
 export function recordInventory(sessionId, inventory) {
-  inventories.set(sessionId, { at: new Date().toISOString(), ...inventory })
+  remember(inventories, sessionId, { at: new Date().toISOString(), ...inventory }, MAX_INVENTORIES)
 }
 
 export function getInventory(sessionId) {
@@ -279,7 +277,7 @@ export function getInventory(sessionId) {
 }
 
 export function recordAppliedTools(sessionId, deny) {
-  applied.set(sessionId, { at: new Date().toISOString(), deny: [...deny] })
+  remember(applied, sessionId, { at: new Date().toISOString(), deny: [...deny] }, MAX_APPLIED)
 }
 
 export function getAppliedTools(sessionId) {

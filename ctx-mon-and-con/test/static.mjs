@@ -184,6 +184,10 @@ check('client 注册 DSH 余额 dock 胶囊', balanceEntry.name === 'conversatio
 check('余额胶囊使用 data-ctx-balance 标记', clientSource.includes("'data-ctx-balance': '1'"))
 check('余额弹层使用 data-ctx-balance-panel 标记', clientSource.includes("'data-ctx-balance-panel': '1'"))
 check('余额胶囊默认关闭、开关可持久化', clientSource.includes("ctx-mon-and-con:balance-enabled:v1") && clientSource.includes("'data-ctx-balance-toggle': '1'"))
+check('余额视图区分 status:failed（不再一直显示加载中）', clientSource.includes("value.status === 'failed'"))
+check('余额视图带充值入口与平台链接', clientSource.includes('links.topUpUrl') && clientSource.includes('links.usageUrl'))
+check('余额重读有最小间隔', clientSource.includes('BALANCE_READ_MIN_MS = 30000'))
+check('提示词来源从 inventory.sources 读（曾错读顶层 sources 而恒显示未识别）', clientSource.includes('data.inventory && data.inventory.sources'))
 check('sidebar.panellist 图标组件是函数', typeof bySlot('sidebar.panellist').component === 'function', typeof bySlot('sidebar.panellist').component)
 
 const stateModule = await import(new URL('../state.js', import.meta.url).href)

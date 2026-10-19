@@ -128,6 +128,7 @@ state.setSessionPromptText('prompt-test', 'harness:identity', 'SESSION-TEXT')
 const inventory = await call('/api/ctx-mon-and-con/status/inventory?sessionId=prompt-test', 'GET')
 const section = inventory.payload?.inventory?.sections?.[0]
 check('inventory 叠上会话覆盖', section?.sessionOverridden === true && section?.text === 'SESSION-TEXT', JSON.stringify(section))
+check('inventory 来源是稳定包名', inventory.payload?.inventory?.sources?.sections?.['harness:identity'] === '@deepseek-ai/dsh-system-prompt', JSON.stringify(inventory.payload?.inventory?.sources))
 
 const sessionReset = await call('/api/ctx-mon-and-con/status/inventory/prompt/session/reset', 'POST', { name: 'harness:identity', sessionId: 'prompt-test' })
 const afterSessionReset = await call('/api/ctx-mon-and-con/status/inventory?sessionId=prompt-test', 'GET')

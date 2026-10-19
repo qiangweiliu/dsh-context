@@ -16,7 +16,7 @@
 export const name = 'ctx-mon-and-con'
 
 /** 与 control.js 共享的进程内状态（同一包内相对 import，不涉及 npm 依赖）。 */
-import { appendFileSync, copyFileSync, existsSync, mkdirSync, readFileSync, readdirSync, realpathSync, statSync, unlinkSync, writeFileSync } from 'node:fs'
+import { appendFileSync, copyFileSync, existsSync, mkdirSync, readFileSync, readdirSync, statSync, unlinkSync, writeFileSync } from 'node:fs'
 import { homedir } from 'node:os'
 import { dirname, join } from 'node:path'
 
@@ -60,7 +60,7 @@ import { foldSession, sessionDetail, summarizeFolds } from './metrics.js'
 export const inject = ['commands', 'tokenMeter']
 
 /** 与 package.json 的 version 保持一致（只用于状态接口的自述）。 */
-const PLUGIN_VERSION = '0.17.0'
+const PLUGIN_VERSION = JSON.parse(readFileSync(new URL('./package.json', import.meta.url), 'utf8')).version
 
 /** 浏览器半侧 client.js 拉的只读状态接口；两处路径必须一致。 */
 const sendJson = (response, code, payload) => {
@@ -259,48 +259,16 @@ const SOURCE_HINTS = {
   },
 }
 
-let packagesRootCache
-const packagesRoot = () => {
-  if (packagesRootCache !== undefined) return packagesRootCache
-  packagesRootCache = null
-  const consider = (scopeDirectory) => {
-    for (const marker of ['dsh-system-prompt', 'dsh-tools', 'dsh']) {
-      if (existsSync(join(scopeDirectory, marker, 'package.json'))) {
-        packagesRootCache = scopeDirectory
-        return true
-      }
-    }
-    return false
-  }
-  try {
-    let dir = realpathSync(process.argv[1] ? process.argv[1] : process.cwd())
-    if (existsSync(dir) && !statSync(dir).isDirectory()) dir = dirname(dir)
-    for (let index = 0; index < 20; index += 1) {
-      if (consider(join(dir, '@deepseek-ai'))) break
-      if (consider(join(dir, 'node_modules', '@deepseek-ai'))) break
-      if (consider(dir)) break
-      const parent = dirname(dir)
-      if (parent === dir) break
-      dir = parent
-    }
-  } catch {}
-  return packagesRootCache
-}
-
-const sourceFileFor = (packageName) => {
-  if (typeof packageName !== 'string' || packageName.length === 0) return null
-  const root = packagesRoot()
-  if (!root) return null
-  const file = join(root, packageName, 'lib', 'index.js')
-  return existsSync(file) ? file : null
-}
-
+/** 每个提示词 section 的来源标签：稳定的包名/固定串，不做宿主路径猜测。 */
 const sourcesFor = (inventory) => {
   const sections = {}
   for (const section of inventory && Array.isArray(inventory.sections) ? inventory.sections : []) {
-    sections[section.name] = section.name.startsWith('ctx-mon-and-con:extra:')
-      ? 'ctx-mon-and-con/control.js'
-      : sourceFileFor(SOURCE_HINTS.section(section.name))
+    if (section.name.startsWith('ctx-mon-and-con:extra:')) {
+      sections[section.name] = 'ctx-mon-and-con/control.js'
+      continue
+    }
+    const hint = SOURCE_HINTS.section(section.name)
+    sections[section.name] = hint ? `@deepseek-ai/${hint}` : null
   }
   return { sections }
 }
@@ -407,7 +375,6 @@ export function apply(ctx, config) {
     })
     return () => unsubscribe()
   }, 'ctx-mon-and-con: compaction log persistence')
-  const inFlight = new Set()
   // 浏览器状态接口的数据源：按 session id 保留最近 MAX_MEASUREMENTS 条。
   const measurements = new Map()
 
@@ -481,26 +448,13 @@ export function apply(ctx, config) {
     return { kind: 'success', text: prefix + renderUsage(measurement, budget, config) }
   }
 
-  // 用 effect 注册：卸载插件时 Cordis 会逆序执行 disposer，先等 handler 收尾再注销命令。
-  ctx.effect(function* () {
-    yield async () => {
-      await Promise.allSettled(inFlight)
-    }
-    yield ctx.commands.register({
-      name: 'ctx',
-      description: 'Show this session context token usage',
-      input: { hint: '[tokens|reset]' },
-      handler: (invocation) => {
-        const result = handler(invocation)
-        if (result instanceof Promise) {
-          inFlight.add(result)
-          const retire = () => inFlight.delete(result)
-          result.then(retire, retire)
-        }
-        return result
-      },
-    })
-  }, 'ctx-mon-and-con: /ctx command')
+  // 用 effect 注册：卸载插件时 Cordis 执行返回的 disposer 注销命令。handler 是同步的。
+  ctx.effect(() => ctx.commands.register({
+    name: 'ctx',
+    description: 'Show this session context token usage',
+    input: { hint: '[tokens|reset]' },
+    handler,
+  }), 'ctx-mon-and-con: /ctx command')
 
   // 控制半侧（control.js）挂在 agent preset 的 compaction 组里。它是否已生效不靠
   // 猜：control.js 激活时把状态写进 ./state.js，这里直接读；再顺带探测本 realm
@@ -606,6 +560,36 @@ export function apply(ctx, config) {
   })
 
   const requestUrl = (request) => new URL(request.url ?? '/', 'http://localhost')
+
+  /**
+   * 读取 JSON 请求体并交给 handle。非法 JSON 回 400；
+   * 传 limitBytes 时超限回 413 并断开连接。
+   */
+  const readJson = (request, response, handle, limitBytes = Infinity, invalidError = 'invalid body') => {
+    const send = jsonSender(response)
+    const chunks = []
+    let size = 0
+    request.on('data', (chunk) => {
+      size += chunk.length
+      if (size > limitBytes) {
+        response.statusCode = 413
+        response.end()
+        request.destroy()
+        return
+      }
+      chunks.push(chunk)
+    })
+    request.on('end', () => {
+      if (size > limitBytes) return
+      let input
+      try {
+        input = JSON.parse(Buffer.concat(chunks).toString('utf8'))
+      } catch {
+        return send(400, { ok: false, error: invalidError })
+      }
+      handle(input)
+    })
+  }
 
   /** GET 实时占用：按 sessionId 找到 Session，用 tokenMeter 现场测量。 */
   const liveHandler = (request, response) => {
@@ -740,15 +724,7 @@ export function apply(ctx, config) {
     if (!editor || typeof editor.edit !== 'function' || !entry) {
       return send(501, { ok: false, error: 'agent preset is not editable in this profile' })
     }
-    const chunks = []
-    request.on('data', (chunk) => chunks.push(chunk))
-    request.on('end', () => {
-      let input
-      try {
-        input = JSON.parse(Buffer.concat(chunks).toString('utf8'))
-      } catch {
-        return send(400, { ok: false, error: 'invalid body' })
-      }
+    readJson(request, response, (input) => {
       if (typeof input?.enable !== 'boolean') return send(400, { ok: false, error: 'enable must be a boolean' })
       send(202, { ok: true, accepted: { enable: input.enable } })
       if (input.enable) {
@@ -805,7 +781,9 @@ export function apply(ctx, config) {
   }
 
   // 会话日志折叠很便宜但文件读取不便宜；按 sessionId 做短 TTL 缓存，页面切 tab/刷新不会反复读全量。
+  // 只保留最近 40 个会话，避免长进程里每个看过的会话都留一份完整折叠结果。
   const foldCache = new Map()
+  const FOLD_CACHE_MAX = 40
   const observeFold = async (sessionId, header, ttlMs = 20000) => {
     const cached = foldCache.get(sessionId)
     if (cached && Date.now() - cached.at < ttlMs) return cached.fold
@@ -813,7 +791,9 @@ export function apply(ctx, config) {
     const observation = await withTimeout(sessionQuery.observeSession(sessionId, { projectionMode: 'none' }), 4000, 'observeSession')
     try {
       const fold = foldSession(observation.header ?? header, observation.events ?? [])
+      foldCache.delete(sessionId)
       foldCache.set(sessionId, { at: Date.now(), fold })
+      while (foldCache.size > FOLD_CACHE_MAX) foldCache.delete(foldCache.keys().next().value)
       return fold
     } finally {
       const dispose = typeof observation[Symbol.dispose] === 'function' ? observation[Symbol.dispose] : null
@@ -959,13 +939,7 @@ export function apply(ctx, config) {
   })
 
   /** 校验来自浏览器面板的配置补丁；不合法返回 null。 */
-  const parseConfigPatch = (raw) => {
-    let input
-    try {
-      input = JSON.parse(raw)
-    } catch {
-      return null
-    }
+  const parseConfigPatch = (input) => {
     if (typeof input !== 'object' || input === null) return null
     const patch = {}
     if (input.contextWindowTokens !== undefined) {
@@ -995,48 +969,21 @@ export function apply(ctx, config) {
     return { ...patch, ...ratios }
   }
 
-  let configWrite = null
-
   /** POST 配置：先 202 应答，再在后台让 configEditor 落盘并重挂（重挂会销毁本路由）。 */
   const configHandler = (request, response) => {
+    const send = jsonSender(response)
     if (!requireMethod(request, response, 'POST')) return
     const editor = configEditor
     if (!editor || typeof editor.edit !== 'function' || typeof editor.entries !== 'function') {
-      response.statusCode = 501
-      response.setHeader('content-type', 'application/json; charset=utf-8')
-      response.end(JSON.stringify({ ok: false, error: 'config editor unavailable in this profile' }))
-      return
+      return send(501, { ok: false, error: 'config editor unavailable in this profile' })
     }
-    const chunks = []
-    let size = 0
-    request.on('data', (chunk) => {
-      size += chunk.length
-      if (size > 16 * 1024) {
-        response.statusCode = 413
-        response.end()
-        request.destroy()
-        return
-      }
-      chunks.push(chunk)
-    })
-    request.on('end', () => {
-      const patch = parseConfigPatch(Buffer.concat(chunks).toString('utf8'))
-      if (patch === null) {
-        response.statusCode = 400
-        response.setHeader('content-type', 'application/json; charset=utf-8')
-        response.end(JSON.stringify({ ok: false, error: 'invalid config patch' }))
-        return
-      }
+    // 配置补丁限制 16KB：超限 413 并断开，避免面板误发大对象。
+    readJson(request, response, (input) => {
+      const patch = parseConfigPatch(input)
+      if (patch === null) return send(400, { ok: false, error: 'invalid config patch' })
       const entry = editor.entries().find((candidate) => candidate?.options?.id === 'ctx-mon-and-con')
-      if (!entry) {
-        response.statusCode = 409
-        response.setHeader('content-type', 'application/json; charset=utf-8')
-        response.end(JSON.stringify({ ok: false, error: 'plugin entry is not editable in the active profile' }))
-        return
-      }
-      response.statusCode = 202
-      response.setHeader('content-type', 'application/json; charset=utf-8')
-      response.end(JSON.stringify({ ok: true, accepted: patch }))
+      if (!entry) return send(409, { ok: false, error: 'plugin entry is not editable in the active profile' })
+      send(202, { ok: true, accepted: patch })
       // 落盘会触发重挂，本插件的旧实例（包括这条路由）随即被销毁。
       void editor
         .edit(entry, (current) => ({ ...(current ?? {}), ...patch }))
@@ -1044,7 +991,7 @@ export function apply(ctx, config) {
           const logger = ctx.logger
           if (typeof logger?.warn === 'function') logger.warn(`ctx-mon-and-con: config write failed: ${error instanceof Error ? error.message : String(error)}`)
         })
-    })
+    }, 16 * 1024, 'invalid config patch')
   }
 
   // 全局工具黑名单：从 profile 配置读取，限制所有 agent 的可见工具集。
@@ -1134,15 +1081,7 @@ export function apply(ctx, config) {
   const inventoryToggleHandler = (request, response) => {
     const send = jsonSender(response)
     if (!requireMethod(request, response, 'POST')) return
-    const chunks = []
-    request.on('data', (chunk) => chunks.push(chunk))
-    request.on('end', () => {
-      let input
-      try {
-        input = JSON.parse(Buffer.concat(chunks).toString('utf8'))
-      } catch {
-        return send(400, { ok: false, error: 'invalid body' })
-      }
+    readJson(request, response, (input) => {
       const kind = input?.kind
       const layer = input?.layer
       const name = input?.name
@@ -1169,14 +1108,10 @@ export function apply(ctx, config) {
       send(202, { ok: true, layer, kind, name, enabled, note: 'writes profile config; plugin reloads' })
       void editor
         .edit(entry, (value) => ({ ...(value ?? {}), disabledTools: next }))
-        .then(() => {
-          configWrite = { at: new Date().toISOString(), disabledTools: next }
-        })
         .catch((error) => {
-          configWrite = { at: new Date().toISOString(), error: error instanceof Error ? error.message : String(error) }
-        const logger = ctx.logger
-        if (typeof logger?.warn === 'function') logger.warn(`ctx-mon-and-con: inventory write failed: ${error instanceof Error ? error.message : String(error)}`)
-      })
+          const logger = ctx.logger
+          if (typeof logger?.warn === 'function') logger.warn(`ctx-mon-and-con: inventory write failed: ${error instanceof Error ? error.message : String(error)}`)
+        })
     })
   }
 
@@ -1184,15 +1119,7 @@ export function apply(ctx, config) {
   const inventoryResetHandler = (request, response) => {
     const send = jsonSender(response)
     if (!requireMethod(request, response, 'POST')) return
-    const chunks = []
-    request.on('data', (chunk) => chunks.push(chunk))
-    request.on('end', () => {
-      let input
-      try {
-        input = JSON.parse(Buffer.concat(chunks).toString('utf8'))
-      } catch {
-        return send(400, { ok: false, error: 'invalid body' })
-      }
+    readJson(request, response, (input) => {
       const layer = input?.layer
       if (!['session', 'global', 'all'].includes(layer)) return send(400, { ok: false, error: 'layer must be session, global or all' })
       if (layer === 'session' || layer === 'all') {
@@ -1220,19 +1147,13 @@ export function apply(ctx, config) {
           extraPrompts: runtimeExtraPrompts,
           extraPromptPlacements: runtimeExtraPromptPlacements,
         })))
-          .then(() => {
-            promptWrite = { at: new Date().toISOString(), promptOverrides: {}, extraPrompts: {}, extraPromptPlacements: {} }
-          })
-          .catch((error) => {
-            promptWrite = { at: new Date().toISOString(), error: error instanceof Error ? error.message : String(error) }
-          })
+          .catch(() => {})
         return
       }
       return send(202, { ok: true, layer })
     })
   }
 
-  let promptWrite = null
   let runtimePromptOverrides = { ...(config.promptOverrides || {}) }
   let runtimeExtraPrompts = { ...(config.extraPrompts || {}) }
   let runtimeExtraPromptPlacements = { ...(config.extraPromptPlacements || {}) }
@@ -1261,27 +1182,14 @@ export function apply(ctx, config) {
       extraPrompts: runtimeExtraPrompts,
       extraPromptPlacements: runtimeExtraPromptPlacements,
     })))
-      .then(() => {
-        promptWrite = { at: new Date().toISOString(), extraPrompts: runtimeExtraPrompts, extraPromptPlacements: runtimeExtraPromptPlacements }
-      })
-      .catch((error) => {
-        promptWrite = { at: new Date().toISOString(), error: error instanceof Error ? error.message : String(error) }
-      })
+      .catch(() => {})
   }
 
   /** POST /inventory/extra-prompt {name, text}：新增或更新一条额外 system section。 */
   const extraPromptHandler = (request, response) => {
     const send = jsonSender(response)
     if (!requireMethod(request, response, 'POST')) return
-    const chunks = []
-    request.on('data', (chunk) => chunks.push(chunk))
-    request.on('end', () => {
-      let input
-      try {
-        input = JSON.parse(Buffer.concat(chunks).toString('utf8'))
-      } catch {
-        return send(400, { ok: false, error: 'invalid body' })
-      }
+    readJson(request, response, (input) => {
       const name = typeof input?.name === 'string' ? input.name.trim() : ''
       const text = input?.text
       const placement = input?.placement === undefined ? 'system' : input.placement
@@ -1301,15 +1209,7 @@ export function apply(ctx, config) {
   const extraPromptResetHandler = (request, response) => {
     const send = jsonSender(response)
     if (!requireMethod(request, response, 'POST')) return
-    const chunks = []
-    request.on('data', (chunk) => chunks.push(chunk))
-    request.on('end', () => {
-      let input
-      try {
-        input = JSON.parse(Buffer.concat(chunks).toString('utf8'))
-      } catch {
-        return send(400, { ok: false, error: 'invalid body' })
-      }
+    readJson(request, response, (input) => {
       const name = typeof input?.name === 'string' ? input.name.trim() : ''
       const next = name ? Object.fromEntries(Object.entries(runtimeExtraPrompts).filter(([key]) => key !== name)) : {}
       const placements = name
@@ -1331,27 +1231,14 @@ export function apply(ctx, config) {
       ...(value ?? {}),
       promptOverrides: runtimePromptOverrides,
     })))
-      .then(() => {
-        promptWrite = { at: new Date().toISOString(), promptOverrides: runtimePromptOverrides }
-      })
-      .catch((error) => {
-        promptWrite = { at: new Date().toISOString(), error: error instanceof Error ? error.message : String(error) }
-      })
+      .catch(() => {})
   }
 
   /** POST /inventory/prompt {name, text}：全局覆盖一个提示词 section。 */
   const promptEditHandler = (request, response) => {
     const send = jsonSender(response)
     if (!requireMethod(request, response, 'POST')) return
-    const chunks = []
-    request.on('data', (chunk) => chunks.push(chunk))
-    request.on('end', () => {
-      let input
-      try {
-        input = JSON.parse(Buffer.concat(chunks).toString('utf8'))
-      } catch {
-        return send(400, { ok: false, error: 'invalid body' })
-      }
+    readJson(request, response, (input) => {
       if (typeof input?.name !== 'string' || input.name.length === 0 || typeof input.text !== 'string') return send(400, { ok: false, error: 'name/text are required' })
       const next = { ...runtimePromptOverrides, [input.name]: input.text }
       writePromptOverrides(next, response, send)
@@ -1362,15 +1249,7 @@ export function apply(ctx, config) {
   const promptResetHandler = (request, response) => {
     const send = jsonSender(response)
     if (!requireMethod(request, response, 'POST')) return
-    const chunks = []
-    request.on('data', (chunk) => chunks.push(chunk))
-    request.on('end', () => {
-      let input
-      try {
-        input = JSON.parse(Buffer.concat(chunks).toString('utf8'))
-      } catch {
-        return send(400, { ok: false, error: 'invalid body' })
-      }
+    readJson(request, response, (input) => {
       const current = { ...runtimePromptOverrides }
       const next = typeof input?.name === 'string' && input.name.length > 0 ? Object.fromEntries(Object.entries(current).filter(([key]) => key !== input.name)) : {}
       writePromptOverrides(next, response, send)
@@ -1381,15 +1260,7 @@ export function apply(ctx, config) {
   const sessionPromptHandler = (request, response) => {
     const send = jsonSender(response)
     if (!requireMethod(request, response, 'POST')) return
-    const chunks = []
-    request.on('data', (chunk) => chunks.push(chunk))
-    request.on('end', () => {
-      let input
-      try {
-        input = JSON.parse(Buffer.concat(chunks).toString('utf8'))
-      } catch {
-        return send(400, { ok: false, error: 'invalid body' })
-      }
+    readJson(request, response, (input) => {
       if (typeof input?.name !== 'string' || input.name.length === 0 || typeof input.text !== 'string') return send(400, { ok: false, error: 'name/text are required' })
       const targetId = typeof input.sessionId === 'string' && input.sessionId.length > 0 ? input.sessionId : latestSession()?.id
       if (!targetId) return send(409, { ok: false, error: 'no session yet' })
@@ -1403,15 +1274,7 @@ export function apply(ctx, config) {
   const sessionPromptResetHandler = (request, response) => {
     const send = jsonSender(response)
     if (!requireMethod(request, response, 'POST')) return
-    const chunks = []
-    request.on('data', (chunk) => chunks.push(chunk))
-    request.on('end', () => {
-      let input
-      try {
-        input = JSON.parse(Buffer.concat(chunks).toString('utf8'))
-      } catch {
-        return send(400, { ok: false, error: 'invalid body' })
-      }
+    readJson(request, response, (input) => {
       const targetId = typeof input?.sessionId === 'string' && input.sessionId.length > 0 ? input.sessionId : latestSession()?.id
       if (!targetId) return send(409, { ok: false, error: 'no session yet' })
       clearSessionPromptText(targetId, typeof input?.name === 'string' && input.name.length > 0 ? input.name : undefined)

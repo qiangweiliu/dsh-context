@@ -4,6 +4,10 @@
   "description": "DSH 上下文长度管理插件：/ctx 查看会话 token 用量与预算；可选的 control 半侧挂在 agent preset 内，按预算自动压缩",
   "type": "module",
   "main": "index.js",
+  "scripts": {
+    "test": "node test/static.mjs && node test/metrics.mjs",
+    "test:integration": "node test/prepare-deps.mjs && node test/control.mjs && node test/smoke.mjs && node test/prompt-state.mjs"
+  },
   "exports": {
     ".": "./index.js",
     "./control": "./control.js",
@@ -41,7 +45,7 @@
   "repository": {
     "type": "git",
     "url": "git+https://github.com/qiangweiliu/dsh-context.git",
-    "directory": "plugin-skeleton"
+    "directory": "ctx-mon-and-con"
   },
   "dsh": {
     "manifestVersion": 1,

@@ -1,0 +1,20 @@
+name: test
+
+on:
+  push:
+  pull_request:
+
+jobs:
+  unit:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: ctx-mon-and-con
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      # 单元套件不依赖 DSH 运行时；集成套件（control/smoke/prompt-state）
+      # 需要本机 app.asar，见 docs/IMPLEMENTATION.md。
+      - run: npm test

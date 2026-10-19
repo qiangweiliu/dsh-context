@@ -19,7 +19,7 @@
   profile 名，默认 desktop。
 
 .PARAMETER PluginDir
-  插件目录，默认仓库里的 plugin-skeleton。
+  插件目录，默认仓库里的 ctx-mon-and-con。
 
 .PARAMETER DshPath
   dsh 启动器路径，默认本机 DeepSeek Harness 的安装位置。
@@ -41,7 +41,7 @@ param(
 )
 
 $ErrorActionPreference = 'Stop'
-if (-not $PluginDir) { $PluginDir = (Resolve-Path (Join-Path $PSScriptRoot '..\plugin-skeleton')).Path }
+if (-not $PluginDir) { $PluginDir = (Resolve-Path (Join-Path $PSScriptRoot '..\ctx-mon-and-con')).Path }
 $utf8 = New-Object System.Text.UTF8Encoding($false)
 $packageName = 'ctx-mon-and-con'
 $profileDir = Join-Path $env:DSH_HOME "profiles/$Profile"

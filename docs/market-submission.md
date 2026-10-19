@@ -32,7 +32,7 @@ https://awesome-dsh-plugin.com/plugins.json
 
 ```powershell
 $env:DSH_HOME = "$env:TEMP\dsh-mkt-test"
-dsh plugin --profile mkt-add add "github:qiangweiliu/dsh-context#path:/plugin-skeleton"
+dsh plugin --profile mkt-add add "github:qiangweiliu/dsh-context#path:/ctx-mon-and-con"
 ```
 
 结果：pnpm 成功解析并安装 `ctx-mon-and-con@0.3.0`，包内 `index.js`、`client.js`、
@@ -61,15 +61,15 @@ dsh plugin --profile mkt-add add "github:qiangweiliu/dsh-context#path:/plugin-sk
 ### 4.1 收录申请 PR（唯一能让它出现在市场的方式）
 
 给 `awesome-dsh-plugin` 提一个 PR，**只加一个文件**
-`data/plugins/qiangweiliu__dsh-context--plugin-skeleton.yml`，内容已备好：
-`submission/qiangweiliu__dsh-context--plugin-skeleton.yml`，直接复制过去即可。
+`data/plugins/qiangweiliu__dsh-context--ctx-mon-and-con.yml`，内容已备好：
+`submission/qiangweiliu__dsh-context--ctx-mon-and-con.yml`，直接复制过去即可。
 
 要点：
 
 - 条目必须指向**子目录**而不是仓库根：根 `package.json` 没有 `dsh.bundle`，
   根条目会被 CI 判为「装了也没东西」，并提示改成子目录形式。
-- 文件名与 `name` 字段要带上子目录：`name: qiangweiliu/dsh-context#plugin-skeleton`。
-- `url` 必须与仓库地址逐字一致（`/tree/main/plugin-skeleton`）。
+- 文件名与 `name` 字段要带上子目录：`name: qiangweiliu/dsh-context#ctx-mon-and-con`。
+- `url` 必须与仓库地址逐字一致（`/tree/main/ctx-mon-and-con`）。
 - 一个 PR 最多 3 条，这里只交 1 条。
 
 ### 4.2 仓库满足两个硬性条件
@@ -96,7 +96,7 @@ Invoke-RestMethod -Method Put -Headers @{ Authorization = "Bearer $env:GH_TOKEN"
   状态路由 `/api/ctx-mon-and-con/status`、`client.js` 的模块 id 与 locale 命名空间、`settings.section` 的 id。
 - **发布 npm**：收录不看 npm，但有了 npm 包市场会显示下载量、安装也免掉源码构建步骤；
   发布时 `repository` 字段必须指回本仓库，否则不会被关联。
-- **截图**：在 `plugin-skeleton/` 下放 `screenshots.json` 列 1–8 张图，市场详情页会展示。
+- **截图**：在 `ctx-mon-and-con/` 下放 `screenshots.json` 列 1–8 张图，市场详情页会展示。
 
 ## 5. 一个要提前想清楚的问题：会不会被判「已被覆盖」
 

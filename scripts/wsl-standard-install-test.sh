@@ -27,7 +27,7 @@ grep -n "ctx-mon-and-con" "$T/package.json" || echo "not present after remove"
 
 echo
 echo "===== 3. GitHub 标准安装 ====="
-timeout 420 dsh plugin --profile "$TEMP" add "github:qiangweiliu/dsh-context#path:/plugin-skeleton" >/tmp/std-add.log 2>&1
+timeout 420 dsh plugin --profile "$TEMP" add "github:qiangweiliu/dsh-context#path:/ctx-mon-and-con" >/tmp/std-add.log 2>&1
 echo "add exit=$?"
 tail -25 /tmp/std-add.log
 

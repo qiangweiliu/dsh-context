@@ -20,18 +20,21 @@ const DSH = process.env.DSH_BIN || `${homedir()}/.local/bin/dsh`
 const WORKDIR = '/tmp/gsm8k-eval-work'
 
 const PATCHES = {
+  z: null,
   a: 'eval/prompts/a-format-only.yml',
   b: 'eval/prompts/b-persona-only.yml',
   c: 'eval/prompts/c-persona-protocol.yml',
   e: 'eval/prompts/e-protocol-injection.yml',
+  al: 'eval/prompts/al-format-low.yml',
+  cl: 'eval/prompts/cl-protocol-low.yml',
 }
 const CONDITIONS = flag('arms', 'a,b,c')
   .split(',')
   .map((key) => key.trim())
   .filter(Boolean)
   .map((key) => {
-    if (!PATCHES[key]) throw new Error(`未知对照臂：${key}（可选 ${Object.keys(PATCHES).join(',')}）`)
-    return { key, patch: resolve(ROOT, PATCHES[key]) }
+    if (!(key in PATCHES)) throw new Error(`未知对照臂：${key}（可选 ${Object.keys(PATCHES).join(',')}）`)
+    return { key, patch: PATCHES[key] ? resolve(ROOT, PATCHES[key]) : null }
   })
 
 const questions = readFileSync(resolve(ROOT, flag('questions', 'eval/questions.jsonl')), 'utf8')

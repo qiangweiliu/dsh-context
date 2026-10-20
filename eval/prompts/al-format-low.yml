@@ -1,0 +1,14 @@
+# A48 组：对照臂 A + 把 reasoningEffort 压到 low（贴近 web profile 的实际配置）
+- id: agent-default-model
+  name: "@deepseek-ai/dsh-agent-default-model"
+  config:
+    provider: deepseek-official
+    model: deepseek-flash
+    reasoningEffort: low
+- id: system-prompt
+  name: "@deepseek-ai/dsh-system-prompt"
+  config:
+    personaPrefix: You are a coding agent powered by the {{model}} model.
+    personaSuffix: |
+      Your working directory is {{cwd}}.
+      End your response with a final line of exactly this form: `答案: <number>` — digits only, no units, no thousands separators, no currency symbols.

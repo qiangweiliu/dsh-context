@@ -1,0 +1,8 @@
+# A 组（对照）：保持 DSH 默认 persona，只统一输出格式，保证判分公平。
+- id: system-prompt
+  name: "@deepseek-ai/dsh-system-prompt"
+  config:
+    personaPrefix: You are a coding agent powered by the {{model}} model.
+    personaSuffix: |
+      Your working directory is {{cwd}}.
+      End your response with a final line of exactly this form: `答案: <number>` — digits only, no units, no thousands separators, no currency symbols.

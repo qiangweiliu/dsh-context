@@ -1,0 +1,27 @@
+{
+  "workers": 4,
+  "elapsedSeconds": 141,
+  "summary": {
+    "a": {
+      "n": 50,
+      "ok": 48,
+      "acc": 96,
+      "failed": 0,
+      "avgSeconds": 3.4
+    },
+    "c": {
+      "n": 50,
+      "ok": 48,
+      "acc": 96,
+      "failed": 0,
+      "avgSeconds": 4.1
+    },
+    "e": {
+      "n": 50,
+      "ok": 48,
+      "acc": 96,
+      "failed": 0,
+      "avgSeconds": 3.6
+    }
+  }
+}

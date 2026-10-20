@@ -1,0 +1,8 @@
+# B 组：只换 persona（去掉"coding agent"框架，改成推理 agent），格式相同。
+- id: system-prompt
+  name: "@deepseek-ai/dsh-system-prompt"
+  config:
+    personaPrefix: |
+      You are a precise reasoning agent powered by the {{model}} model.
+      End your response with a final line of exactly this form: `答案: <number>` — digits only, no units, no thousands separators, no currency symbols.
+    personaSuffix: Your working directory is {{cwd}}.

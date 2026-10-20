@@ -1,0 +1,2 @@
+{"id":"gsm8k-13","cond":"baseline","status":"ok","ok":false,"pred":5,"gold":18,"seconds":3,"chars":459,"tail":"frac{2}{3}x\\), giving \\(x = 18\\). **Check:** 18 → sell \\(\\frac13\\) (6) at green, leaving 12 → sell 2 at red, leaving 10 → sell half (5) at orange, leaving 5. ✓"}
+{"id":"gsm8k-13","cond":"optimized","status":"ok","ok":true,"pred":18,"gold":18,"seconds":3.9,"chars":584,"tail":"2x = 36\\) - 两边除以 2：\\(x = 18\\) **独立验算：** - 开始：18 - green house 卖掉 \\(18 \\div 3 = 6\\)，剩 12 - red house 卖掉 2，剩 10 - orange house 卖掉 \\(10 \\div 2 = 5\\)，剩 5 ✓ 答案: 18"}

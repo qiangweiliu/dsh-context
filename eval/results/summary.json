@@ -1,27 +1,27 @@
 {
   "workers": 8,
-  "elapsedSeconds": 247,
+  "elapsedSeconds": 297,
   "summary": {
     "z": {
       "n": 50,
       "ok": null,
       "acc": null,
       "failed": 0,
-      "avgSeconds": 12
+      "avgSeconds": 13
     },
     "am": {
       "n": 50,
       "ok": null,
       "acc": null,
       "failed": 0,
-      "avgSeconds": 12
+      "avgSeconds": 13.8
     },
     "cm": {
       "n": 50,
       "ok": null,
       "acc": null,
       "failed": 0,
-      "avgSeconds": 11.9
+      "avgSeconds": 17.3
     }
   }
 }

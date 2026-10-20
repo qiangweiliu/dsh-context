@@ -129,6 +129,9 @@ const inventory = await call('/api/ctx-mon-and-con/status/inventory?sessionId=pr
 const section = inventory.payload?.inventory?.sections?.[0]
 check('inventory 叠上会话覆盖', section?.sessionOverridden === true && section?.text === 'SESSION-TEXT', JSON.stringify(section))
 check('inventory 来源是稳定包名', inventory.payload?.inventory?.sources?.sections?.['harness:identity'] === '@deepseek-ai/dsh-system-prompt', JSON.stringify(inventory.payload?.inventory?.sources))
+const templates = inventory.payload?.promptTemplates
+check('inventory 暴露内置提示词模板', Array.isArray(templates) && templates.length > 0 && typeof templates[0].id === 'string' && typeof templates[0].text === 'string' && templates[0].text.length > 200, JSON.stringify(templates && templates[0] && templates[0].id))
+check('模板文本不含动态量（缓存稳定）', typeof templates?.[0]?.text === 'string' && !/\d{4}-\d{2}-\d{2}|\{\{|session-/i.test(templates[0].text), 'template text looks dynamic')
 
 const sessionReset = await call('/api/ctx-mon-and-con/status/inventory/prompt/session/reset', 'POST', { name: 'harness:identity', sessionId: 'prompt-test' })
 const afterSessionReset = await call('/api/ctx-mon-and-con/status/inventory?sessionId=prompt-test', 'GET')

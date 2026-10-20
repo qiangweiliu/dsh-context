@@ -99,6 +99,16 @@
 - 已存在同名 section 时不重复插入；
 - 支持会话级禁用。
 
+内置模板：`index.js` 的 `PROMPT_TEMPLATES`（当前一条 `method`）只作为草稿来源，
+经 `GET /inventory` 的 `promptTemplates` 字段下发，面板「新增提示词 → 模板」一点填入
+名称/内容/放置位置（`system`），仍走同一个 `POST /inventory/extra-prompt` 落盘。
+模板文本必须稳定（不含时间戳、会话 id、随机量），否则每次请求都会 miss 提示词缓存；
+`test/prompt-state.mjs` 里有对应断言。模板不默认注入。
+
+实测（`eval/REPORT.md` 实验 6）：`method` 模板在 GSM8K 50 题上真实正确率与不加提示词相同
+（47/50），但 MATH L5 平均耗时从 13s 涨到 24s——通用方法论只增加推理长度，不提高这两套题的正确率，
+所以保持"手动一键启用"而不默认开。
+
 `placement: user` 的追加 hook：
 
 - 在 `agent/pre-step` 调用 `next()` 后取最终 decision；

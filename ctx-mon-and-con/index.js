@@ -113,6 +113,34 @@ const CONFIG_KEYS = Object.keys(DEFAULT_CONFIG)
 const NUMERIC_KEYS = ['contextWindowTokens', 'warnAt', 'errorAt', 'triggerAt', 'targetAt']
 
 /**
+ * 内置提示词模板：只作为「新增提示词」的草稿来源，不默认注入。
+ * 文本必须稳定（不含时间戳/会话 id），否则每次请求都会 miss 提示词缓存。
+ *
+ * 依据：Polya《怎样解题》的"理解/计划/回顾"，Popper 的可反驳性，Dewey 的探究
+ * （问题情境 → 假设 → 检验），贝叶斯式的置信校准；以及 ReAct（证据必须来自
+ * 观察）、Reflexion/CoVe（独立复核）、self-consistency（换路径重算）的做法。
+ */
+export const PROMPT_TEMPLATES = [
+  {
+    id: 'method',
+    text: [
+      '## Working method',
+      '',
+      'Use this for every task; drop any step that does not change a decision.',
+      '',
+      '1. Frame first. Restate the request as one sentence: the goal, the deliverable, and the observable evidence that would make it done. Name the reading you chose when the request was ambiguous.',
+      '2. Separate evidence from assumption. Anything not obtained from a tool result in this session is an assumption. Mark it, and check it before building on it.',
+      '3. Hypothesize before acting. Write the two or three candidate explanations or approaches, and the observation that would discriminate between them. Pick the check that removes the most uncertainty for the least effort.',
+      '4. Look for disconfirmation. For the leading hypothesis ask "what would prove this wrong?" and go look for that. A conclusion that cannot fail is not a conclusion.',
+      '5. Act in the smallest decisive step. Prefer a cheap probe that can falsify the plan over a large speculative change; keep the rest of the plan one tool result away.',
+      '6. Look back before you declare done. Re-derive the result by an independent route (different method, reverse direction, boundary case) and re-read the original request against what you produced.',
+      '7. Report calibrated confidence. State what you verified, what you assumed, and what is still unknown. Surface material uncertainty instead of smoothing it over.',
+      '8. Stop when the success criteria are met. Further polishing has diminishing returns; extra length is a cost, not evidence of care.',
+    ].join('\n'),
+  },
+]
+
+/**
  * 手写的 Standard Schema（零依赖）。
  * 想用 zod 时把本函数换成 `z.object({...})` 并把 zod 声明进 dependencies，
  * 但注意本地目录/link 安装时的裸导入解析问题。
@@ -1070,6 +1098,7 @@ export function apply(ctx, config) {
       disabledSessionTools: sessionId ? getSessionDisabledTools(sessionId) : [],
       disabledSessionPrompts: sessionId ? getSessionDisabledPrompts(sessionId) : [],
       disabledTools: Array.isArray(config.disabledTools) ? config.disabledTools : [],
+      promptTemplates: PROMPT_TEMPLATES,
       promptOverrides: runtimePromptOverrides,
       extraPrompts: runtimeExtraPrompts,
       extraPromptPlacements: runtimeExtraPromptPlacements,

@@ -155,6 +155,9 @@ window.__ModuleLoader__.load({
       extraPromptSwitchUser: 'Move to message end',
       extraPromptSwitchSystem: 'Move to system prompt',
       extraPromptDelete: 'Delete',
+      extraPromptTemplates: 'Templates',
+      extraPromptTemplateMethod: 'Working method',
+      extraPromptTemplateMethodName: 'Working method',
       extraLabel: 'extra',
       promptTokens: 'Prompt',
       toolTokens: 'Tools',
@@ -345,6 +348,9 @@ window.__ModuleLoader__.load({
       extraPromptSwitchUser: '改为追加到提问末尾',
       extraPromptSwitchSystem: '改为系统提示词',
       extraPromptDelete: '删除',
+      extraPromptTemplates: '模板',
+      extraPromptTemplateMethod: '方法论（通用）',
+      extraPromptTemplateMethodName: '方法论',
       extraLabel: '新增',
       promptTokens: '提示词',
       toolTokens: '工具定义',
@@ -1942,10 +1948,33 @@ window.__ModuleLoader__.load({
         )
       }
 
+      const templateRow = (() => {
+        const templates = Array.isArray(data.promptTemplates) ? data.promptTemplates : []
+        if (templates.length === 0) return null
+        return h(
+          'div',
+          { style: { display: 'flex', gap: '6px', alignItems: 'center', flexWrap: 'wrap' } },
+          h('span', { style: styles.cardSub }, t('extraPromptTemplates')),
+          ...templates.map((template) => h('button', {
+            key: template.id,
+            type: 'button',
+            style: styles.copyBtn,
+            'data-ctx-extra-template': template.id,
+            onClick: () => setExtraDraft({
+              ...extraDraft,
+              name: template.id === 'method' ? t('extraPromptTemplateMethodName') : template.id,
+              text: template.text,
+              placement: 'system',
+            }),
+          }, template.id === 'method' ? t('extraPromptTemplateMethod') : template.id)),
+        )
+      })()
+
       const extraForm = extraDraft
         ? h(
             'div',
             { style: { display: 'flex', flexDirection: 'column', gap: '6px', padding: '6px 0' } },
+            templateRow,
             h('input', {
               type: 'text',
               value: extraDraft.name,

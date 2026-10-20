@@ -188,6 +188,7 @@ check('余额视图区分 status:failed（不再一直显示加载中）', clien
 check('余额视图带充值入口与平台链接', clientSource.includes('links.topUpUrl') && clientSource.includes('links.usageUrl'))
 check('余额重读有最小间隔', clientSource.includes('BALANCE_READ_MIN_MS = 30000'))
 check('提示词来源从 inventory.sources 读（曾错读顶层 sources 而恒显示未识别）', clientSource.includes('data.inventory && data.inventory.sources'))
+check('新增提示词提供内置模板入口', clientSource.includes("'data-ctx-extra-template'") && clientSource.includes('data.promptTemplates'))
 check('sidebar.panellist 图标组件是函数', typeof bySlot('sidebar.panellist').component === 'function', typeof bySlot('sidebar.panellist').component)
 
 const stateModule = await import(new URL('../state.js', import.meta.url).href)

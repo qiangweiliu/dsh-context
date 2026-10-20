@@ -27,6 +27,8 @@ const PATCHES = {
   b: 'eval/prompts/b-persona-only.yml',
   c: 'eval/prompts/c-persona-protocol.yml',
   e: 'eval/prompts/e-protocol-injection.yml',
+  t: 'eval/prompts/t-method.yml',
+  tm: 'eval/prompts/t-method.yml',
   al: 'eval/prompts/al-format-low.yml',
   cl: 'eval/prompts/cl-protocol-low.yml',
   am: 'eval/prompts/am-format-math.yml',

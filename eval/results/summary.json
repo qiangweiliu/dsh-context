@@ -1,13 +1,13 @@
 {
   "workers": 8,
-  "elapsedSeconds": 255,
+  "elapsedSeconds": 163,
   "summary": {
     "tm": {
       "n": 50,
       "ok": null,
       "acc": null,
       "failed": 0,
-      "avgSeconds": 24.2
+      "avgSeconds": 14.9
     }
   }
 }

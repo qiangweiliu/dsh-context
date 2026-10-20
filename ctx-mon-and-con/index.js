@@ -116,9 +116,18 @@ const NUMERIC_KEYS = ['contextWindowTokens', 'warnAt', 'errorAt', 'triggerAt', '
  * 内置提示词模板：只作为「新增提示词」的草稿来源，不默认注入。
  * 文本必须稳定（不含时间戳/会话 id），否则每次请求都会 miss 提示词缓存。
  *
- * 依据：Polya《怎样解题》的"理解/计划/回顾"，Popper 的可反驳性，Dewey 的探究
- * （问题情境 → 假设 → 检验），贝叶斯式的置信校准；以及 ReAct（证据必须来自
- * 观察）、Reflexion/CoVe（独立复核）、self-consistency（换路径重算）的做法。
+ * 依据（每条都能指到来源，而不是拼口号）：
+ * - Self-Discover (arXiv 2402.03620)：先按任务自选推理结构，MATH 上比 CoT 最高 +32%，
+ *   比 self-consistency 省 10–40× 推理；→ "Structure first"，而不是固定一套步骤。
+ * - Chain of Draft (arXiv 2502.18600)：中间推理只写要点，token 可降到 7.6%、精度不降；
+ *   → "Think in drafts"，直接对治上一版模板 +86% 耗时的毛病。
+ * - ReAct / Anthropic "Building effective agents"：结论必须有环境返回的证据支撑；
+ *   → "Ground every claim"。
+ * - Popper 可反驳性 + Chain-of-Verification/Reflexion：主动找反证、换路径复核；
+ *   → "Attack your own answer"。
+ * - Polya《怎样解题》(理解/计划/回顾) + Dewey 探究：先定义"怎样算做完"。
+ * - 贝叶斯式置信校准：区分已验证/假设/未知。
+ * - 12-factor agents / context engineering：上下文是稀缺资源，短提示词优先。
  */
 export const PROMPT_TEMPLATES = [
   {
@@ -126,16 +135,15 @@ export const PROMPT_TEMPLATES = [
     text: [
       '## Working method',
       '',
-      'Use this for every task; drop any step that does not change a decision.',
+      'Pick the method that fits the task; skip any step that changes nothing.',
       '',
-      '1. Frame first. Restate the request as one sentence: the goal, the deliverable, and the observable evidence that would make it done. Name the reading you chose when the request was ambiguous.',
-      '2. Separate evidence from assumption. Anything not obtained from a tool result in this session is an assumption. Mark it, and check it before building on it.',
-      '3. Hypothesize before acting. Write the two or three candidate explanations or approaches, and the observation that would discriminate between them. Pick the check that removes the most uncertainty for the least effort.',
-      '4. Look for disconfirmation. For the leading hypothesis ask "what would prove this wrong?" and go look for that. A conclusion that cannot fail is not a conclusion.',
-      '5. Act in the smallest decisive step. Prefer a cheap probe that can falsify the plan over a large speculative change; keep the rest of the plan one tool result away.',
-      '6. Look back before you declare done. Re-derive the result by an independent route (different method, reverse direction, boundary case) and re-read the original request against what you produced.',
-      '7. Report calibrated confidence. State what you verified, what you assumed, and what is still unknown. Surface material uncertainty instead of smoothing it over.',
-      '8. Stop when the success criteria are met. Further polishing has diminishing returns; extra length is a cost, not evidence of care.',
+      'Structure first. In one or two lines, name how you will attack this (deduction, case split, estimate-and-check, search, reproduce-then-fix) and what evidence would make it done. Do not force a structure that does not fit.',
+      'Think in drafts. Intermediate reasoning stays short: keywords, numbers, one line per step. Verbose narration costs time and adds no accuracy.',
+      'Ground every claim. A fact comes from a tool result in this session or from the user. Anything else is a guess: mark it as an assumption, or check it now.',
+      'Attack your own answer. Before finishing, ask what would make it wrong, then look for that once. When the result is checkable, recompute it by a different route or on a boundary case.',
+      'Answer the question asked. Deliver the requested form; when the task has a single checkable result, put it on its own final line so it can be read directly.',
+      'Report what you know. Keep verified, assumed, and unknown apart; state material uncertainty instead of smoothing it over.',
+      'Stop at done. Further polish has diminishing returns; extra length is a cost.',
     ].join('\n'),
   },
 ]

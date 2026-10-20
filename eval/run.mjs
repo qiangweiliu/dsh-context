@@ -29,6 +29,9 @@ const PATCHES = {
   e: 'eval/prompts/e-protocol-injection.yml',
   t: 'eval/prompts/t-method.yml',
   tm: 'eval/prompts/t-method.yml',
+  eoff: 'eval/prompts/effort-off.yml',
+  elow: 'eval/prompts/effort-low.yml',
+  ehigh: 'eval/prompts/effort-high.yml',
   al: 'eval/prompts/al-format-low.yml',
   cl: 'eval/prompts/cl-protocol-low.yml',
   am: 'eval/prompts/am-format-math.yml',
@@ -121,6 +124,11 @@ function runOne({ question, condition }) {
       const gold = math ? question.gold : lastNumber(question.gold)
       const pred = math ? extractMath(stdout) : answerOf(stdout)
       const ok = math ? null : status === 'ok' && pred !== null && gold !== null && Math.abs(pred - gold) < 1e-4
+      // 统计每一步的 usage：outTokens 求和（总生成量），lastInput 取最后一步的上下文规模。
+      const usages = [...stdout.matchAll(/"usage":\{"inputTokens":(\d+),"outputTokens":(\d+)/g)].map((m) => ({ input: Number(m[1]), output: Number(m[2]) }))
+      const outTokens = usages.reduce((sum, u) => sum + u.output, 0)
+      const lastInput = usages.length > 0 ? usages[usages.length - 1].input : null
+      const thinkingChars = [...stdout.matchAll(/"type":"thinking","text":"((?:[^"\\]|\\.)*)"/g)].reduce((sum, m) => sum + m[1].length, 0)
       const row = {
         id: question.id,
         cond: condition.key,
@@ -130,6 +138,9 @@ function runOne({ question, condition }) {
         gold,
         seconds,
         chars: stdout.length,
+        outTokens,
+        lastInput,
+        thinkingChars,
         tail: stdout.trim().slice(-TAIL_CHARS).replace(/\s+/g, ' '),
         ...extra,
       }

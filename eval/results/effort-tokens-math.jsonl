@@ -1,0 +1,24 @@
+{"id":"math5-0","tier":"low","status":"ok","ok":null,"pred":"4\\sqrt2","gold":"4\\sqrt{2}","seconds":22.9,"outTokens":4791,"maxInput":1492,"steps":2,"thinkingChars":10145,"answerChars":679}
+{"id":"math5-2","tier":"low","status":"ok","ok":null,"pred":"5","gold":"5","seconds":13.5,"outTokens":1087,"maxInput":1273,"steps":1,"thinkingChars":3032,"answerChars":503}
+{"id":"math5-0","tier":"high","status":"ok","ok":null,"pred":"4\\sqrt2","gold":"4\\sqrt{2}","seconds":51.1,"outTokens":8569,"maxInput":1423,"steps":1,"thinkingChars":8107,"answerChars":677}
+{"id":"math5-1","tier":"high","status":"ok","ok":null,"pred":"6","gold":"6","seconds":52.4,"outTokens":9276,"maxInput":9843,"steps":2,"thinkingChars":13720,"answerChars":807}
+{"id":"math5-2","tier":"high","status":"ok","ok":null,"pred":"5","gold":"5","seconds":18.6,"outTokens":2812,"maxInput":9534,"steps":1,"thinkingChars":8195,"answerChars":546}
+{"id":"math5-3","tier":"low","status":"ok","ok":null,"pred":"Flour: 0.5 cup × 2304 = **1,152 cups** (about 72 gallons, or roughly 4,600 cups if you also factor in Paul Bunyan's appetite).","gold":"1152","seconds":5.5,"outTokens":134,"maxInput":1352,"steps":1,"thinkingChars":168,"answerChars":222}
+{"id":"math5-3","tier":"high","status":"ok","ok":null,"pred":"Scale by area (thickness constant): (288 in / 6 in)² = 48² = 2,304; × ½ cup = **1,152 cups**.","gold":"1152","seconds":5.5,"outTokens":94,"maxInput":1352,"steps":1,"thinkingChars":166,"answerChars":110}
+{"id":"math5-4","tier":"low","status":"ok","ok":null,"pred":"The hypotenuse has length \\(\\sqrt{(5-(-1))^2+(-5-(-1))^2}=\\sqrt{36+16}=2\\sqrt{13}\\). For an isosceles right triangle, the area is \\(\\frac{\\text{hypotenuse}^2}{4}=\\frac{52}{4}=13\\).","gold":"13","seconds":7.9,"outTokens":168,"maxInput":1264,"steps":1,"thinkingChars":234,"answerChars":188}
+{"id":"math5-5","tier":"low","status":"ok","ok":null,"pred":"12.25","gold":"12.25","seconds":5.5,"outTokens":537,"maxInput":1280,"steps":1,"thinkingChars":1404,"answerChars":223}
+{"id":"math5-4","tier":"high","status":"ok","ok":null,"pred":"13","gold":"13","seconds":8.9,"outTokens":236,"maxInput":1264,"steps":1,"thinkingChars":441,"answerChars":245}
+{"id":"math5-5","tier":"high","status":"ok","ok":null,"pred":"12.25","gold":"12.25","seconds":9.9,"outTokens":810,"maxInput":1280,"steps":1,"thinkingChars":2089,"answerChars":392}
+{"id":"math5-7","tier":"low","status":"ok","ok":null,"pred":"90-\\frac{25\\pi}{2}","gold":"90 - \\frac{25}{2}\\pi","seconds":10.3,"outTokens":1279,"maxInput":1282,"steps":1,"thinkingChars":2777,"answerChars":859}
+{"id":"math5-7","tier":"high","status":"ok","ok":null,"pred":"90-\\frac{25\\pi}{2}","gold":"90 - \\frac{25}{2}\\pi","seconds":14,"outTokens":2672,"maxInput":1351,"steps":1,"thinkingChars":6957,"answerChars":1097}
+{"id":"math5-8","tier":"low","status":"ok","ok":null,"pred":"\\tfrac32","gold":"\\tfrac{3}{2}","seconds":10.8,"outTokens":901,"maxInput":1298,"steps":1,"thinkingChars":2611,"answerChars":711}
+{"id":"math5-1","tier":"low","status":"ok","ok":null,"pred":"a+b+c=6","gold":"6","seconds":115,"outTokens":16371,"maxInput":9843,"steps":10,"thinkingChars":32317,"answerChars":583}
+{"id":"math5-9","tier":"low","status":"ok","ok":null,"pred":"15.08","gold":"15.08","seconds":4.8,"outTokens":232,"maxInput":1332,"steps":1,"thinkingChars":303,"answerChars":274}
+{"id":"math5-8","tier":"high","status":"ok","ok":null,"pred":"\\tfrac32","gold":"\\tfrac{3}{2}","seconds":13.3,"outTokens":1858,"maxInput":1298,"steps":1,"thinkingChars":6108,"answerChars":788}
+{"id":"math5-9","tier":"high","status":"ok","ok":null,"pred":"**15.08 cubic inches**","gold":"15.08","seconds":4.4,"outTokens":240,"maxInput":1332,"steps":1,"thinkingChars":494,"answerChars":222}
+{"id":"math5-10","tier":"low","status":"ok","ok":null,"pred":"\\frac{240}{13}","gold":"\\frac{240}{13}","seconds":11.2,"outTokens":1671,"maxInput":1503,"steps":1,"thinkingChars":3340,"answerChars":969}
+{"id":"math5-11","tier":"low","status":"ok","ok":null,"pred":"\\frac38","gold":"\\frac{3}{8}","seconds":8.2,"outTokens":407,"maxInput":1436,"steps":1,"thinkingChars":686,"answerChars":506}
+{"id":"math5-10","tier":"high","status":"ok","ok":null,"pred":"\\frac{240}{13}","gold":"\\frac{240}{13}","seconds":18.4,"outTokens":2622,"maxInput":1503,"steps":1,"thinkingChars":6234,"answerChars":573}
+{"id":"math5-11","tier":"high","status":"ok","ok":null,"pred":"\\frac{3}{8}","gold":"\\frac{3}{8}","seconds":4.5,"outTokens":344,"maxInput":1436,"steps":1,"thinkingChars":460,"answerChars":366}
+{"id":"math5-6","tier":"low","status":"ok","ok":null,"pred":"1.1716","gold":"\\frac \\pi4 + 2 - \\sqrt2","seconds":97.7,"outTokens":3533,"maxInput":2473,"steps":4,"thinkingChars":7472,"answerChars":988}
+{"id":"math5-6","tier":"high","status":"ok","ok":null,"pred":"\\frac{\\pi}{4}+2-\\sqrt2\\approx 1.37118","gold":"\\frac \\pi4 + 2 - \\sqrt2","seconds":205.1,"outTokens":19001,"maxInput":1320,"steps":7,"thinkingChars":18226,"answerChars":1102}

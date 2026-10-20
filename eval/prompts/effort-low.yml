@@ -1,0 +1,7 @@
+# 推理档位对照：只改 agent-default-model 的 reasoningEffort，其余不动。
+- id: agent-default-model
+  name: "@deepseek-ai/dsh-agent-default-model"
+  config:
+    provider: opencode-go
+    model: deepseek-v4.1-flash
+    reasoningEffort: low

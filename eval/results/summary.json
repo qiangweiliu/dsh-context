@@ -1,13 +1,27 @@
 {
-  "workers": 8,
-  "elapsedSeconds": 163,
+  "workers": 6,
+  "elapsedSeconds": 317,
   "summary": {
-    "tm": {
-      "n": 50,
+    "eoff": {
+      "n": 20,
+      "ok": null,
+      "acc": null,
+      "failed": 20,
+      "avgSeconds": 1.4
+    },
+    "elow": {
+      "n": 20,
       "ok": null,
       "acc": null,
       "failed": 0,
-      "avgSeconds": 14.9
+      "avgSeconds": 17.4
+    },
+    "ehigh": {
+      "n": 20,
+      "ok": null,
+      "acc": null,
+      "failed": 0,
+      "avgSeconds": 27.5
     }
   }
 }

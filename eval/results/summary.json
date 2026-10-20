@@ -1,13 +1,27 @@
 {
-  "workers": 4,
-  "elapsedSeconds": 36,
+  "workers": 8,
+  "elapsedSeconds": 247,
   "summary": {
     "z": {
       "n": 50,
-      "ok": 44,
-      "acc": 88,
+      "ok": null,
+      "acc": null,
       "failed": 0,
-      "avgSeconds": 2.8
+      "avgSeconds": 12
+    },
+    "am": {
+      "n": 50,
+      "ok": null,
+      "acc": null,
+      "failed": 0,
+      "avgSeconds": 12
+    },
+    "cm": {
+      "n": 50,
+      "ok": null,
+      "acc": null,
+      "failed": 0,
+      "avgSeconds": 11.9
     }
   }
 }

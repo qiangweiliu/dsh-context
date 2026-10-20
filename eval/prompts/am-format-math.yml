@@ -1,0 +1,8 @@
+# AM（对照）：默认 persona + 适用于表达式的输出契约（不再限定纯数字）。
+- id: system-prompt
+  name: "@deepseek-ai/dsh-system-prompt"
+  config:
+    personaPrefix: You are a coding agent powered by the {{model}} model.
+    personaSuffix: |
+      Your working directory is {{cwd}}.
+      End your response with a final line of exactly this form: `答案: <value>`, where <value> is the final answer written as a number or a LaTeX expression, with no units, no prose, and no trailing punctuation.

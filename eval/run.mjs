@@ -15,6 +15,8 @@ const WORKERS = Number(flag('workers', '3'))
 const LIMIT = Number(flag('limit', '0'))
 const OUT = resolve(flag('out', 'eval/results/run1.jsonl'))
 const TIMEOUT_MS = Number(flag('timeout', '300')) * 1000
+const EXTRACT = flag('extract', 'number')
+const TAIL_CHARS = Number(flag('tail', '160'))
 const ROOT = resolve(import.meta.dirname, '..')
 const DSH = process.env.DSH_BIN || `${homedir()}/.local/bin/dsh`
 const WORKDIR = '/tmp/gsm8k-eval-work'
@@ -27,6 +29,8 @@ const PATCHES = {
   e: 'eval/prompts/e-protocol-injection.yml',
   al: 'eval/prompts/al-format-low.yml',
   cl: 'eval/prompts/cl-protocol-low.yml',
+  am: 'eval/prompts/am-format-math.yml',
+  cm: 'eval/prompts/cm-protocol-math.yml',
 }
 const CONDITIONS = flag('arms', 'a,b,c')
   .split(',')
@@ -42,6 +46,16 @@ const questions = readFileSync(resolve(ROOT, flag('questions', 'eval/questions.j
   .filter(Boolean)
   .map((line) => JSON.parse(line))
 const picked = LIMIT > 0 ? questions.slice(0, LIMIT) : questions
+
+/** MATH 模式：优先 `答案:` 行，其次最后一个 \boxed{}，最后一行兜底。 */
+function extractMath(text) {
+  const marked = [...text.matchAll(/(?:答案|answer)\s*[:：]\s*(.+)/gi)]
+  if (marked.length > 0) return marked[marked.length - 1][1].trim()
+  const boxes = [...text.matchAll(/\\boxed\{([^{}]*(?:\{[^{}]*\}[^{}]*)*)\}/g)]
+  if (boxes.length > 0) return boxes[boxes.length - 1][1].trim()
+  const lines = text.trim().split('\n').map((line) => line.trim()).filter(Boolean)
+  return lines.length > 0 ? lines[lines.length - 1] : ''
+}
 
 /** 答案优先取 `答案:` / `answer:` 标记行，取不到再退回"最后一个数字"。 */
 function answerOf(text) {
@@ -101,9 +115,10 @@ function runOne({ question, condition }) {
       settled = true
       clearTimeout(timer)
       const seconds = Math.round((Date.now() - started) / 100) / 10
-      const gold = lastNumber(question.gold)
-      const pred = answerOf(stdout)
-      const ok = status === 'ok' && pred !== null && gold !== null && Math.abs(pred - gold) < 1e-4
+      const math = EXTRACT === 'math'
+      const gold = math ? question.gold : lastNumber(question.gold)
+      const pred = math ? extractMath(stdout) : answerOf(stdout)
+      const ok = math ? null : status === 'ok' && pred !== null && gold !== null && Math.abs(pred - gold) < 1e-4
       const row = {
         id: question.id,
         cond: condition.key,
@@ -113,11 +128,11 @@ function runOne({ question, condition }) {
         gold,
         seconds,
         chars: stdout.length,
-        tail: stdout.trim().slice(-160).replace(/\s+/g, ' '),
+        tail: stdout.trim().slice(-TAIL_CHARS).replace(/\s+/g, ' '),
         ...extra,
       }
       appendFileSync(OUT, `${JSON.stringify(row)}\n`)
-      const mark = status === 'ok' ? (ok ? '✓' : '✗') : status
+      const mark = math ? (status === 'ok' ? '·' : status) : status === 'ok' ? (ok ? '✓' : '✗') : status
       console.log(`[${condition.key}] ${question.id} ${mark} pred=${pred} gold=${gold} ${seconds}s`)
       resolveTask(row)
     }
@@ -155,8 +170,8 @@ for (const condition of CONDITIONS) {
   const own = rows.filter((r) => r.cond === condition.key)
   summary[condition.key] = {
     n: own.length,
-    ok: own.filter((r) => r.ok).length,
-    acc: own.length ? Math.round((own.filter((r) => r.ok).length / own.length) * 1000) / 10 : null,
+    ok: EXTRACT === 'math' ? null : own.filter((r) => r.ok).length,
+    acc: EXTRACT === 'math' ? null : own.length ? Math.round((own.filter((r) => r.ok).length / own.length) * 1000) / 10 : null,
     failed: own.filter((r) => r.status !== 'ok').length,
     avgSeconds: own.length ? Math.round((own.reduce((s, r) => s + r.seconds, 0) / own.length) * 10) / 10 : null,
   }

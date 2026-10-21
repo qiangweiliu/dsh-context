@@ -8,18 +8,34 @@
  *
  * 只读 asar + 写入 test/deps，不启动 DSH、不跑 pnpm。
  */
-import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs'
+import { existsSync, mkdirSync, readFileSync, readdirSync, writeFileSync } from 'node:fs'
+import { homedir } from 'node:os'
 import { dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 
-const ASAR =
-  process.env.DSH_ASAR ??
-  'C:\\Users\\40410\\AppData\\Local\\Programs\\DeepSeek Harness\\resources\\app.asar'
+/** 不绑定某个用户名：优先 DSH_ASAR，其次按当前 OS 的常见安装位置探测。 */
+function defaultAsarCandidates() {
+  const candidates = []
+  const localAppData = process.env.LOCALAPPDATA
+  if (localAppData) candidates.push(join(localAppData, 'Programs', 'DeepSeek Harness', 'resources', 'app.asar'))
+  const programFiles = process.env.ProgramFiles
+  if (programFiles) candidates.push(join(programFiles, 'DeepSeek Harness', 'resources', 'app.asar'))
+  // WSL：逐个 Windows 用户目录探测，而不是写死作者的用户名。
+  try {
+    for (const user of readdirSync('/mnt/c/Users')) {
+      candidates.push(join('/mnt/c/Users', user, 'AppData', 'Local', 'Programs', 'DeepSeek Harness', 'resources', 'app.asar'))
+    }
+  } catch {}
+  candidates.push(join(homedir(), '.local', 'share', 'DeepSeek Harness', 'resources', 'app.asar'))
+  return candidates
+}
+
+const ASAR = process.env.DSH_ASAR ?? defaultAsarCandidates().find((candidate) => existsSync(candidate))
 const OUT = fileURLToPath(new URL('./deps/', import.meta.url))
 const WANTED = /^dsh\/node_modules\/@deepseek-ai\/(cordis|cosmokit)\//u
 
-if (!existsSync(ASAR)) {
-  console.error(`[prepare-deps] 找不到 app.asar：${ASAR}；可用 DSH_ASAR 环境变量指定。`)
+if (!ASAR || !existsSync(ASAR)) {
+  console.error(`[prepare-deps] 找不到 app.asar：${ASAR ?? '(未探测到)'}；可用 DSH_ASAR 环境变量指定。`)
   process.exit(2)
 }
 

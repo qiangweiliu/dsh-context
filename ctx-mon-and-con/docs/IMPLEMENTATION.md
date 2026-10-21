@@ -2,7 +2,7 @@
 
 本文描述 `ctx-mon-and-con` 的内部结构、集成点和验证方式。面向用户的功能说明见 [README.md](../README.md)；约束与已知限制见 [LIMITATIONS.md](LIMITATIONS.md)。
 
-当前版本：`0.17.0`
+当前版本：`0.19.0`
 
 ## 1. 两个半侧
 
@@ -162,7 +162,7 @@ inventory 属于进程内存，只反映最近一次装配；新会话需要先�
 - `settings.section`：设置 → 上下文；
 - `conversation.composer.dock`：输入框下方指示器。
 
-客户端只通过状态接口读取数据；新增提示词、全局配置等写入通过宿主路由完成。
+客户端只通过状态接口读取数据；新增提示词、全局配置等写入通过宿主路由完成。API 路径相对 `document.baseURI` 解析，兼容反向代理的路径前缀；`apply` 带 window 级幂等守卫，避免同一页面重复挂载出两套导航/设置/dock。
 
 面板监听会话区域 DOM 变化，2 秒节流刷新；空闲时不轮询。
 
@@ -201,7 +201,7 @@ powershell -NoProfile -ExecutionPolicy Bypass -File scripts/verify-uninstall.ps1
 ## 9. 测试
 
 ```powershell
-npm test                      # static + metrics（不依赖 DSH 运行时）
+npm test                      # static + metrics + state（不依赖 DSH 运行时）
 npm run test:integration      # prepare-deps + control + smoke + prompt-state（需要本机 app.asar）
 node --check index.js
 node --check control.js
@@ -213,11 +213,12 @@ node --check client.js
 当前结果：
 
 ```text
-static       68/68
-metrics      18/18
-control      51/51
+static       72/72
+metrics      23/23
+state        16/16
+control      54/54
 smoke        48/48
-prompt-state  9/9
+prompt-state 11/11
 ```
 
 UI 证据与历史版本验收见 [EVIDENCE.md](EVIDENCE.md)。

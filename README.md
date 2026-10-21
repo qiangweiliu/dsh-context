@@ -4,7 +4,7 @@ DeepSeek Harness（DSH）的上下文管理插件项目。
 
 插件包名：`ctx-mon-and-con`
 插件目录：[`ctx-mon-and-con/`](ctx-mon-and-con/)
-当前版本：`0.17.0`
+当前版本：`0.19.0`
 
 功能、入口和安装说明见插件 README：[ctx-mon-and-con/README.md](ctx-mon-and-con/README.md)。
 

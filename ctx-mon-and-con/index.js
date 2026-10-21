@@ -81,6 +81,9 @@ const requireMethod = (request, response, method) => {
 
 const STATUS_PATH = '/api/ctx-mon-and-con/status'
 
+/** 所有 POST 接口的默认请求体上限；配置写入另有更小的 16KB 上限。 */
+const MAX_BODY_BYTES = 256 * 1024
+
 /** 内存里最多保留多少条会话测量（进程内，重启即清空）。 */
 const MAX_MEASUREMENTS = 10
 
@@ -424,7 +427,7 @@ export function apply(ctx, config) {
     const ratio = budget > 0 ? measurement.totalTokens / budget : 0
     const status = ratio >= config.errorAt ? 'error' : ratio >= config.warnAt ? 'warn' : 'ok'
     measurements.delete(sessionId)
-    const breakdown = breakdownOf(agent?.session)
+    const breakdown = breakdownOf(agent?.session, measurement)
     measurements.set(sessionId, {
       id: sessionId,
       totalTokens: measurement.totalTokens,
@@ -531,15 +534,18 @@ export function apply(ctx, config) {
    * 「本轮用户消息」与「上文」，得到四桶（skill 内容并进系统提示词/工具定义，不单列）。
    * @returns {{ systemTokens: number, toolsTokens: number, historyTokens: number, userTokens: number, totalTokens: number } | null}
    */
-  const breakdownOf = (session) => {
+  const breakdownOf = (session, measurement) => {
     if (!session) return null
-    let measurement
-    try {
-      measurement = ctx.tokenMeter.measure(session)
-    } catch {
-      return null
+    // /live 与 /ctx 已经测量过一次；把结果传进来，避免对长会话重复全量测量。
+    let measured = measurement
+    if (measured === undefined) {
+      try {
+        measured = ctx.tokenMeter.measure(session)
+      } catch {
+        return null
+      }
     }
-    const nodes = Array.isArray(measurement?.nodes) ? measurement.nodes : []
+    const nodes = Array.isArray(measured?.nodes) ? measured.nodes : []
     let systemTokens = 0
     let toolsTokens = 0
     let messageTokens = null
@@ -601,7 +607,7 @@ export function apply(ctx, config) {
    * 读取 JSON 请求体并交给 handle。非法 JSON 回 400；
    * 传 limitBytes 时超限回 413 并断开连接。
    */
-  const readJson = (request, response, handle, limitBytes = Infinity, invalidError = 'invalid body') => {
+  const readJson = (request, response, handle, limitBytes = MAX_BODY_BYTES, invalidError = 'invalid body') => {
     const send = jsonSender(response)
     const chunks = []
     let size = 0
@@ -648,10 +654,13 @@ export function apply(ctx, config) {
     }
     if (!session) return send(404, { ok: false, error: requested ? 'unknown session' : 'no session yet' })
     let used = null
+    let measurement
     try {
-      const measurement = ctx.tokenMeter.measure(session)
+      measurement = ctx.tokenMeter.measure(session)
       used = typeof measurement?.totalTokens === 'number' ? measurement.totalTokens : null
-    } catch {}
+    } catch {
+      measurement = undefined
+    }
     const budget = budgetFor(sessionId, config.contextWindowTokens)
     return send(200, {
       ok: true,
@@ -659,7 +668,7 @@ export function apply(ctx, config) {
       used,
       budget,
       compacting: controlState.compacting,
-      breakdown: breakdownOf(session),
+      breakdown: breakdownOf(session, measurement),
       warnAt: config.warnAt,
       errorAt: config.errorAt,
       triggerAt: config.triggerAt,
@@ -1105,7 +1114,7 @@ export function apply(ctx, config) {
       })() : null,
       disabledSessionTools: sessionId ? getSessionDisabledTools(sessionId) : [],
       disabledSessionPrompts: sessionId ? getSessionDisabledPrompts(sessionId) : [],
-      disabledTools: Array.isArray(config.disabledTools) ? config.disabledTools : [],
+      disabledTools: runtimeDisabledTools,
       promptTemplates: PROMPT_TEMPLATES,
       promptOverrides: runtimePromptOverrides,
       extraPrompts: runtimeExtraPrompts,
@@ -1140,8 +1149,9 @@ export function apply(ctx, config) {
       const editor = configEditor
       const entry = editor && typeof editor.entries === 'function' ? editor.entries().find((candidate) => candidate?.options?.id === 'ctx-mon-and-con') : undefined
       if (!editor || typeof editor.edit !== 'function' || !entry) return send(501, { ok: false, error: 'config editor unavailable in this profile' })
-      const current = Array.isArray(config.disabledTools) ? [...config.disabledTools] : []
+      const current = [...runtimeDisabledTools]
       const next = enabled ? current.filter((item) => item !== name) : current.includes(name) ? current : [...current, name]
+      runtimeDisabledTools = next
       send(202, { ok: true, layer, kind, name, enabled, note: 'writes profile config; plugin reloads' })
       void editor
         .edit(entry, (value) => ({ ...(value ?? {}), disabledTools: next }))
@@ -1173,6 +1183,7 @@ export function apply(ctx, config) {
         runtimePromptOverrides = {}
         runtimeExtraPrompts = {}
         runtimeExtraPromptPlacements = {}
+        runtimeDisabledTools = []
         setGlobalPromptOverrides({})
         setGlobalExtraPrompts({})
         setGlobalExtraPromptPlacements({})
@@ -1194,6 +1205,9 @@ export function apply(ctx, config) {
   let runtimePromptOverrides = { ...(config.promptOverrides || {}) }
   let runtimeExtraPrompts = { ...(config.extraPrompts || {}) }
   let runtimeExtraPromptPlacements = { ...(config.extraPromptPlacements || {}) }
+  // 全局工具禁用也维护一份运行时副本：配置写入是异步的，连续切换时若每次都读
+  // 本插件实例的 config 快照，后一次会把前一次刚加的禁用项覆盖掉。
+  let runtimeDisabledTools = Array.isArray(config.disabledTools) ? [...config.disabledTools] : []
 
   // 串行化 profile 写入：连续点两次“保存”时，后一次必须覆盖前一次，
   // 而不是两个异步 edit 互相覆盖。每次真正落盘时都读当前运行时状态。

@@ -105,6 +105,8 @@ function resetState() {
   state.setDefaultTriggerAt(1)
   for (const entry of state.listSessionBudgets()) state.clearSessionBudget(entry.sessionId)
   state.setControlActive(false)
+  state.setGlobalExtraPrompts({})
+  state.setGlobalExtraPromptPlacements({})
   state.control.last = null
   state.control.at = null
 }
@@ -431,6 +433,29 @@ check('exports apply function', typeof controlPlugin.apply === 'function')
   check("mode 'off' 不压缩", compaction.calls.length === 0, compaction.calls.length)
   check("mode 'off' 不注册命令", !commands.definitions.has('ctx-compact'), [...commands.definitions.keys()].join(','))
   check("mode 'off' 不标记为激活", state.control.active === false, String(state.control.active))
+  await fiber.dispose()
+  await root.fiber.dispose()
+}
+
+// ── 12. placement:user 追加：保留字符串正文、不重复追加 ─────────────────────
+{
+  const { root, fiber, agent } = await mount({ mode: 'off' })
+  state.setGlobalExtraPrompts({ rule: 'RULE TEXT' })
+  state.setGlobalExtraPromptPlacements({ rule: 'user' })
+  const decision = {
+    kind: 'enter',
+    messages: [
+      { role: 'user', source: { kind: 'user' }, content: 'hello' },
+      { role: 'assistant', source: { kind: 'assistant' }, content: [{ type: 'text', text: 'answer' }] },
+    ],
+  }
+  const result = await root.waterfall('agent/pre-step', { agent, signal: new AbortController().signal }, () => decision)
+  const user = result.messages[0]
+  check('字符串 content 保留原文并追加提示词', Array.isArray(user.content) && user.content[0]?.text === 'hello' && user.content.at(-1)?.text.includes('RULE TEXT'), user.content)
+  check('非用户消息不追加', result.messages[1].content.length === 1, result.messages[1].content)
+
+  const again = await root.waterfall('agent/pre-step', { agent, signal: new AbortController().signal }, () => result)
+  check('同一消息重复 pre-step 不重复追加', again.messages[0].content.length === user.content.length, again.messages[0].content)
   await fiber.dispose()
   await root.fiber.dispose()
 }

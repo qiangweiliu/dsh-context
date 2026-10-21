@@ -6,7 +6,7 @@
 
 | 能力 | 是否使用 | 范围 | 权限档位（商城口径） |
 | --- | --- | --- | --- |
-| 文件读取 | 是 | 宿主 `@deepseek-ai/*` 包的 `lib/*.js`（只读，取工具来源路径）；插件自己的状态文件 | 有界只读 |
+| 文件读取 | 是 | 插件自己的状态文件与 profile patch（只读读取 current 值）；不扫描宿主包源码 | 有界只读 |
 | 文件写入 | 是 | `~/.dsh/ctx-mon-and-con/` 下自己的状态与备份；profile 的 `cordis.patch.yml` 仅经官方 `configEditor` | 插件私有状态 + Profile |
 | 网络 | 仅本机同源 | 宿主已有 Web 服务器上注册 `/api/ctx-mon-and-con/*` 路由；浏览器端只 `fetch` 同源 API | 无外发 |
 | 命令执行 | 否 | 无 `child_process`、无 Shell、无动态执行外部代码 | 无 |
@@ -18,12 +18,10 @@
 
 ## 1. 文件访问
 
-### 1.1 只读：宿主官方包源码
+### 1.1 不读取宿主官方包源码
 
-- 位置：DSH 安装目录内 `@deepseek-ai/*/lib/`（通过 `process.argv[1]`/`process.cwd()` 向上查找 `node_modules/@deepseek-ai`）。
-- 目的：设置面板「工具与提示词」里给出每个工具的真实源码路径。
-- 边界：一次索引最多 700 个文件、2 MiB；`node_modules` 与 `client` 目录跳过；只读，不修改官方包。
-- 失败边界：读不到时降级为仅显示工具名，不影响 DSH 启动。
+- 当前实现不再扫描 `@deepseek-ai/*/lib/`。工具与提示词来源使用稳定的包名映射（`harness:*` → `dsh-system-prompt`、`tools:*` → `dsh-tools` 等），不做宿主路径猜测。
+- 因此没有“700 个文件 / 2 MiB”索引，也不读取官方包内容。
 
 ### 1.2 读写：插件私有状态
 
@@ -42,7 +40,7 @@
 
 - **无外发请求**：宿主侧不调用 `fetch`/`http.request` 连接任何外部地址。
 - 宿主侧仅在 DSH 已有 Web 服务器上注册本机路由（`/api/ctx-mon-and-con/status|config|live|inventory|prompt`）。
-- 浏览器侧 `client.js` 只 `fetch` 同源相对路径，用于读取状态与提交开关/配置。
+- 浏览器侧 `client.js` 只 `fetch` 同源 API 路径，路径相对 `document.baseURI` 解析，用于读取状态与提交开关/配置；兼容反向代理的路径前缀。
 - 无 CDN、无外部脚本、无遥测、无第三方服务依赖。
 
 ## 3. 命令、凭据与外部依赖

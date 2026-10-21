@@ -1,5 +1,5 @@
 /** Load client.js in the same mock browser shell used by static/smoke tests. */
-export function loadClient(clientSource, { trackEffects = false, onConfigForms } = {}) {
+export function loadClient(clientSource, { trackEffects = false, onConfigForms, scope } = {}) {
   let registration
   const dictionaries = {}
   const effects = []
@@ -17,11 +17,10 @@ export function loadClient(clientSource, { trackEffects = false, onConfigForms }
     if (specifier === 'react') return react
     throw new Error(`unexpected require(${JSON.stringify(specifier)})`)
   }
-  const fakeWindow = {
-    __ModuleLoader__: {
-      load(value) {
-        registration = value
-      },
+  const fakeWindow = scope ?? {}
+  fakeWindow.__ModuleLoader__ = {
+    load(value) {
+      registration = value
     },
   }
   new Function('window', 'require', clientSource)(fakeWindow, require)
@@ -59,5 +58,5 @@ export function loadClient(clientSource, { trackEffects = false, onConfigForms }
     }
   }
   moduleExports.apply(ctx)
-  return { registration, moduleExports, dictionaries, effects, slotInjects, slotRegistrations }
+  return { registration, moduleExports, dictionaries, effects, slotInjects, slotRegistrations, ctx, window: fakeWindow }
 }

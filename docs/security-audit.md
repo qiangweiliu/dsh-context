@@ -1,6 +1,6 @@
 # ctx-mon-and-con 安全审计（可恢复性 + 不破坏 DSH 核心）
 
-日期：2026-10-17 · 版本：0.13.1
+日期：2026-10-17 · 版本：0.19.0（2026-10-21 同步当前实现）
 
 ## 1. 写操作清单（全部有撤销路径/备份）
 
@@ -10,7 +10,7 @@
 | 2 | 全局提示词覆盖 | 同上 `promptOverrides` | 面板「保存到全局」 | 「恢复原文」/「恢复全部提示词」 | ✅ |
 | 3 | 全局工具禁用 | 同上 `disabledTools` | 面板全局开关 | 反向开关 / 恢复全部 | ✅ |
 | 4 | preset 控制行（自动挂载） | `preset-standard` 的 config 覆盖 | 启动检测缺失时自动写入；面板启用/停用 | 面板「停用自动压缩」移除；restore 脚本移除 | ✅（configEditor.edit 包装） |
-| 5 | 会话级开关 / 会话提示词文本 / autoMount 标志 | `~/.dsh/ctx-mon-and-con/session-toggles.json` | 面板会话开关、会话保存 | 反向操作 / 恢复全部 / 删文件 | ✅ `session-toggles.restore-*.bak` |
+| 5 | 会话级开关 / 会话提示词文本 / autoMount 标志 | `~/.dsh/ctx-mon-and-con/session-toggles.json` | 面板会话开关、会话保存 | 反向操作 / 恢复全部 / 删文件 | ✅ `session-toggles.<timestamp>.bak` |
 | 6 | `/ctx <tokens>` 会话上下文 | 进程内存 | 命令 | `/ctx reset` / 重启 | —（不落盘） |
 | 7 | 压缩 | 通过官方 `ctx.compaction` seam 写会话历史（shadow/replace） | 控制半侧 idle/pre-step、`/ctx-compact` | **不可逆**（压缩本身是官方语义），但只在该 seam 内进行 | 不适用 |
 

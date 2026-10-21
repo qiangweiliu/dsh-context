@@ -1,9 +1,10 @@
 #!/usr/bin/env bash
 # 在 WSL 的 DSH profile 里卸载 ctx-mon-and-con，并核对是否有残留。
-# 用法：wsl.exe -d Ubuntu-24.04 -e bash /mnt/c/Users/40410/Desktop/context/scripts/wsl-uninstall.sh [profile]
+# 用法：wsl.exe -d Ubuntu-24.04 -e bash <仓库>/scripts/wsl-uninstall.sh [profile]
 set -uo pipefail
 export PATH="$HOME/.local/bin:$PATH"
 
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 PROFILE="${1:-web}"
 P="$HOME/.dsh/profiles/$PROFILE"
 PKG="ctx-mon-and-con"
@@ -31,7 +32,7 @@ fi
 # 插件在 profile patch 里可能留下自动挂载行（顶层插件行、control 行、preset-standard 整段覆盖）。
 # 依赖移除后这些行会引用不存在的包，必须一并清理；脚本自带备份。
 say "== 清理 profile patch 里的插件残留行"
-CLEAN=/mnt/c/Users/40410/Desktop/context/scripts/clean-ctx-profile-patch.mjs
+CLEAN="${CTX_CLEAN:-$SCRIPT_DIR/clean-ctx-profile-patch.mjs}"
 if [ -f "$CLEAN" ] && node "$CLEAN" "$P"; then
   ok "profile patch 清理完成"
 else

@@ -108,6 +108,32 @@ export function foldSession(header, events) {
   const timeline = []
   let lastCompaction = null
 
+  // 按本地日期聚合的账本：区间统计和图表都从这里取数，避免 KPI 用整段会话、
+  // 图表只用区间请求而互相对不上。压缩摘要调用也记在这里。
+  const daily = new Map()
+  const bucketOf = (time) => {
+    const date = dateKey(time)
+    let bucket = daily.get(date)
+    if (!bucket) {
+      bucket = {
+        date,
+        tokens: 0,
+        input: 0,
+        cacheRead: 0,
+        cacheWrite: 0,
+        output: 0,
+        cost: null,
+        requests: 0,
+        toolCalls: 0,
+        compactions: 0,
+        injections: 0,
+        activeMs: 0,
+      }
+      daily.set(date, bucket)
+    }
+    return bucket
+  }
+
   for (const event of list) {
     if (event.type === 'session/title') {
       const next = tokenTitle(event)
@@ -132,7 +158,11 @@ export function foldSession(header, events) {
       const key = `turn-${turn}`
       if (turnStarts.has(key)) {
         const started = turnStarts.get(key)
-        if (event.time > started) activeMs += event.time - started
+        if (event.time > started) {
+          const duration = event.time - started
+          activeMs += duration
+          bucketOf(event.time).activeMs += duration
+        }
         turnStarts.delete(key)
       }
       continue
@@ -143,10 +173,12 @@ export function foldSession(header, events) {
     }
     if (event.type === 'tool/call') {
       base.counts.toolCalls += 1
+      bucketOf(event.time).toolCalls += 1
       continue
     }
     if (event.type === 'agent/inbox/spliced') {
       base.counts.injections += 1
+      bucketOf(event.time).injections += 1
       timeline.push({ time: event.time, kind: 'inject', label: '注入', detail: '' })
       continue
     }
@@ -159,10 +191,35 @@ export function foldSession(header, events) {
       const compaction = lastCompaction ?? { at: event.time, turn: event.data?.turn ?? null, startedAt: null, endedAt: null }
       compaction.endedAt = event.time
       compaction.shadowedTokens = shadowed || null
-      compaction.usage = usageOf(event.data?.usage)
+      const usage = usageOf(event.data?.usage)
+      const compactionModel = typeof event.data?.model === 'string' && event.data.model !== '' ? event.data.model : model?.model ?? null
+      const cost = usage ? costOf(compactionModel, usage) : null
+      compaction.usage = usage
+      compaction.model = compactionModel
+      compaction.cost = cost
       if (compaction.startedAt !== null) compaction.durationMs = event.time - compaction.startedAt
       lastCompaction = compaction
       base.counts.compactions += 1
+      const bucket = bucketOf(event.time)
+      bucket.compactions += 1
+      // 压缩摘要也是一次模型调用；旧实现只把它存进 compaction.usage，没有进总账。
+      if (usage) {
+        base.usage.input += usage.input
+        base.usage.cacheRead += usage.cacheRead
+        base.usage.cacheWrite += usage.cacheWrite
+        base.usage.output += usage.output
+        base.usage.prompt += usage.prompt
+        base.usage.total += usage.total
+        bucket.tokens += usage.total
+        bucket.input += usage.input
+        bucket.cacheRead += usage.cacheRead
+        bucket.cacheWrite += usage.cacheWrite
+        bucket.output += usage.output
+        if (cost !== null) {
+          base.cost = (base.cost ?? 0) + cost
+          bucket.cost = (bucket.cost ?? 0) + cost
+        }
+      }
       compactions.push(compaction)
       timeline.push({ time: compaction.endedAt, kind: 'compaction', label: '压缩', detail: shadowed > 0 ? `${shadowed} tokens` : '' })
       continue
@@ -196,14 +253,28 @@ export function foldSession(header, events) {
       base.usage.output += usage.output
       base.usage.prompt += usage.prompt
       base.usage.total += usage.total
-      if (cost !== null) base.cost = (base.cost ?? 0) + cost
+      const bucket = bucketOf(event.time)
+      bucket.tokens += usage.total
+      bucket.input += usage.input
+      bucket.cacheRead += usage.cacheRead
+      bucket.cacheWrite += usage.cacheWrite
+      bucket.output += usage.output
+      bucket.requests += 1
+      if (cost !== null) {
+        base.cost = (base.cost ?? 0) + cost
+        bucket.cost = (bucket.cost ?? 0) + cost
+      }
       continue
     }
   }
 
   for (const started of turnStarts.values()) {
     const last = list[list.length - 1].time
-    if (last > started) activeMs += last - started
+    if (last > started) {
+      const duration = last - started
+      activeMs += duration
+      bucketOf(last).activeMs += duration
+    }
   }
   base.counts.turns = seenTurns.size
   base.activeMs = activeMs
@@ -212,6 +283,7 @@ export function foldSession(header, events) {
   base.model = model?.model ?? null
   base.requests = requests
   base.compactions = compactions
+  base.daily = [...daily.values()].sort((a, b) => a.date.localeCompare(b.date))
   base.timeline = timeline.slice(-200)
   base.cacheHit = base.usage.input + base.usage.cacheRead > 0 ? base.usage.cacheRead / (base.usage.input + base.usage.cacheRead) : null
   return base
@@ -249,26 +321,41 @@ export function summarizeFolds(folds, options = {}) {
     const time = now - index * 24 * 60 * 60 * 1000
     daily.set(dateKey(time), { date: dateKey(time), tokens: 0, output: 0, cost: null, requests: 0 })
   }
+  // 按日粒度取数：KPI 与图表用同一批 bucket，避免“KPI 算整段会话、图表只算区间请求”。
+  const startDate = dateKey(start)
   for (const fold of sessions) {
-    totals.tokens += fold.usage.total
-    totals.input += fold.usage.input
-    totals.cacheRead += fold.usage.cacheRead
-    totals.output += fold.usage.output
-    totals.toolCalls += fold.counts.toolCalls
-    totals.compactions += fold.counts.compactions
-    totals.injections += fold.counts.injections
-    totals.activeMs += fold.activeMs
-    if (fold.cost !== null) {
-      totals.cost = (totals.cost ?? 0) + fold.cost
+    const buckets = Array.isArray(fold.daily) ? fold.daily : null
+    if (!buckets) {
+      // 兼容没有 daily 的旧/部分 fold：退回整段会话口径。
+      totals.tokens += fold.usage.total
+      totals.input += fold.usage.input
+      totals.cacheRead += fold.usage.cacheRead
+      totals.output += fold.usage.output
+      totals.toolCalls += fold.counts.toolCalls
+      totals.compactions += fold.counts.compactions
+      totals.injections += fold.counts.injections
+      totals.activeMs += fold.activeMs
+      if (fold.cost !== null) totals.cost = (totals.cost ?? 0) + fold.cost
+      continue
     }
-    for (const request of fold.requests) {
-      if (request.time < start) continue
-      const bucket = daily.get(dateKey(request.time))
-      if (!bucket) continue
-      bucket.tokens += request.usage.total
-      bucket.output += request.usage.output
-      bucket.requests += 1
-      if (request.cost !== null) bucket.cost = (bucket.cost ?? 0) + request.cost
+    for (const bucket of buckets) {
+      if (!bucket || typeof bucket.date !== 'string' || bucket.date < startDate) continue
+      totals.tokens += number(bucket.tokens)
+      totals.input += number(bucket.input)
+      totals.cacheRead += number(bucket.cacheRead)
+      totals.output += number(bucket.output)
+      totals.toolCalls += number(bucket.toolCalls)
+      totals.compactions += number(bucket.compactions)
+      totals.injections += number(bucket.injections)
+      totals.activeMs += number(bucket.activeMs)
+      if (typeof bucket.cost === 'number') totals.cost = (totals.cost ?? 0) + bucket.cost
+      const chartBucket = daily.get(bucket.date)
+      if (chartBucket) {
+        chartBucket.tokens += number(bucket.tokens)
+        chartBucket.output += number(bucket.output)
+        chartBucket.requests += number(bucket.requests)
+        if (typeof bucket.cost === 'number') chartBucket.cost = (chartBucket.cost ?? 0) + bucket.cost
+      }
     }
   }
   const cacheBase = totals.input + totals.cacheRead

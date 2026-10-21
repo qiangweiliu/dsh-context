@@ -39,15 +39,29 @@ for (let i = 0; i < 60; i += 1) {
 }
 await sleep(2500)
 
+// 首次启动可能挡着 Preview Notice 弹窗；先点掉，否则 composer 拿不到焦点。
+await evaluate(`(() => {
+  const btn = Array.from(document.querySelectorAll('button')).find((b) => /^(Continue|继续)$/.test((b.textContent || '').trim()))
+  if (!btn) return false
+  btn.click()
+  return true
+})()`)
+await sleep(1200)
+
 // 可选：先在输入框里执行一条斜杠命令（例如 /ctx），验证命令真的注册并可执行。
 let runResult = null
 if (runText) {
-  const focused = await evaluate(`(async () => {
-    const el = document.querySelector('textarea, [contenteditable="true"]')
-    if (!el) return false
-    el.focus()
-    return document.activeElement === el
-  })()`)
+  // 工作区/会话初始化可能比首屏慢，轮询等待 composer 出现，而不是只查一次。
+  let focused = false
+  for (let i = 0; i < 30 && !focused; i += 1) {
+    focused = await evaluate(`(async () => {
+      const el = document.querySelector('textarea, [contenteditable="true"]')
+      if (!el) return false
+      el.focus()
+      return document.activeElement === el
+    })()`)
+    if (!focused) await sleep(500)
+  }
   if (focused) {
     await send('Input.insertText', { text: runText })
     await sleep(900)

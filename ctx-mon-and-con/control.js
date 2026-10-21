@@ -308,7 +308,13 @@ export function apply(ctx, config) {
       let changed = false
       const messages = decision.messages.map((message) => {
         if (!message || message.role !== 'user' || message.source?.kind !== 'user') return message
-        const content = Array.isArray(message.content) ? message.content : []
+        // content 可能是 block 数组、纯字符串或空值；纯字符串时必须保留原正文，
+        // 否则追加提示词会把用户这一轮输入整个清空。
+        const content = Array.isArray(message.content)
+          ? message.content
+          : typeof message.content === 'string'
+            ? [{ type: 'text', text: message.content }]
+            : []
         const already = content.some((block) => block?.type === 'text' && typeof block.text === 'string' && block.text.includes(suffix))
         if (already) return message
         changed = true

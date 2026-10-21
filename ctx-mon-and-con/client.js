@@ -20,7 +20,25 @@ window.__ModuleLoader__.load({
     const react = require('react')
 
     const NS = 'ctxMonAndCon'
-    const STATUS_PATH = '/api/ctx-mon-and-con/status'
+    /**
+     * API 路径必须相对页面 base 解析，而不是写死根路径：
+     * 反向代理部署在 /app/dsh/ 这类前缀下时，根路径 /api/... 会打到网关根并 404。
+     * 没有 document 的测试/SSR 环境退回根路径。
+     */
+    const STATUS_PATH = (() => {
+      try {
+        if (typeof document === 'undefined' || typeof document.baseURI !== 'string') return '/api/ctx-mon-and-con/status'
+        const base = new URL(document.baseURI)
+        if (!base.pathname.endsWith('/')) {
+          const last = base.pathname.slice(base.pathname.lastIndexOf('/') + 1)
+          if (last.includes('.')) base.pathname = base.pathname.slice(0, base.pathname.lastIndexOf('/') + 1)
+          else base.pathname += '/'
+        }
+        return new URL('api/ctx-mon-and-con/status', base).pathname
+      } catch {
+        return '/api/ctx-mon-and-con/status'
+      }
+    })()
     const PANEL_ID = 'ctx'
     const CONFIG_NAMESPACE = 'ctx-mon-and-con'
 
@@ -2794,8 +2812,32 @@ window.__ModuleLoader__.load({
       )
     }
 
+    /**
+     * 同一个页面里这个包可能被挂载两次（静态 bundle + 后续激活）。
+     * DSH 的槽位表不会按同 id 去重，重复 apply 会出现两个 ctx 导航/设置/ dock，
+     * 所以用 window 级标记做幂等；插件卸载时由 effect 清除，允许后续重新挂载。
+     */
+    const MOUNT_FLAG = '__ctxMonAndConMounted'
+    let mounted = false
+
     /** @param {unknown} ctx - 浏览器 cordis 上下文（slots / locale） */
     function apply(ctx) {
+      if (mounted) return undefined
+      const scope = typeof window !== 'undefined' ? window : null
+      if (scope && scope[MOUNT_FLAG]) return undefined
+      mounted = true
+      if (scope) {
+        scope[MOUNT_FLAG] = true
+        if (typeof ctx.effect === 'function') {
+          ctx.effect(() => () => {
+            mounted = false
+            try {
+              delete scope[MOUNT_FLAG]
+            } catch {}
+          }, 'ctx-mon-and-con: mount guard')
+        }
+      }
+
       ctx.effect(() => ctx.locale.register(NS, { en, zh }), 'ctx-mon-and-con: dictionaries')
 
       // prefers-reduced-motion：关闭本插件面板 / dock 的过渡与动画（不改宿主样式）。
@@ -2842,7 +2884,7 @@ window.__ModuleLoader__.load({
       const t = ctx.locale.bind(NS)
       const face = () => ({ t })
       const accountMeta = () => ({
-        version: '0.17.0',
+        version: '0.19.0',
         locale: ctx.locale.getSnapshot?.()?.active || 'zh',
         timezoneOffsetSeconds: -new Date().getTimezoneOffset() * 60,
       })

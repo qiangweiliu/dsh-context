@@ -2,15 +2,16 @@
 # 在 WSL 的 DSH profile 里安装 ctx-mon-and-con，并核对安装结果。
 #
 # 用法（在 Windows 侧执行）：
-#   wsl.exe -d Ubuntu-24.04 -e bash /mnt/c/Users/40410/Desktop/context/scripts/wsl-install.sh [profile]
+#   wsl.exe -d Ubuntu-24.04 -e bash <仓库>/scripts/wsl-install.sh [profile]
 #
 # 默认 profile=web；插件源码默认取本仓库的 ctx-mon-and-con，并复制到 ~/dsh-plugins/ctx-mon-and-con
 # （不直接在 /mnt/c 上 link 安装：drvfs 上的符号链接/性能都不适合做 profile 依赖）。
 set -uo pipefail
 export PATH="$HOME/.local/bin:$PATH"
 
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 PROFILE="${1:-web}"
-SRC="/mnt/c/Users/40410/Desktop/context/ctx-mon-and-con"
+SRC="${CTX_SRC:-$SCRIPT_DIR/../ctx-mon-and-con}"
 DEST="$HOME/dsh-plugins/ctx-mon-and-con"
 P="$HOME/.dsh/profiles/$PROFILE"
 PKG="ctx-mon-and-con"

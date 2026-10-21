@@ -42,20 +42,32 @@ const events = [
 
 const fold = foldSession({ id: 'session-test', createdAt: t0, cwd: '/work' }, events)
 check('标题取最后的 session/title', fold.title === '测试会话', fold.title)
-check('汇总 usage', fold.usage.total === 1080 && fold.usage.cacheRead === 900, fold.usage)
+check('汇总 usage（含压缩摘要调用）', fold.usage.total === 1110 && fold.usage.cacheRead === 900, fold.usage)
 check('请求数 / 轮数 / 工具调用', fold.requests.length === 2 && fold.counts.turns === 2 && fold.counts.toolCalls === 1, fold.counts)
-check('缓存命中率', Math.abs(fold.cacheHit - 900 / 1020) < 1e-9, fold.cacheHit)
-check('成本按模型价格估算', fold.cost !== null && Math.abs(fold.cost - 0.00087) < 1e-9, fold.cost)
+check('缓存命中率', Math.abs(fold.cacheHit - 900 / 1030) < 1e-9, fold.cacheHit)
+check('成本按模型价格估算（含压缩摘要）', fold.cost !== null && Math.abs(fold.cost - 0.00095) < 1e-9, fold.cost)
 check('压缩轮数与耗时', fold.counts.compactions === 1 && fold.compactions[0].durationMs === 2000, fold.compactions[0])
 check('压缩 shadowed tokens', fold.compactions[0].shadowedTokens === 1234, fold.compactions[0])
+check('压缩摘要 usage 进入总账', fold.compactions[0].usage?.total === 30 && fold.compactions[0].cost !== null, fold.compactions[0])
 check('时间线包含压缩/注入', fold.timeline.some((item) => item.kind === 'compaction') && fold.timeline.some((item) => item.kind === 'inject'), fold.timeline)
 check('活跃时长按 turn 计算', fold.activeMs === 1100 + 3200, fold.activeMs)
+check('按日桶覆盖全部事件', fold.daily.length === 1 && fold.daily[0].tokens === 1110 && fold.daily[0].requests === 2, fold.daily)
 
 const summary = summarizeFolds([fold], { now, days: 7 })
-check('聚合 KPI：会话/tokens', summary.kpi.sessions === 1 && summary.kpi.tokens === 1080, summary.kpi)
+check('聚合 KPI：会话/tokens', summary.kpi.sessions === 1 && summary.kpi.tokens === 1110, summary.kpi)
 check('聚合 KPI：压缩/注入计数', summary.kpi.compactions === 1 && summary.kpi.injections === 1, summary.kpi)
+check('聚合 KPI 与日图一致', summary.kpi.tokens === summary.daily.reduce((sum, day) => sum + day.tokens, 0), { kpi: summary.kpi.tokens, daily: summary.daily.reduce((sum, day) => sum + day.tokens, 0) })
 check('7 天桶补齐', summary.daily.length === 7, summary.daily.length)
 check('会话卡片字段', summary.sessions[0].id === 'session-test' && summary.sessions[0].title === '测试会话', summary.sessions[0])
+
+// 跨区间会话：KPI 只应统计区间内的日桶，而不是整段会话。
+const spanning = foldSession({ id: 'session-span', createdAt: now - 20 * 24 * 3600 * 1000 }, [
+  { type: 'assistant/message', seq: 1, time: now - 20 * 24 * 3600 * 1000, data: { usage: { inputTokens: 1000, outputTokens: 100, totalTokens: 1100 }, message: { source: { provider: 'deepseek', model: 'deepseek-chat' } } } },
+  { type: 'assistant/message', seq: 2, time: now - 1000, data: { usage: { inputTokens: 10, outputTokens: 5, totalTokens: 15 }, message: { source: { provider: 'deepseek', model: 'deepseek-chat' } } } },
+])
+const spanningSummary = summarizeFolds([spanning], { now, days: 7 })
+check('区间 KPI 只统计区间内用量', spanningSummary.kpi.tokens === 15, { kpi: spanningSummary.kpi.tokens, session: spanning.usage.total })
+check('区间 KPI 与日图一致（跨区间）', spanningSummary.kpi.tokens === spanningSummary.daily.reduce((sum, day) => sum + day.tokens, 0), spanningSummary.daily)
 
 const detail = sessionDetail(fold)
 check('会话详情：请求序列', detail.requests.length === 2 && detail.requests[0].prompt === 1000, detail.requests)

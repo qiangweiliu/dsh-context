@@ -1,7 +1,7 @@
 # 验收证据（ctx-mon-and-con）
 
 - 仓库：<https://github.com/qiangweiliu/dsh-context>（插件目录 `ctx-mon-and-con/`）
-- 版本：`0.17.0`（本文件随 manifest 兼容性声明一起提交）
+- 版本：`0.19.0`（本文件随 manifest 兼容性声明一起提交）
 - 采集日期：2026-10-18
 - 证据层级说明：`verified` = 本次固定源码上实际执行并记录结果；`partial` = 只在明确边界内验证；`unknown` = 未取得证据。**这些证据不构成独立安全审计，也不替代商城的专项审阅。**
 
@@ -205,6 +205,17 @@ npm 运行依赖：无；生命周期脚本：无
 - UI：headless Edge + CDP 在新增提示词表单使用默认位置「每次用户提问末尾」，保存后 `GET /inventory` 返回 `extraPromptPlacements: { "ui-rules": "user" }`。
 - 测试：`test/static.mjs` 60/60，`test/control.mjs` 51/51，`test/smoke.mjs` 48/48。
 - 局限：追加内容会写入 `user/message` 并在 UI 中可见，不是隐藏指令；模型是否服从仍是模型行为，不是插件能保证的。验证使用临时 profile 副本，未在 Desktop Electron profile 内实测。
+
+## E15. v0.19.0 修复验证（2026-10-21）
+
+- 环境：WSL Ubuntu 24.04，`dsh 0.2.0-rc.2`，隔离 `DSH_HOME=/tmp/dsh-verify`，从 `web` 模板创建 `ctxverify` profile，插件以 `link:` 安装；浏览器验证用 Linux Chromium + CDP。
+- 单元测试：`static 72/72`、`metrics 23/23`、`state 16/16`；集成测试：`control 54/54`、`smoke 48/48`、`prompt-state 11/11`。
+- 宿主实机：`GET /api/ctx-mon-and-con/status` 返回 `version:"0.19.0"`，`control.active:true`、`mode:"idle"`（自动挂载成功）。
+- 命令：在真实 Web UI 中发送 `/ctx` 后 `/status` 出现该会话的 measurement；`/ctx 200000` 后 `sessionBudgets` 为 `[{tokens:200000}]`；`/ctx reset` 后为空且 `/live` 的 `budget` 回到 `128000`。命令候选面板同时出现 `ctx` 与 `ctx-compact`。
+- 持久化：经 API 写入会话提示词文本 `VERIFY-TEXT` 和工具开关后，`~/.dsh/ctx-mon-and-con/session-toggles.json` 立即出现对应键；**重启 DSH** 后再切换另一个工具，`promptText` 仍保留（证明 `hydrate → snapshot` 往返生效）。
+- 全局开关：连续两次 POST 全局禁用 `bash`、`read`，profile patch 最终同时包含两项，`/inventory` 返回 `["bash","read"]`。
+- UI：设置 → Context length 面板渲染 `v0.19.0`、Context limit / Trigger at / Target at / Target 等控件；控制台 `0` error、`0` exception。
+- 局限：验证实例使用隔离 profile，未使用真实用户 profile；反向代理前缀场景由代码路径和静态断言覆盖，未在本机搭反代实测。
 
 ## 已知限制（unknown）
 

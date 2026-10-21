@@ -17,6 +17,9 @@
 /** 最多保留多少个会话的覆盖，防止长期运行无限增长。 */
 const MAX_OVERRIDES = 200
 
+/** 每个会话键控状态（工具/提示词开关、提示词文本）最多保留多少个会话。 */
+const MAX_SESSION_STATES = 200
+
 /** 全局默认预算（token）；宿主半侧 apply 时写入。 */
 let defaultBudget
 
@@ -222,6 +225,8 @@ export function setControlActive(active, mode) {
 const sessionTools = new Map()
 /** sessionId -> Set(prompt section name) */
 const sessionPrompts = new Map()
+/** sessionId -> Map(section name -> 文本)：会话级提示词覆盖（比全局优先）。 */
+const sessionPromptText = new Map()
 /** sessionId -> 最近一次请求装配后的清单 */
 const inventories = new Map()
 /** sessionId -> 最近一次实际应用的工具黑名单 */
@@ -236,6 +241,11 @@ const remember = (map, key, value, max) => {
   while (map.size > max) map.delete(map.keys().next().value)
 }
 
+/** 会话键控状态也做上限：长期运行时不让 session id 无限累积。 */
+const trimSessionStates = (map) => {
+  while (map.size > MAX_SESSION_STATES) map.delete(map.keys().next().value)
+}
+
 function toggleSet(map, sessionId, name, enabled) {
   let set = map.get(sessionId)
   if (!set) {
@@ -245,6 +255,7 @@ function toggleSet(map, sessionId, name, enabled) {
   if (enabled) set.delete(name)
   else set.add(name)
   if (set.size === 0) map.delete(sessionId)
+  trimSessionStates(map)
 }
 
 export function setSessionToolEnabled(sessionId, name, enabled) {
@@ -327,6 +338,30 @@ export function getGlobalDisabledTools() {
   return globalDisabledTools
 }
 
+/** 会话级提示词文本的落盘形态：sessionId -> { section name -> 文本 }。 */
+function snapshotSessionPromptText() {
+  const out = {}
+  for (const [sessionId, map] of sessionPromptText) {
+    if (map.size > 0) out[sessionId] = Object.fromEntries(map)
+  }
+  return out
+}
+
+/** 从磁盘恢复会话级提示词文本；非法条目跳过，不抛错。 */
+function hydrateSessionPromptText(value) {
+  sessionPromptText.clear()
+  if (!value || typeof value !== 'object' || Array.isArray(value)) return
+  for (const [sessionId, texts] of Object.entries(value)) {
+    if (!texts || typeof texts !== 'object' || Array.isArray(texts)) continue
+    const map = new Map()
+    for (const [name, text] of Object.entries(texts)) {
+      if (typeof name === 'string' && typeof text === 'string') map.set(name, text)
+    }
+    if (map.size > 0) sessionPromptText.set(sessionId, map)
+  }
+  trimSessionStates(sessionPromptText)
+}
+
 /** 会话开关持久化：导出为纯 JSON。 */
 export function snapshotSessionToggles() {
   const tools = {}
@@ -344,12 +379,11 @@ export function hydrateSessionToggles(data) {
   const prompts = data && data.prompts && typeof data.prompts === 'object' ? data.prompts : {}
   for (const [sessionId, names] of Object.entries(tools)) if (Array.isArray(names) && names.length > 0) sessionTools.set(sessionId, new Set(names))
   for (const [sessionId, names] of Object.entries(prompts)) if (Array.isArray(names) && names.length > 0) sessionPrompts.set(sessionId, new Set(names))
+  trimSessionStates(sessionTools)
+  trimSessionStates(sessionPrompts)
   hydrateSessionPromptText(data && data.promptText)
   if (data && typeof data.autoMountControl === 'boolean') autoMountControl = data.autoMountControl
 }
-
-/** sessionId -> Map(section name -> 文本)：会话级提示词覆盖（比全局优先）。 */
-const sessionPromptText = new Map()
 
 export function setSessionPromptText(sessionId, name, text) {
   let map = sessionPromptText.get(sessionId)
@@ -358,12 +392,13 @@ export function setSessionPromptText(sessionId, name, text) {
     sessionPromptText.set(sessionId, map)
   }
   map.set(name, String(text))
+  trimSessionStates(sessionPromptText)
 }
 
 export function clearSessionPromptText(sessionId, name) {
   const map = sessionPromptText.get(sessionId)
   if (!map) return
-  if (typeof name === "string") map.delete(name)
+  if (typeof name === 'string') map.delete(name)
   else map.clear()
   if (map.size === 0) sessionPromptText.delete(sessionId)
 }

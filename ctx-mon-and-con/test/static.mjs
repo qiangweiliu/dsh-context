@@ -194,6 +194,17 @@ check('sidebar.panellist 图标组件是函数', typeof bySlot('sidebar.panellis
 const stateModule = await import(new URL('../state.js', import.meta.url).href)
 check('state 导出压缩记录接口', ['recordCompactionEvent', 'listCompactionLog', 'hydrateCompactionLog', 'subscribeCompactionLog'].every((name) => typeof stateModule[name] === 'function'))
 check('client 含可折叠压缩记录容器', clientSource.includes('data-ctx-compact-log') && clientSource.includes('data-ctx-log-toggle'))
+check('client API 路径相对 document.baseURI 解析（兼容反代前缀）', clientSource.includes('document.baseURI') && clientSource.includes("new URL('api/ctx-mon-and-con/status'"), null)
+const clientVersion = clientSource.match(/version:\s*'([^']+)'/)?.[1]
+check('client accountMeta version 与 package.json 一致', clientVersion === manifest.version, `${clientVersion} vs ${manifest.version}`)
+
+// 同一个 window 下加载两次：第二次 apply 必须被挂载守卫挡住，不能重复注册槽位。
+const sharedScope = {}
+const firstMount = loadClient(clientSource, { scope: sharedScope })
+const secondMount = loadClient(clientSource, { scope: sharedScope })
+for (const inject of firstMount.slotInjects) inject.callback()
+for (const inject of secondMount.slotInjects) inject.callback()
+check('client 重复挂载只注册一次', firstMount.slotRegistrations.length === 5 && secondMount.slotRegistrations.length === 0, `${firstMount.slotRegistrations.length}/${secondMount.slotRegistrations.length}`)
 
 const failed = checks.filter((entry) => !entry.ok)
 console.log(`\n[static] ${checks.length - failed.length}/${checks.length} 项通过`)

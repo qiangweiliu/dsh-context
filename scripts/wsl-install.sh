@@ -68,9 +68,27 @@ grep -q 'patch: entry' /tmp/ctx-dump.err && say "（提示：cordis.patch.yml �
 
 VER=$(node -e "console.log(require('$P/node_modules/$PKG/package.json').version)")
 say "== 安装完成：$PKG@$VER 已进入 profile $PROFILE"
+
+say "== 6. 热加载检查（运行中的 Web 实例）"
+HOT_URL="${CTX_URL:-}"
+if [ -z "$HOT_URL" ] && [ -f /tmp/ctx-ui-version.log ]; then
+  HOT_URL=$(grep -o 'http://[^ ]*token=[A-Za-z0-9_-]*' /tmp/ctx-ui-version.log | tail -1)
+fi
+if [ -n "$HOT_URL" ]; then
+  if node "$SCRIPT_DIR/wait-for-ctx-plugin.mjs" "$HOT_URL" 15; then
+    ok "插件已在运行中的页面热加载（无需重启 DSH）"
+  else
+    say "  - 未自动就绪：先刷新页面；只有替换已安装包/宿主模块才需要重启 DSH"
+  fi
+else
+  say "  - 未发现运行中的 Web 实例；启动 profile 后会随启动加载"
+fi
+
 say ""
-say "接下来（需要时）："
-say "  - 启动/重启该 profile 的 dsh，会话里发 /ctx 看用量"
+say "接下来："
+say "  - dsh 正在运行：HMR 会在数秒内挂载插件；页面没更新就刷新一次（无需重启 DSH）"
+say "  - dsh 未运行：启动后生效；会话里发 /ctx 看用量"
+say "  - 升级/替换已安装包：DSH 会缓存模块代际，这种场景仍需重启进程"
 say "  - 想测自动压缩：把控制行挂进 agent preset："
 say "      - id: ctx-mon-and-con-control"
 say "        name: 'ctx-mon-and-con/control'"

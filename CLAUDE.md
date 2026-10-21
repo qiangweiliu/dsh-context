@@ -4,7 +4,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## 项目概览
 
-DeepSeek Harness（DSH）的上下文管理插件仓库。可发布的主体是 `ctx-mon-and-con/`（npm 包名 `ctx-mon-and-con`，当前 `package.json` 版本 `0.19.0`），其余目录是配套资产：
+DeepSeek Harness（DSH）的上下文管理插件仓库。可发布的主体是 `ctx-mon-and-con/`（npm 包名 `ctx-mon-and-con`，当前 `package.json` 版本 `0.19.1`），其余目录是配套资产：
 
 - `eval/`：提示词 / 推理档位对照评测（GSM8K、MATH Level 5），以及结果与报告。
 - `research/`、`explore/`：对 DSH 插件机制、compaction、UI 的逆向调研与设计笔记。
@@ -73,6 +73,7 @@ bash scripts/wsl-uninstall.sh web
 bash scripts/wsl-start-web.sh 3080        # 启动 WSL web profile，输出带 token 的 URL
 node scripts/ui-probe.mjs "<url>" --section=... 
 node scripts/ui-screenshot.mjs "<url>" <out.png>
+node scripts/wait-for-ctx-plugin.mjs "<url>" 15   # 等待运行中的实例热加载插件
 node scripts/clean-ctx-profile-patch.mjs ~/.dsh/profiles/<profile>
 ```
 
@@ -120,7 +121,7 @@ UI 脚本通过 Windows Edge 的 CDP 连接（`scripts/lib/cdp.mjs`，默认 Edg
 ## 开发约定与易错点
 
 - 版本号以 `ctx-mon-and-con/package.json` 为准。根 `README.md`、`docs/IMPLEMENTATION.md`、`docs/EVIDENCE.md` 和 `client.js` 的 `accountMeta().version` 是手工维护的副本；`test/static.mjs` 现在会断言 `client.js` 版本与 `package.json` 一致。改版本时仍要同步文档。
-- 插件更新/安装/修改 `client.js` 后需要完整重启 DSH，刷新页面不会重新加载侧栏、设置分区或命令。
+- 首次安装/启停由 DSH HMR 热生效，不需要重启 DSH；页面没更新时刷新一次即可。替换已安装包（升级版本）仍需要重启 DSH 进程；修改 `client.js` 后 HMR 会重载，失败时刷新页面。面板在宿主/客户端版本不一致时会显示“刷新页面”提示。
 - 第三方插件不能默认 `import '@deepseek-ai/*'`；集成测试才从 app.asar 解出真实 Cordis。
 - 测试会临时改 `HOME`/`USERPROFILE` 到临时目录（`smoke.mjs`、`prompt-state.mjs`），避免污染真实 profile；新增落盘逻辑时保持这一习惯。
 - 不要手改 `cordis.yml`（恒为空）；用户 tweak 写 `cordis.patch.yml`，插件自身走 `ctx.configEditor`。

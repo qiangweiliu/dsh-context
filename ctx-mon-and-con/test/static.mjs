@@ -195,8 +195,9 @@ const stateModule = await import(new URL('../state.js', import.meta.url).href)
 check('state 导出压缩记录接口', ['recordCompactionEvent', 'listCompactionLog', 'hydrateCompactionLog', 'subscribeCompactionLog'].every((name) => typeof stateModule[name] === 'function'))
 check('client 含可折叠压缩记录容器', clientSource.includes('data-ctx-compact-log') && clientSource.includes('data-ctx-log-toggle'))
 check('client API 路径相对 document.baseURI 解析（兼容反代前缀）', clientSource.includes('document.baseURI') && clientSource.includes("new URL('api/ctx-mon-and-con/status'"), null)
-const clientVersion = clientSource.match(/version:\s*'([^']+)'/)?.[1]
-check('client accountMeta version 与 package.json 一致', clientVersion === manifest.version, `${clientVersion} vs ${manifest.version}`)
+const clientVersion = clientSource.match(/CLIENT_VERSION\s*=\s*'([^']+)'/)?.[1]
+check('client CLIENT_VERSION 与 package.json 一致', clientVersion === manifest.version, `${clientVersion} vs ${manifest.version}`)
+check('client 宿主/客户端版本不一致时提示刷新页面', clientSource.includes('data-ctx-version-mismatch') && clientSource.includes('data-ctx-reload') && clientSource.includes('CLIENT_VERSION'))
 
 // 同一个 window 下加载两次：第二次 apply 必须被挂载守卫挡住，不能重复注册槽位。
 const sharedScope = {}

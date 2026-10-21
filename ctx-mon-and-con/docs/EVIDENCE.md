@@ -1,7 +1,7 @@
 # 验收证据（ctx-mon-and-con）
 
 - 仓库：<https://github.com/qiangweiliu/dsh-context>（插件目录 `ctx-mon-and-con/`）
-- 版本：`0.19.0`（本文件随 manifest 兼容性声明一起提交）
+- 版本：`0.19.1`（本文件随 manifest 兼容性声明一起提交）
 - 采集日期：2026-10-18
 - 证据层级说明：`verified` = 本次固定源码上实际执行并记录结果；`partial` = 只在明确边界内验证；`unknown` = 未取得证据。**这些证据不构成独立安全审计，也不替代商城的专项审阅。**
 
@@ -216,6 +216,20 @@ npm 运行依赖：无；生命周期脚本：无
 - 全局开关：连续两次 POST 全局禁用 `bash`、`read`，profile patch 最终同时包含两项，`/inventory` 返回 `["bash","read"]`。
 - UI：设置 → Context length 面板渲染 `v0.19.0`、Context limit / Trigger at / Target at / Target 等控件；控制台 `0` error、`0` exception。
 - 局限：验证实例使用隔离 profile，未使用真实用户 profile；反向代理前缀场景由代码路径和静态断言覆盖，未在本机搭反代实测。
+
+## E16. v0.19.1 安装热加载验证（2026-10-21）
+
+- 环境：WSL Ubuntu 24.04，`dsh 0.2.0-rc.2`，隔离 `DSH_HOME` + 从 `web` 模板创建的 `firstinstall` profile；Linux Chromium + CDP。
+- 场景：先启动空的 Web 实例并打开页面，确认导航里没有 `ctx`；保持页面打开，执行 `dsh plugin --profile firstinstall add <本仓库/ctx-mon-and-con>`。
+- 结果：
+  - 安装后 t+2s 导航仍无 `ctx`，t+4s 出现 `ctx`，页面未刷新、DSH 未重启；
+  - 控制台 0 error、0 exception；
+  - 运行中 `dsh plugin remove` 后导航立即消失，重新 add 后再次出现；
+  - 新进程加载 `0.19.1`：`GET /status` 返回 `version:"0.19.1"`、`control.active:true`、`mode:"idle"`；
+  - `scripts/wait-for-ctx-plugin.mjs <url> 10` 返回 `hot-loaded: ctx-mon-and-con@0.19.1`。
+- 版本不一致提示：临时把客户端 `CLIENT_VERSION` 设为 `0.19.0`、宿主保持 `0.19.1`，真实页面出现 `data-ctx-version-mismatch` 与 “Reload page” 按钮；改回 `0.19.1` 后提示消失，控制台 0 error。
+- 结论：首次安装、启用/停用由 DSH HMR 热生效，**不需要重启 DSH**；`LIMITATIONS.md` 中“必须完整重启”的旧描述已更正。
+- 边界：**替换已安装包（升级版本）**仍是 DSH 的例外，官方要求重启进程；本次未在 Desktop Electron 实例内复测，Desktop 若客户端模块图未更新，刷新页面即可（生产构建没有暴露 Reload Page 菜单时需重启应用）。
 
 ## 已知限制（unknown）
 

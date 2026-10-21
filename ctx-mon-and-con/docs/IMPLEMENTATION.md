@@ -2,7 +2,7 @@
 
 本文描述 `ctx-mon-and-con` 的内部结构、集成点和验证方式。面向用户的功能说明见 [README.md](../README.md)；约束与已知限制见 [LIMITATIONS.md](LIMITATIONS.md)。
 
-当前版本：`0.19.0`
+当前版本：`0.19.1`
 
 ## 1. 两个半侧
 
@@ -177,7 +177,7 @@ profile package.json dependencies
 → Loader 读取 dsh.bundle.patch.yml
 ```
 
-本地目录安装会记录为 `link:` 依赖。卸载会从 `dsh.profile.bundles` 移除；运行中的进程仍保留已加载模块，需要重启 DSH 才真正消失。
+本地目录安装会记录为 `link:` 依赖。首次安装与启停由 DSH HMR 热生效：宿主半侧在数秒内挂载，Web 页面会跟随客户端模块图更新；页面没更新时刷新一次即可，不需要重启 DSH。卸载会从 `dsh.profile.bundles` 移除并热卸载。**替换已安装包（升级版本）仍是例外**：DSH 缓存已挂载包的 manifest 与模块代际，官方要求重启进程。
 
 自动挂载或全局配置写入会在 profile patch 中留下顶层插件行与 preset 行。单纯 `dsh plugin remove` 不会清理这些行；需要时使用仓库脚本：
 
@@ -213,7 +213,7 @@ node --check client.js
 当前结果：
 
 ```text
-static       72/72
+static       73/73
 metrics      23/23
 state        16/16
 control      54/54

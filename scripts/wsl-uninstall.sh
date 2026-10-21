@@ -102,7 +102,7 @@ fi
 say ""
 if [ "$FAILED" -eq 0 ]; then
   say "结论：$PKG 已从 profile $PROFILE 卸载，依赖/bundles/node_modules/组合树均无该插件。"
-  say "注意：需重启 dsh 进程后 /ctx 与设置面板才会消失（运行中的进程保留已加载模块）。"
+  say "注意：HMR 会即时卸载 /ctx 与设置面板；若页面仍显示旧界面，刷新页面即可。只有替换已安装包/宿主模块才需要重启 dsh 进程。"
   exit 0
 else
   say "结论：存在未通过项，见上面 FAIL。"; exit 1

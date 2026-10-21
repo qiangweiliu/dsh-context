@@ -20,6 +20,8 @@ window.__ModuleLoader__.load({
     const react = require('react')
 
     const NS = 'ctxMonAndCon'
+    /** 与 package.json 版本保持一致；宿主版本不同时提示刷新页面而不是重启 DSH。 */
+    const CLIENT_VERSION = '0.19.1'
     /**
      * API 路径必须相对页面 base 解析，而不是写死根路径：
      * 反向代理部署在 /app/dsh/ 这类前缀下时，根路径 /api/... 会打到网关根并 404。
@@ -49,6 +51,8 @@ window.__ModuleLoader__.load({
       title: 'Context length',
       pageTitle: 'Context monitor',
       versionLabel: 'Plugin version',
+      reloadUi: 'Reload page',
+      reloadHint: 'The plugin was updated; reload the page to load the new UI (no DSH restart needed).',
       description: 'Monitors this session’s context usage and edits the plugin’s global context limit.',
       budget: 'Context limit',
       budgetLimit: 'Budget cap',
@@ -242,6 +246,8 @@ window.__ModuleLoader__.load({
       title: '上下文长度',
       pageTitle: '上下文监控',
       versionLabel: '插件版本',
+      reloadUi: '刷新页面',
+      reloadHint: '插件已更新，刷新页面即可加载新界面（无需重启 DSH）。',
       description: '监控当前会话的上下文占用，并编辑插件的全局上下文配置。',
       budget: '上下文',
       budgetLimit: '预算上限',
@@ -2728,6 +2734,29 @@ window.__ModuleLoader__.load({
         ),
       ]
 
+      // 宿主已更新但当前页面还是旧客户端 bundle：提示刷新页面。DSH 的客户端模块
+      // 图不会替换已加载的包代码；刷新页面即可，不需要重启整个 DSH。
+      if (data && data.version && data.version !== CLIENT_VERSION) {
+        children.push(h('div', {
+          key: 'versionMismatch',
+          style: styles.banner,
+          'data-ctx-version-mismatch': '1',
+          title: `${CLIENT_VERSION} → ${data.version}`,
+        },
+          h('span', null, t('reloadHint')),
+          h('button', {
+            type: 'button',
+            style: styles.button,
+            'data-ctx-reload': '1',
+            onClick: () => {
+              try {
+                globalThis.location.reload()
+              } catch {}
+            },
+          }, t('reloadUi')),
+        ))
+      }
+
       if (state.phase === 'loading') {
         children.push(h('div', { key: 'loading', style: styles.card }, h('div', { style: styles.skeletonStack },
           h('div', { style: { ...styles.skeleton, width: '38%', height: '14px' } }),
@@ -2884,7 +2913,7 @@ window.__ModuleLoader__.load({
       const t = ctx.locale.bind(NS)
       const face = () => ({ t })
       const accountMeta = () => ({
-        version: '0.19.0',
+        version: CLIENT_VERSION,
         locale: ctx.locale.getSnapshot?.()?.active || 'zh',
         timezoneOffsetSeconds: -new Date().getTimezoneOffset() * 60,
       })

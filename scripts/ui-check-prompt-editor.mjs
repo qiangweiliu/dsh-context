@@ -31,36 +31,36 @@ const openEditor = await evaluate(`(async () => {
   if (!sidebar) return { ok: false, why: 'sidebar ctx not found' }
   sidebar.click()
   await new Promise((r) => setTimeout(r, 2500))
-  const prompts = document.querySelector('[data-ctx-section="prompts"]')
+  const prompts = document.querySelector('[data-embodiment-section="prompts"]')
   if (!prompts) return { ok: false, why: 'prompts section not found' }
   prompts.click()
   await new Promise((r) => setTimeout(r, 500))
   const key = 'prompt:${TARGET}'
-  const row = document.querySelector('[data-ctx-expand="' + key + '"]')
+  const row = document.querySelector('[data-embodiment-expand="' + key + '"]')
   if (!row) return { ok: false, why: 'target section row not found' }
   row.click()
   await new Promise((r) => setTimeout(r, 500))
-  const edit = document.querySelector('[data-ctx-prompt-edit="${TARGET}"]')
+  const edit = document.querySelector('[data-embodiment-prompt-edit="${TARGET}"]')
   if (!edit) return { ok: false, why: 'edit button not found' }
-  const before = (document.querySelector('[data-ctx-detail="' + key + '"]') || {}).textContent || ''
+  const before = (document.querySelector('[data-embodiment-detail="' + key + '"]') || {}).textContent || ''
   edit.click()
   await new Promise((r) => setTimeout(r, 400))
-  const area = document.querySelector('[data-ctx-prompt-editor="${TARGET}"]')
+  const area = document.querySelector('[data-embodiment-prompt-editor="${TARGET}"]')
   if (!area) return { ok: false, why: 'editor textarea not found' }
   const setter = Object.getOwnPropertyDescriptor(window.HTMLTextAreaElement.prototype, 'value').set
   setter.call(area, ${JSON.stringify(EDITED)})
   area.dispatchEvent(new Event('input', { bubbles: true }))
   await new Promise((r) => setTimeout(r, 300))
-  const save = document.querySelector('[data-ctx-prompt-save="${TARGET}"]')
+  const save = document.querySelector('[data-embodiment-prompt-save="${TARGET}"]')
   if (!save) return { ok: false, why: 'save button not found' }
   save.click()
   await new Promise((r) => setTimeout(r, 400))
-  const confirm = document.querySelector('[data-ctx-prompt-confirm="${TARGET}"]')
+  const confirm = document.querySelector('[data-embodiment-prompt-confirm="${TARGET}"]')
   if (!confirm) return { ok: false, why: 'confirm button not found' }
   confirm.click()
   await new Promise((r) => setTimeout(r, 1800))
-  const after = (document.querySelector('[data-ctx-detail="' + key + '"]') || {}).textContent || ''
-  const overrides = await fetch('/api/ctx-mon-and-con/status/inventory', { headers: { accept: 'application/json' } })
+  const after = (document.querySelector('[data-embodiment-detail="' + key + '"]') || {}).textContent || ''
+  const overrides = await fetch('/api/agent-embodiment/status/inventory', { headers: { accept: 'application/json' } })
     .then((r) => r.json())
     .then((j) => j.promptOverrides)
     .catch(() => null)
@@ -80,32 +80,32 @@ const applied = await evaluate(`(async () => {
   if (!sidebar) return { ok: false, why: 'sidebar ctx not found' }
   sidebar.click()
   await new Promise((r) => setTimeout(r, 2500))
-  const prompts = document.querySelector('[data-ctx-section="prompts"]')
+  const prompts = document.querySelector('[data-embodiment-section="prompts"]')
   if (prompts) { prompts.click(); await new Promise((r) => setTimeout(r, 500)) }
   const key = 'prompt:${TARGET}'
-  const row = document.querySelector('[data-ctx-expand="' + key + '"]')
+  const row = document.querySelector('[data-embodiment-expand="' + key + '"]')
   if (!row) return { ok: false, why: 'target row missing after reload' }
   row.click()
   await new Promise((r) => setTimeout(r, 500))
-  const text = (document.querySelector('[data-ctx-detail="' + key + '"]') || {}).textContent || ''
-  const overridden = Boolean(document.querySelector('[data-ctx-prompt-reset="${TARGET}"]'))
+  const text = (document.querySelector('[data-embodiment-detail="' + key + '"]') || {}).textContent || ''
+  const overridden = Boolean(document.querySelector('[data-embodiment-prompt-reset="${TARGET}"]'))
   return { ok: true, text: text.slice(0, 90), overridden }
 })()`)
 
 // 5) 点「恢复原文」并确认覆盖被清空
 const restored = await evaluate(`(async () => {
-  const reset = document.querySelector('[data-ctx-prompt-reset="${TARGET}"]')
+  const reset = document.querySelector('[data-embodiment-prompt-reset="${TARGET}"]')
   if (!reset) return { ok: false, why: 'reset button not found' }
   reset.click()
   await new Promise((r) => setTimeout(r, 2500))
   for (let i = 0; i < 12; i += 1) {
-    const state = await fetch('/api/ctx-mon-and-con/status/inventory', { headers: { accept: 'application/json' } })
+    const state = await fetch('/api/agent-embodiment/status/inventory', { headers: { accept: 'application/json' } })
       .then((r) => r.json())
       .catch(() => null)
     if (state && state.promptOverrides && Object.keys(state.promptOverrides).length === 0) return { ok: true, overrides: state.promptOverrides }
     await new Promise((r) => setTimeout(r, 800))
   }
-  const last = await fetch('/api/ctx-mon-and-con/status/inventory', { headers: { accept: 'application/json' } }).then((r) => r.json()).catch(() => null)
+  const last = await fetch('/api/agent-embodiment/status/inventory', { headers: { accept: 'application/json' } }).then((r) => r.json()).catch(() => null)
   return { ok: false, overrides: last && last.promptOverrides }
 })()`)
 

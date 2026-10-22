@@ -1,7 +1,7 @@
 {
-  "name": "ctx-mon-and-con",
-  "version": "0.20.0",
-  "description": "DSH 上下文长度管理插件：/ctx 查看会话 token 用量与预算；可选的 control 半侧挂在 agent preset 内，按预算自动压缩",
+  "name": "agent-embodiment",
+  "version": "0.21.0",
+  "description": "Give DeepSeek Harness agents a body: context budgets, compaction, environment sensing, tools, subagents, and agent scaffolds.",
   "type": "module",
   "main": "index.js",
   "scripts": {
@@ -42,13 +42,17 @@
     "dsh",
     "dsh-plugin",
     "context",
+    "agent",
+    "embodiment",
+    "scaffold",
+    "mcp",
     "token-budget"
   ],
   "license": "MIT",
   "repository": {
     "type": "git",
     "url": "git+https://github.com/qiangweiliu/dsh-context.git",
-    "directory": "ctx-mon-and-con"
+    "directory": "agent-embodiment"
   },
   "dsh": {
     "manifestVersion": 1,

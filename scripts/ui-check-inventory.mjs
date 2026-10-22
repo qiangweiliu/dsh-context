@@ -21,22 +21,22 @@ const panel = await evaluate(`(async () => {
   if (!btn) return { ok: false, why: 'sidebar ctx not found' }
   btn.click()
   await new Promise((r) => setTimeout(r, 2500))
-  const switches = Array.from(document.querySelectorAll('[data-ctx-switch]')).map((el) => el.getAttribute('data-ctx-switch'))
+  const switches = Array.from(document.querySelectorAll('[data-embodiment-switch]')).map((el) => el.getAttribute('data-embodiment-switch'))
   const body = document.body.innerText || ''
   const firstTool = switches.find((key) => key.startsWith('tool:'))
   return { ok: true, switches, firstTool, body: body.slice(0, 2200) }
 })()`)
 
-const readInventory = () => evaluate("fetch('/api/ctx-mon-and-con/status/inventory', { headers: { accept: 'application/json' } }).then((r) => r.json()).catch(() => null)")
+const readInventory = () => evaluate("fetch('/api/agent-embodiment/status/inventory', { headers: { accept: 'application/json' } }).then((r) => r.json()).catch(() => null)")
 const before = await readInventory()
 
 const toggle = panel.ok && panel.firstTool ? await evaluate(`(async () => {
   const key = ${JSON.stringify(panel.firstTool)}
-  const el = document.querySelector('[data-ctx-switch="' + key + '"]')
+  const el = document.querySelector('[data-embodiment-switch="' + key + '"]')
   if (!el) return { ok: false, why: 'switch missing' }
   el.click()
   await new Promise((r) => setTimeout(r, 300))
-  const confirm = document.querySelector('[data-ctx-confirm]')
+  const confirm = document.querySelector('[data-embodiment-confirm]')
   if (!confirm) return { ok: false, why: 'confirm missing' }
   confirm.click()
   await new Promise((r) => setTimeout(r, 1800))
@@ -48,11 +48,11 @@ const firstPrompt = panel.switches.find((key) => key.startsWith('prompt:'))
 const promptToggle = firstPrompt
   ? await evaluate(`(async () => {
       const key = ${JSON.stringify(firstPrompt)}
-      const el = document.querySelector('[data-ctx-switch="' + key + '"]')
+      const el = document.querySelector('[data-embodiment-switch="' + key + '"]')
       if (!el) return { ok: false, why: 'switch missing' }
       el.click()
       await new Promise((r) => setTimeout(r, 300))
-      const confirm = document.querySelector('[data-ctx-confirm]')
+      const confirm = document.querySelector('[data-embodiment-confirm]')
       if (!confirm) return { ok: false, why: 'confirm missing' }
       confirm.click()
       await new Promise((r) => setTimeout(r, 1500))

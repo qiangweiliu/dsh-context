@@ -60,7 +60,7 @@ for (const template of SCAFFOLD_TEMPLATES) {
   check(`${template.id}: patch 含 preset 行`, patch.includes(`id: "preset-${slug}"`) && patch.includes('name: "@deepseek-ai/dsh-agent-preset"'), patch.slice(0, 200))
   check(`${template.id}: patch 含 persona`, patch.includes('name: "@deepseek-ai/dsh-persona"'))
   check(`${template.id}: patch 含 sense 工具行`, patch.includes(`name: "dsh-embodiment-${slug}/senses"`), patch.slice(0, 400))
-  check(`${template.id}: patch 含上下文控制`, patch.includes('name: "ctx-mon-and-con/control"'))
+  check(`${template.id}: patch 含上下文控制`, patch.includes('name: "agent-embodiment/control"'))
   check(`${template.id}: patch 含 skill 工具`, patch.includes('@deepseek-ai/dsh-skill-filesystem') && patch.includes('@deepseek-ai/dsh-tool-skill'))
   if (template.tools.some((item) => item.name === '@deepseek-ai/dsh-tool-bash')) {
     check(`${template.id}: patch 含平台 shell 分支`, patch.includes('!!js process.platform === \'win32\'') && patch.includes('!!js process.platform !== \'win32\''))

@@ -2,7 +2,7 @@
  * Headless UI probe for the DSH web app (Windows Edge + CDP).
  *
  * 用途：不靠人眼，直接打开 WSL 里 `dsh --profile web` 的页面，展开设置，
- * 读导航项、抓控制台错误——用来确认 ctx-mon-and-con 的 settings.section 到底有没有注册。
+ * 读导航项、抓控制台错误——用来确认 agent-embodiment 的 settings.section 到底有没有注册。
  *
  * 依赖：Windows 自带 Edge；Node 22+ 的全局 WebSocket/fetch。
  * 用法：node scripts/ui-probe.mjs "http://127.0.0.1:3080/?token=..." [要查找的文本...]

@@ -21,40 +21,40 @@ const result = await evaluate(`(async () => {
   if (!btn) return { ok: false, why: 'sidebar ctx not found' }
   btn.click()
   await new Promise((r) => setTimeout(r, 2500))
-  const sections = Array.from(document.querySelectorAll('[data-ctx-section]')).map((el) => el.getAttribute('data-ctx-section'))
-  const collapsedExpands = document.querySelectorAll('[data-ctx-expand]').length
-  document.querySelector('[data-ctx-section="tools"]').click()
+  const sections = Array.from(document.querySelectorAll('[data-embodiment-section]')).map((el) => el.getAttribute('data-embodiment-section'))
+  const collapsedExpands = document.querySelectorAll('[data-embodiment-expand]').length
+  document.querySelector('[data-embodiment-section="tools"]').click()
   await new Promise((r) => setTimeout(r, 400))
-  const expands = Array.from(document.querySelectorAll('[data-ctx-expand]')).map((el) => el.getAttribute('data-ctx-expand'))
-  const collapsedCount = document.querySelectorAll('[data-ctx-detail]').length
+  const expands = Array.from(document.querySelectorAll('[data-embodiment-expand]')).map((el) => el.getAttribute('data-embodiment-expand'))
+  const collapsedCount = document.querySelectorAll('[data-embodiment-detail]').length
   // 展开第一个工具
   const firstTool = expands.find((key) => key.startsWith('tool:'))
   let toolDetail = null
   let toolSchema = null
   if (firstTool) {
-    document.querySelector('[data-ctx-expand="' + firstTool + '"]').click()
+    document.querySelector('[data-embodiment-expand="' + firstTool + '"]').click()
     await new Promise((r) => setTimeout(r, 400))
-    toolDetail = (document.querySelector('[data-ctx-detail="' + firstTool + '"]') || {}).textContent || null
-    toolSchema = (document.querySelector('[data-ctx-schema="' + firstTool + '"]') || {}).textContent || null
+    toolDetail = (document.querySelector('[data-embodiment-detail="' + firstTool + '"]') || {}).textContent || null
+    toolSchema = (document.querySelector('[data-embodiment-schema="' + firstTool + '"]') || {}).textContent || null
   }
   // 展开「提示词 section」大分区，再收起，验证折叠
-  document.querySelector('[data-ctx-section="prompts"]').click()
+  document.querySelector('[data-embodiment-section="prompts"]').click()
   await new Promise((r) => setTimeout(r, 300))
-  const promptsVisibleAfterExpand = Boolean(document.querySelector('[data-ctx-expand^="prompt:"]'))
-  document.querySelector('[data-ctx-section="prompts"]').click()
+  const promptsVisibleAfterExpand = Boolean(document.querySelector('[data-embodiment-expand^="prompt:"]'))
+  document.querySelector('[data-embodiment-section="prompts"]').click()
   await new Promise((r) => setTimeout(r, 300))
-  const promptsVisibleAfterCollapse = Boolean(document.querySelector('[data-ctx-expand^="prompt:"]'))
-  document.querySelector('[data-ctx-section="prompts"]').click()
+  const promptsVisibleAfterCollapse = Boolean(document.querySelector('[data-embodiment-expand^="prompt:"]'))
+  document.querySelector('[data-embodiment-section="prompts"]').click()
   await new Promise((r) => setTimeout(r, 300))
   // 展开第一个提示词
-  const promptKey = Array.from(document.querySelectorAll('[data-ctx-expand]')).map((el) => el.getAttribute('data-ctx-expand')).find((key) => key.startsWith('prompt:'))
+  const promptKey = Array.from(document.querySelectorAll('[data-embodiment-expand]')).map((el) => el.getAttribute('data-embodiment-expand')).find((key) => key.startsWith('prompt:'))
   let promptText = null
   let promptCopy = false
   if (promptKey) {
-    document.querySelector('[data-ctx-expand="' + promptKey + '"]').click()
+    document.querySelector('[data-embodiment-expand="' + promptKey + '"]').click()
     await new Promise((r) => setTimeout(r, 400))
-    promptText = (document.querySelector('[data-ctx-detail="' + promptKey + '"]') || {}).textContent || null
-    promptCopy = Boolean(document.querySelector('[data-ctx-detail="' + promptKey + '"]') && document.querySelectorAll('button').length > 0)
+    promptText = (document.querySelector('[data-embodiment-detail="' + promptKey + '"]') || {}).textContent || null
+    promptCopy = Boolean(document.querySelector('[data-embodiment-detail="' + promptKey + '"]') && document.querySelectorAll('button').length > 0)
   }
   return {
     ok: true,

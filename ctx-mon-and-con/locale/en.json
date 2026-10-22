@@ -1,6 +1,0 @@
-{
-  "meta": {
-    "title": "ctx-mon-and-con",
-    "description": "Shows context length, token budget and recent /ctx measurements; warns before the window fills up."
-  }
-}

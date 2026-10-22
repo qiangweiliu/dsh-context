@@ -25,48 +25,48 @@ if (phase === 'setup') {
   await sleep(10000)
   await sendMessage('second message so inventory is recorded')
   await sleep(10000)
-  const sessionId = (await api('/api/ctx-mon-and-con/status/inventory')).sessionId
+  const sessionId = (await api('/api/agent-embodiment/status/inventory')).sessionId
   const ui = await evaluate(`(async () => {
     const norm = (s) => (s || '').replace(/\\s+/g, ' ').trim()
     const sidebar = Array.from(document.querySelectorAll('button')).find((b) => norm(b.getAttribute('aria-label')) === 'ctx')
     if (!sidebar) return { ok: false, why: 'sidebar ctx not found' }
     sidebar.click()
     await new Promise((r) => setTimeout(r, 2500))
-    document.querySelector('[data-ctx-section="prompts"]').click()
+    document.querySelector('[data-embodiment-section="prompts"]').click()
     await new Promise((r) => setTimeout(r, 500))
     const key = 'prompt:${TARGET}'
-    document.querySelector('[data-ctx-expand="' + key + '"]').click()
+    document.querySelector('[data-embodiment-expand="' + key + '"]').click()
     await new Promise((r) => setTimeout(r, 500))
-    document.querySelector('[data-ctx-prompt-edit="${TARGET}"]').click()
+    document.querySelector('[data-embodiment-prompt-edit="${TARGET}"]').click()
     await new Promise((r) => setTimeout(r, 400))
-    const area = document.querySelector('[data-ctx-prompt-editor="${TARGET}"]')
+    const area = document.querySelector('[data-embodiment-prompt-editor="${TARGET}"]')
     if (!area) return { ok: false, why: 'textarea missing' }
     const setter = Object.getOwnPropertyDescriptor(window.HTMLTextAreaElement.prototype, 'value').set
     setter.call(area, ${JSON.stringify(SESSION_TEXT)})
     area.dispatchEvent(new Event('input', { bubbles: true }))
     await new Promise((r) => setTimeout(r, 300))
-    const saveSession = document.querySelector('[data-ctx-prompt-save-session="${TARGET}"]')
+    const saveSession = document.querySelector('[data-embodiment-prompt-save-session="${TARGET}"]')
     if (!saveSession) return { ok: false, why: 'session save button missing' }
     saveSession.click()
     await new Promise((r) => setTimeout(r, 1800))
     return { ok: true }
   })()`)
-  const state = await api('/api/ctx-mon-and-con/status/inventory?sessionId=' + encodeURIComponent(sessionId))
+  const state = await api('/api/agent-embodiment/status/inventory?sessionId=' + encodeURIComponent(sessionId))
   const section = state && state.inventory ? state.inventory.sections.find((s) => s.name === TARGET) : null
   out = { ...out, sessionId, ui, promptOverrides: state && state.promptOverrides, section: section ? { text: section.text, sessionOverridden: section.sessionOverridden, globalOverridden: section.globalOverridden } : null }
 } else {
   const oldId = process.env.SCOPE_OLD_ID
-  const saved = await api('/api/ctx-mon-and-con/status/inventory?sessionId=' + encodeURIComponent(oldId))
+  const saved = await api('/api/agent-embodiment/status/inventory?sessionId=' + encodeURIComponent(oldId))
   const before = saved && saved.inventory ? saved.inventory.sections.find((s) => s.name === TARGET) : null
-  const globalSave = await api('/api/ctx-mon-and-con/status/inventory/prompt', { name: TARGET, text: GLOBAL_TEXT })
+  const globalSave = await api('/api/agent-embodiment/status/inventory/prompt', { name: TARGET, text: GLOBAL_TEXT })
   await sleep(4000)
-  const afterGlobal = await api('/api/ctx-mon-and-con/status/inventory?sessionId=' + encodeURIComponent(oldId))
+  const afterGlobal = await api('/api/agent-embodiment/status/inventory?sessionId=' + encodeURIComponent(oldId))
   const afterSection = afterGlobal && afterGlobal.inventory ? afterGlobal.inventory.sections.find((s) => s.name === TARGET) : null
   // 清理：清会话覆盖 + 清全局覆盖
-  await api('/api/ctx-mon-and-con/status/inventory/prompt/session/reset', { name: TARGET, sessionId: oldId })
-  await api('/api/ctx-mon-and-con/status/inventory/prompt/reset', { name: TARGET })
+  await api('/api/agent-embodiment/status/inventory/prompt/session/reset', { name: TARGET, sessionId: oldId })
+  await api('/api/agent-embodiment/status/inventory/prompt/reset', { name: TARGET })
   await sleep(4000)
-  const cleaned = await api('/api/ctx-mon-and-con/status/inventory?sessionId=' + encodeURIComponent(oldId))
+  const cleaned = await api('/api/agent-embodiment/status/inventory?sessionId=' + encodeURIComponent(oldId))
   const cleanedSection = cleaned && cleaned.inventory ? cleaned.inventory.sections.find((s) => s.name === TARGET) : null
   out = {
     ...out,

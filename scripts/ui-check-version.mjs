@@ -1,5 +1,5 @@
 /**
- * 验证 ctx 页面标题旁显示插件版本号（data-ctx-version）。
+ * 验证 ctx 页面标题旁显示插件版本号（data-embodiment-version）。
  * 用法：node scripts/ui-check-version.mjs "<baseUrl 含 token>"
  */
 import { openPage, sleep } from './lib/cdp.mjs'
@@ -20,8 +20,8 @@ const result = await evaluate(`(async () => {
   if (!btn) return { ok: false, why: 'sidebar ctx not found' }
   btn.click()
   await new Promise((r) => setTimeout(r, 1500))
-  const chip = document.querySelector('[data-ctx-version]')
-  const panel = document.querySelector('[data-ctx-panel]')
+  const chip = document.querySelector('[data-embodiment-version]')
+  const panel = document.querySelector('[data-embodiment-panel]')
   const titleEl = panel ? panel.querySelector('h2') : null
   return {
     ok: Boolean(chip),

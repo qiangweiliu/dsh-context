@@ -1,4 +1,4 @@
-# T 臂：默认 persona + 插件内置方法论模板（作为 system 提示词追加），文本取自 ctx-mon-and-con/index.js。
+# T 臂：默认 persona + 插件内置方法论模板（作为 system 提示词追加），文本取自 agent-embodiment/index.js。
 - id: system-prompt
   name: "@deepseek-ai/dsh-system-prompt"
   config:

@@ -4,7 +4,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## 项目概览
 
-DeepSeek Harness（DSH）的上下文管理插件仓库。可发布的主体是 `ctx-mon-and-con/`（npm 包名 `ctx-mon-and-con`，当前 `package.json` 版本 `0.20.0`），其余目录是配套资产：
+DeepSeek Harness（DSH）的 agent 具身与上下文管理插件仓库。市场显示名 `Agent Embodiment` / `智能体具身`；包名/目录 `agent-embodiment`；短品牌 `embody`。旧名 `ctx-mon-and-con` 仅用于历史记录和兼容别名。可发布的主体是 `agent-embodiment/`（npm 包名 `agent-embodiment`，当前 `package.json` 版本 `0.21.0`），其余目录是配套资产：
 
 - `eval/`：提示词 / 推理档位对照评测（GSM8K、MATH Level 5），以及结果与报告。
 - `research/`、`explore/`：对 DSH 插件机制、compaction、UI 的逆向调研与设计笔记。
@@ -18,7 +18,7 @@ DeepSeek Harness（DSH）的上下文管理插件仓库。可发布的主体是 
 ### 单元测试（CI 运行，不依赖 DSH 运行时）
 
 ```bash
-cd ctx-mon-and-con
+cd agent-embodiment
 npm test                    # test/static.mjs + test/metrics.mjs + test/state.mjs
 node test/static.mjs        # 只跑静态/模块形状检查
 node test/metrics.mjs       # 只跑会话日志折叠统计
@@ -30,7 +30,7 @@ CI 位于 `.github/workflows/test.yml`，只跑 `npm test`。
 ### 集成测试（需要本机 DSH 的 app.asar）
 
 ```bash
-cd ctx-mon-and-con
+cd agent-embodiment
 node test/prepare-deps.mjs          # 从 app.asar 解出 cordis/cosmokit 到 test/deps/
 npm run test:integration            # control + smoke + prompt-state
 node test/control.mjs               # 单独跑某一个（先 prepare-deps）
@@ -43,7 +43,7 @@ node test/prompt-state.mjs
 语法检查（仓库没有 lint 配置）：
 
 ```bash
-cd ctx-mon-and-con
+cd agent-embodiment
 node --check index.js
 node --check control.js
 node --check client.js
@@ -73,10 +73,10 @@ bash scripts/wsl-uninstall.sh web
 bash scripts/wsl-start-web.sh 3080        # 启动 WSL web profile，输出带 token 的 URL
 node scripts/ui-probe.mjs "<url>" --section=... 
 node scripts/ui-screenshot.mjs "<url>" <out.png>
-node scripts/wait-for-ctx-plugin.mjs "<url>" 15   # 等待运行中的实例热加载插件
+node scripts/wait-for-agent-embodiment.mjs "<url>" 15   # 等待运行中的实例热加载插件
 node scripts/agent-scaffold.mjs --list             # Agent Embodiment 模板（6 个）
 node scripts/agent-scaffold.mjs --template repo-coder --out /abs/workspace --slug my-agent [--agents] [--mcp <json>]
-node scripts/clean-ctx-profile-patch.mjs ~/.dsh/profiles/<profile>
+node scripts/clean-agent-embodiment-profile-patch.mjs ~/.dsh/profiles/<profile>
 ```
 
 UI 脚本通过 Windows Edge 的 CDP 连接（`scripts/lib/cdp.mjs`，默认 Edge 路径可用 `EDGE_PATH` 覆盖），因此要在能访问 Windows Edge 的 WSL 环境里跑。`scripts/wsl-*.sh` 会操作真实 profile，跑之前确认目标环境。
@@ -87,10 +87,10 @@ UI 脚本通过 Windows Edge 的 CDP 连接（`scripts/lib/cdp.mjs`，默认 Edg
 
 插件不是单一进程内插件，而是刻意拆成宿主平面和 agent preset 平面：
 
-- `index.js`（宿主平面，`inject: ['commands', 'tokenMeter']`）：注册 `/ctx`、`/ctx <tokens>`、`/ctx reset`，注册 `/api/ctx-mon-and-con/status` 及其子路由，负责全局配置写入、会话开关与压缩日志落盘、`system-prompt/assemble` 装配钩子。
-- `control.js`（preset 平面，`inject: ['tokenMeter']`）：在 `agent/pre-step` 测量并调用 `compaction.compactIfNeeded` / `compactRegion`，注册 `/ctx-compact`。`mode` 为 `idle`（默认，含范围压缩兜底）/ `pre-step` / `notify` / `off`。
+- `index.js`（宿主平面，`inject: ['commands', 'tokenMeter']`）：注册 `/embody`、`/embody <tokens>`、`/embody reset`（并保留 `/ctx` 别名），注册 `/api/agent-embodiment/status` 及其子路由，负责全局配置写入、会话开关与压缩日志落盘、`system-prompt/assemble` 装配钩子。
+- `control.js`（preset 平面，`inject: ['tokenMeter']`）：在 `agent/pre-step` 测量并调用 `compaction.compactIfNeeded` / `compactRegion`，注册 `/embody-compact`。`mode` 为 `idle`（默认，含范围压缩兜底）/ `pre-step` / `notify` / `off`。
 - `state.js`：两个半侧共享的进程内状态。Cordis realm 隔离使二者互相 `import` 服务不可行，但同一包内 `./state.js` 的 ESM 模块缓存是同一份实例。
-- `client.js`：浏览器半侧，经 `window.__ModuleLoader__.load` 注册 `settings.section`、`main`（`key='ctx'`）、`sidebar.panellist`、`conversation.composer.dock`。只用内联样式和 `--dsw-alias-*` token，不引 CSS/Tailwind。0.20.0 起面板有 Agent tab（Embodiment Scaffold）。
+- `client.js`：浏览器半侧，经 `window.__ModuleLoader__.load` 注册 `settings.section`、`main`（`key='embody'`）、`sidebar.panellist`、`conversation.composer.dock`。只用内联样式和 `--dsw-alias-*` token，不引 CSS/Tailwind。0.21.0 起面板有 Agent tab（Embodiment Scaffold）。
 - `scaffold.js`：Agent Embodiment Scaffold 的纯函数生成器。把模板变成可安装的 DSH preset bundle（`.dsh/scaffolds/<slug>/`）、生成 host tool `sense_environment`（`senses.js`）、`.agents/skills/*/SKILL.md`（含 `tool-catalog`）、SENSES/HANDS/LOOP、AGENTS 片段、MCP rows 和 eval cases/runner；不读写磁盘、不 import npm 包。合并 AGENTS.md 用 `mergeAgentsContent`（marker 幂等）。
 - `dsh.bundle.patch.yml`：只 `insert` 一行宿主插件行，不覆盖任何宿主行。
 
@@ -101,7 +101,7 @@ UI 脚本通过 Windows Edge 的 CDP 连接（`scripts/lib/cdp.mjs`，默认 Edg
 ### 数据流
 
 1. `tokenMeter.measure(agent.session)` 得到用量。
-2. `budgetFor(sessionId, fallback)`：会话覆盖（`/ctx <tokens>`）> 宿主全局 `contextWindowTokens` > control 行自己的 `maxContextTokens` > 100000。
+2. `budgetFor(sessionId, fallback)`：会话覆盖（`/embody <tokens>`，兼容 `/ctx`）> 宿主全局 `contextWindowTokens` > control 行自己的 `maxContextTokens` > 100000。
 3. `control.js` 按 `triggerAt` / `targetAt` / `keepTokens` 压缩，并把结果写入 `state.js`。
 4. 状态路由把测量、inventory、压缩日志、控制状态返回给 `client.js`；面板监听 DOM 变化，2 秒节流刷新，空闲不轮询。
 
@@ -111,9 +111,9 @@ UI 脚本通过 Windows Edge 的 CDP 连接（`scripts/lib/cdp.mjs`，默认 Edg
 
 ### 持久化与配置写入
 
-- `~/.dsh/ctx-mon-and-con/session-toggles.json`：会话级工具/提示词开关、提示词文本覆盖、`autoMountControl`。
-- `~/.dsh/ctx-mon-and-con/compaction-log.jsonl`：压缩记录，内存最多 200 条、磁盘超过 512KB 时截到最近 400 行。
-- `~/.dsh/ctx-mon-and-con/backups/`：每次写配置前的自动备份。
+- `~/.dsh/agent-embodiment/session-toggles.json`：会话级工具/提示词开关、提示词文本覆盖、`autoMountControl`。
+- `~/.dsh/agent-embodiment/compaction-log.jsonl`：压缩记录，内存最多 200 条、磁盘超过 512KB 时截到最近 400 行。
+- `~/.dsh/agent-embodiment/backups/`：每次写配置前的自动备份。
 - 全局配置、提示词覆盖、新增提示词都经 `ctx.configEditor` 写 profile 的 `cordis.patch.yml`；写入会触发 Loader 重挂插件。**patch 的 `config` 是整段替换，不做深合并**，改 preset 时务必保留要保留的字段。
 - inventory（提示词 section / 工具清单）只存在进程内存，反映最近一次装配；新会话先发一条消息才有数据。
 
@@ -123,20 +123,20 @@ UI 脚本通过 Windows Edge 的 CDP 连接（`scripts/lib/cdp.mjs`，默认 Edg
 
 ## 开发约定与易错点
 
-- 版本号以 `ctx-mon-and-con/package.json` 为准。根 `README.md`、`docs/IMPLEMENTATION.md`、`docs/EVIDENCE.md` 和 `client.js` 的 `accountMeta().version` 是手工维护的副本；`test/static.mjs` 现在会断言 `client.js` 版本与 `package.json` 一致。改版本时仍要同步文档。
+- 版本号以 `agent-embodiment/package.json` 为准。根 `README.md`、`docs/IMPLEMENTATION.md`、`docs/EVIDENCE.md` 和 `client.js` 的 `accountMeta().version` 是手工维护的副本；`test/static.mjs` 现在会断言 `client.js` 版本与 `package.json` 一致。改版本时仍要同步文档。
 - 首次安装/启停由 DSH HMR 热生效，不需要重启 DSH；Web 0.2.0-rc.2 与 Desktop 0.2.1-rc.2 均已实测（`EVIDENCE.md` E16/E17）。页面没更新时 Web 刷新一次即可。替换已安装包（升级版本）仍需要重启 DSH 进程；修改 `client.js` 后 HMR 会重载，失败时刷新页面。面板在宿主/客户端版本不一致时会显示“刷新页面”提示。安装后不显示时先确认 `--profile` 与运行实例一致（Desktop=`desktop`，WSL web=`web`）。
 - 第三方插件不能默认 `import '@deepseek-ai/*'`；集成测试才从 app.asar 解出真实 Cordis。
-- Agent 脚手架生成 preset 时，`dsh-subagent` service 与 `spawn` provider 已由基础组合全局提供，preset 只挂 `dsh-tool-subagent`；重复挂载会让 preset 激活失败（E18 实测）。生成的 preset 复用 `ctx-mon-and-con/control`，同一 profile 需安装本插件。DSH 0.2.1-rc.2 已移除 `tool-subagent` 的 `persona`/`toolFilter`；生成器只保留跨版本字段，角色说明放 `delegate-<role>` skill。
+- Agent 脚手架生成 preset 时，`dsh-subagent` service 与 `spawn` provider 已由基础组合全局提供，preset 只挂 `dsh-tool-subagent`；重复挂载会让 preset 激活失败（E18 实测）。生成的 preset 复用 `agent-embodiment/control`，同一 profile 需安装本插件。DSH 0.2.1-rc.2 已移除 `tool-subagent` 的 `persona`/`toolFilter`；生成器只保留跨版本字段，角色说明放 `delegate-<role>` skill。
 - 测试会临时改 `HOME`/`USERPROFILE` 到临时目录（`smoke.mjs`、`prompt-state.mjs`），避免污染真实 profile；新增落盘逻辑时保持这一习惯。
 - 不要手改 `cordis.yml`（恒为空）；用户 tweak 写 `cordis.patch.yml`，插件自身走 `ctx.configEditor`。
 - 追加到用户消息末尾的提示词不是隐藏指令，会在会话历史里可见；不要把它当作秘密注入机制。
 
 ## 文档地图
 
-- `ctx-mon-and-con/README.md`：用户功能与入口。
-- `ctx-mon-and-con/docs/IMPLEMENTATION.md`：实现细节、路由清单、测试结果（最接近架构总览）。
-- `ctx-mon-and-con/docs/LIMITATIONS.md`：行为边界与已知限制。
-- `ctx-mon-and-con/docs/EVIDENCE.md`：逐版本 UI/运行证据。
-- `ctx-mon-and-con/PERMISSIONS.md`：访问面披露。
+- `agent-embodiment/README.md`：用户功能与入口。
+- `agent-embodiment/docs/IMPLEMENTATION.md`：实现细节、路由清单、测试结果（最接近架构总览）。
+- `agent-embodiment/docs/LIMITATIONS.md`：行为边界与已知限制。
+- `agent-embodiment/docs/EVIDENCE.md`：逐版本 UI/运行证据。
+- `agent-embodiment/PERMISSIONS.md`：访问面披露。
 - `research/arch.md`：DSH 插件/bundle/client 机制调研（写新插件集成时先看）。
 - `eval/REPORT.md`：评测设计、结果与结论。

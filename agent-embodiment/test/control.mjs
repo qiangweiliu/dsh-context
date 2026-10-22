@@ -9,7 +9,7 @@
  *
  * 覆盖：插件形状 / 配置校验 / 上下文来源（会话覆盖 > 宿主默认 > 本行配置）/
  * idle 压缩 / 重试到低于上下文 / cooldown / notify / pre-step / 失败不打断轮次 /
- * /ctx-compact 成功与失败 / 状态回写 / 卸载清理 / mode off。
+ * /embody-compact 成功与失败 / 状态回写 / 卸载清理 / mode off。
  *
  * 运行：node test/control.mjs（前提：先 node test/prepare-deps.mjs）
  */
@@ -129,7 +129,7 @@ async function mount(config) {
 }
 
 // ── 1. 插件形状 ───────────────────────────────────────────────────────────
-check('exports name', controlPlugin.name === 'ctx-mon-and-con-control', controlPlugin.name)
+check('exports name', controlPlugin.name === 'agent-embodiment-control', controlPlugin.name)
 check('exports inject', controlPlugin.inject?.join(',') === 'tokenMeter', JSON.stringify(controlPlugin.inject))
 check('exports Config standard schema', typeof controlPlugin.Config?.['~standard']?.validate === 'function')
 check('exports apply function', typeof controlPlugin.apply === 'function')
@@ -391,25 +391,25 @@ check('exports apply function', typeof controlPlugin.apply === 'function')
   await root.fiber.dispose()
 }
 
-// ── 9. /ctx-compact 命令 ──────────────────────────────────────────────────
+// ── 9. /embody-compact 命令 ──────────────────────────────────────────────────
 {
   const { root, fiber, meter, compaction, commands, agent } = await mount({ mode: 'idle', cooldownMs: 0, maxContextTokens: 100000 })
-  const definition = commands.definitions.get('ctx-compact')
-  check('/ctx-compact 注册', Boolean(definition), [...commands.definitions.keys()].join(','))
+  const definition = commands.definitions.get('embody-compact')
+  check('/embody-compact 注册', Boolean(definition), [...commands.definitions.keys()].join(','))
   compaction.shrinkTo = 50000
   meter.tokens = 150000
   const outcome = await definition.handler({ agent, signal: new AbortController().signal })
-  check('/ctx-compact 成功输出前后用量', outcome.kind === 'success' && outcome.text.includes('150,000') && outcome.text.includes('50,000'), outcome.text)
-  check('/ctx-compact 调用了 compactNow', compaction.calls.some((c) => c.kind === 'compactNow'), JSON.stringify(compaction.calls.map((c) => c.kind)))
+  check('/embody-compact 成功输出前后用量', outcome.kind === 'success' && outcome.text.includes('150,000') && outcome.text.includes('50,000'), outcome.text)
+  check('/embody-compact 调用了 compactNow', compaction.calls.some((c) => c.kind === 'compactNow'), JSON.stringify(compaction.calls.map((c) => c.kind)))
   check('手动压缩写入 success 日志（manual 触发）', state.listCompactionLog().some((entry) => entry.outcome === 'success' && entry.trigger === 'manual' && entry.before === 150000 && entry.after === 50000), JSON.stringify(state.listCompactionLog().slice(-2)))
 
   const idle = await definition.handler({ agent, signal: new AbortController().signal })
-  check('/ctx-compact 未超出上下文时提示无需压缩', idle.kind === 'success' && /无需压缩/.test(idle.text), idle.text)
+  check('/embody-compact 未超出上下文时提示无需压缩', idle.kind === 'success' && /无需压缩/.test(idle.text), idle.text)
 
   meter.tokens = 150000
   compaction.fail = new Error('manual compaction requires an idle agent')
   const failed = await definition.handler({ agent, signal: new AbortController().signal })
-  check('/ctx-compact 失败返回 error', failed.kind === 'error' && failed.text.includes('压缩失败'), failed.text)
+  check('/embody-compact 失败返回 error', failed.kind === 'error' && failed.text.includes('压缩失败'), failed.text)
   await fiber.dispose()
   await root.fiber.dispose()
 }
@@ -421,7 +421,7 @@ check('exports apply function', typeof controlPlugin.apply === 'function')
   await fiber.dispose()
   await root.waterfall('agent/pre-step', { agent, signal: new AbortController().signal }, () => 'inner-reached')
   check('卸载后不再压缩', compaction.calls.length === 0, compaction.calls.length)
-  check('卸载后 /ctx-compact 注销', !commands.definitions.has('ctx-compact'), [...commands.definitions.keys()].join(','))
+  check('卸载后 /embody-compact 注销', !commands.definitions.has('embody-compact'), [...commands.definitions.keys()].join(','))
   await root.fiber.dispose()
 }
 
@@ -431,7 +431,7 @@ check('exports apply function', typeof controlPlugin.apply === 'function')
   meter.tokens = 180000
   await root.waterfall('agent/pre-step', { agent, signal: new AbortController().signal }, () => 'inner-reached')
   check("mode 'off' 不压缩", compaction.calls.length === 0, compaction.calls.length)
-  check("mode 'off' 不注册命令", !commands.definitions.has('ctx-compact'), [...commands.definitions.keys()].join(','))
+  check("mode 'off' 不注册命令", !commands.definitions.has('embody-compact'), [...commands.definitions.keys()].join(','))
   check("mode 'off' 不标记为激活", state.control.active === false, String(state.control.active))
   await fiber.dispose()
   await root.fiber.dispose()

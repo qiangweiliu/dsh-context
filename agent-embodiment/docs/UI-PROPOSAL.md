@@ -1,8 +1,8 @@
 # UI 优化提案（同类插件调研 + 改动方案）
 
-> 状态：**P0/P1 已实施，P2 部分实施**，版本 `ctx-mon-and-con@0.15.0`；用户已确认：概览卡用环形图、内容多时默认折叠、Dock 加「打开完整面板」、只做「仅看已启用」筛选（搜索后置），并批准按 P0/P1/P2 推进整页信息架构。
+> 状态：**P0/P1 已实施，P2 部分实施**，版本 `agent-embodiment@0.15.0`；用户已确认：概览卡用环形图、内容多时默认折叠、Dock 加「打开完整面板」、只做「仅看已启用」筛选（搜索后置），并批准按 P0/P1/P2 推进整页信息架构。
 >
-> 调研日期：2026-10-18；参考版本：`ctx-mon-and-con@0.14.13`
+> 调研日期：2026-10-18；参考版本：`agent-embodiment@0.14.13`
 
 ## 1. 调研范围
 
@@ -100,7 +100,7 @@ dsh-context 的客户端样式大量使用 DSH 主题变量与过渡变量（统
 | 工具与提示词：加载 skeleton、错误态（重试）、空态虚线框；「仅看已启用」筛选 + 启用/总数；≤6 项自动展开 | `InventoryCard` / `useLive` |
 | Dock：警告/超限状态进 tooltip，弹层底部加「打开完整面板」 | `CtxDock` / `openCtxPanelPage` |
 | 修正 `--dsw-alias-state-warning-primary` → 实际存在的 `--dsw-alias-state-warn-primary`（原先阈值颜色不生效） | `ratioColor` |
-| P2：卡片头加折叠按钮，折叠状态记忆到 `localStorage`（key `ctx-mon-and-con:collapsed:v1`），刷新后保持 | `Card` / `COLLAPSED_STORAGE_KEY` |
+| P2：卡片头加折叠按钮，折叠状态记忆到 `localStorage`（key `agent-embodiment:collapsed:v1`），刷新后保持 | `Card` / `COLLAPSED_STORAGE_KEY` |
 | P2：`prefers-reduced-motion: reduce` 时关闭面板与 dock 的过渡/动画（注入独立 `<style>`，不改宿主样式） | `apply`（reduced motion effect） |
 | P2：精确 token 数 tooltip（环形图、KPI、图例、dock 触发器） | `BigRing` / `OverviewCard` / `LegendGrid` |
 | P2：概览新增「较上次同步」增量 KPI（同会话内两次刷新的差值，切换会话时重置） | `OverviewCard` |

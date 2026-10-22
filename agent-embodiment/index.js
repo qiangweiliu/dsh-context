@@ -1,5 +1,5 @@
 /**
- * ctx-mon-and-con — DSH 上下文长度管理插件（node 侧最小可用骨架）
+ * agent-embodiment — DSH 的上下文、感官、工具与 agent 脚手架插件（node 侧最小可用骨架）
  *
  * 插件形态（Cordis 对象插件 / ESM 命名空间对象）：
  *   - name   : 插件在诊断与日志中的名字（Cordis 读取 module namespace 的 `name` 导出）
@@ -13,7 +13,7 @@
  * 裸导入，插件目录自己的 node_modules 往往不存在宿主依赖；只用 ctx 上的服务最稳。
  */
 
-export const name = 'ctx-mon-and-con'
+export const name = 'agent-embodiment'
 
 /** 与 control.js 共享的进程内状态（同一包内相对 import，不涉及 npm 依赖）。 */
 import { appendFileSync, copyFileSync, existsSync, mkdirSync, readFileSync, readdirSync, statSync, unlinkSync, writeFileSync } from 'node:fs'
@@ -80,7 +80,7 @@ const requireMethod = (request, response, method) => {
   return false
 }
 
-const STATUS_PATH = '/api/ctx-mon-and-con/status'
+const STATUS_PATH = '/api/agent-embodiment/status'
 
 /** 所有 POST 接口的默认请求体上限；配置写入另有更小的 16KB 上限。 */
 const MAX_BODY_BYTES = 256 * 1024
@@ -280,14 +280,14 @@ function validateConfig(input) {
 export const Config = Object.freeze({
   '~standard': Object.freeze({
     version: 1,
-    vendor: 'ctx-mon-and-con',
+    vendor: 'agent-embodiment',
     validate: validateConfig,
   }),
 })
 
 const SOURCE_HINTS = {
   section(name) {
-    if (name.startsWith('ctx-mon-and-con:extra:')) return 'ctx-mon-and-con (extra)'
+    if (name.startsWith('agent-embodiment:extra:') || name.startsWith('ctx-mon-and-con:extra:')) return 'agent-embodiment (extra)'
     if (name.startsWith('harness:') || name.startsWith('deployment:')) return 'dsh-system-prompt'
     if (name.startsWith('tools:')) return 'dsh-tools'
     if (name.startsWith('tool:')) return 'dsh-tools'
@@ -303,8 +303,8 @@ const SOURCE_HINTS = {
 const sourcesFor = (inventory) => {
   const sections = {}
   for (const section of inventory && Array.isArray(inventory.sections) ? inventory.sections : []) {
-    if (section.name.startsWith('ctx-mon-and-con:extra:')) {
-      sections[section.name] = 'ctx-mon-and-con/control.js'
+    if (section.name.startsWith('agent-embodiment:extra:') || section.name.startsWith('ctx-mon-and-con:extra:')) {
+      sections[section.name] = 'agent-embodiment/control.js'
       continue
     }
     const hint = SOURCE_HINTS.section(section.name)
@@ -323,23 +323,23 @@ function formatRatio(value) {
   return `${(value * 100).toFixed(1)}%`
 }
 
-/** 统一的 /ctx 输出：一眼看到“用了多少 / 上下文多少 / 是否该压缩”。 */
+/** 统一的 /embody 输出：一眼看到“用了多少 / 上下文多少 / 是否该压缩”。 */
 function renderUsage(measurement, budget, config) {
   const used = measurement.totalTokens
   const ratio = used / budget
   const status = ratio >= config.errorAt ? '超限（建议立刻压缩）' : ratio >= config.warnAt ? '警告（接近上下文）' : 'ok'
   const lines = [
-    `上下文长度：${formatTokens(used)} / ${formatTokens(budget)} tokens（${formatRatio(ratio)}，状态：${status}）`,
+    `上下文：${formatTokens(used)} / ${formatTokens(budget)} tokens（${formatRatio(ratio)}，状态：${status}）`,
     `- 消息表面 surfaceTokens：${formatTokens(measurement.surfaceTokens)}`,
     `- 测量基线 baseline：${measurement.baseline?.kind ?? 'unknown'} ${formatTokens(measurement.baseline?.tokens ?? used)}`,
   ]
   if (Array.isArray(measurement.nodes)) lines.push(`- 计费节点 nodes：${measurement.nodes.length} 个`)
-  lines.push('提示：/ctx <tokens> 临时改本会话上下文，/ctx reset 恢复默认；控制半侧挂进 preset 后到点自动压缩。')
+  lines.push('提示：/embody <tokens> 临时改本会话上下文，/embody reset 恢复默认（兼容 /ctx）；控制半侧挂进 preset 后到点自动压缩。')
   return lines.join('\n')
 }
 
 /**
- * 注册 `/ctx`：显示当前会话的 token 用量；可选参数临时覆盖上下文。
+ * 注册 `/embody`（并保留 `/ctx` 别名）：显示当前会话的 token 用量；可选参数临时覆盖上下文。
  * @param ctx Cordis 上下文（已注入 commands/tokenMeter）
  * @param config 经 Config 校验后的配置
  */
@@ -354,8 +354,20 @@ export function apply(ctx, config) {
   setGlobalExtraPromptPlacements(config.extraPromptPlacements)
   setGlobalDisabledTools(config.disabledTools)
 
-  // 会话级开关持久化：~/.dsh/ctx-mon-and-con/session-toggles.json（按 sessionId 区分，跨 profile 共享）。
-  const SESSION_TOGGLES_PATH = join(homedir(), '.dsh', 'ctx-mon-and-con', 'session-toggles.json')
+  // 状态目录：0.21.0 从 ctx-mon-and-con 改名；首次启动把旧目录的两个状态文件复制过来。
+  const STATE_DIR = join(homedir(), '.dsh', 'agent-embodiment')
+  const LEGACY_STATE_DIR = join(homedir(), '.dsh', 'ctx-mon-and-con')
+  try {
+    mkdirSync(STATE_DIR, { recursive: true })
+    for (const file of ['session-toggles.json', 'compaction-log.jsonl']) {
+      const source = join(LEGACY_STATE_DIR, file)
+      const destination = join(STATE_DIR, file)
+      if (!existsSync(destination) && existsSync(source)) copyFileSync(source, destination)
+    }
+  } catch {}
+
+  // 会话级开关持久化：~/.dsh/agent-embodiment/session-toggles.json（按 sessionId 区分，跨 profile 共享）。
+  const SESSION_TOGGLES_PATH = join(STATE_DIR, 'session-toggles.json')
   const saveSessionToggles = () => {
     try {
       backupFile(SESSION_TOGGLES_PATH, 'session-toggles')
@@ -363,7 +375,7 @@ export function apply(ctx, config) {
       writeFileSync(SESSION_TOGGLES_PATH, JSON.stringify(snapshotSessionToggles(), null, 2) + '\n', 'utf8')
     } catch (error) {
       const logger = ctx.logger
-      if (typeof logger?.warn === 'function') logger.warn('ctx-mon-and-con: could not save session toggles: ' + (error instanceof Error ? error.message : String(error)))
+      if (typeof logger?.warn === 'function') logger.warn('agent-embodiment: could not save session toggles: ' + (error instanceof Error ? error.message : String(error)))
     }
   }
   const loadSessionToggles = () => {
@@ -372,13 +384,13 @@ export function apply(ctx, config) {
       hydrateSessionToggles(JSON.parse(readFileSync(SESSION_TOGGLES_PATH, 'utf8')))
     } catch (error) {
       const logger = ctx.logger
-      if (typeof logger?.warn === 'function') logger.warn('ctx-mon-and-con: could not load session toggles: ' + (error instanceof Error ? error.message : String(error)))
+      if (typeof logger?.warn === 'function') logger.warn('agent-embodiment: could not load session toggles: ' + (error instanceof Error ? error.message : String(error)))
     }
   }
   loadSessionToggles()
 
-  // 压缩记录持久化：~/.dsh/ctx-mon-and-con/compaction-log.jsonl（JSONL，内存最多 200 条）。
-  const COMPACTION_LOG_PATH = join(homedir(), '.dsh', 'ctx-mon-and-con', 'compaction-log.jsonl')
+  // 压缩记录持久化：~/.dsh/agent-embodiment/compaction-log.jsonl（JSONL，内存最多 200 条）。
+  const COMPACTION_LOG_PATH = join(STATE_DIR, 'compaction-log.jsonl')
   const COMPACTION_LOG_MAX_BYTES = 512 * 1024
   const COMPACTION_LOG_KEEP_LINES = 400
   const loadCompactionLog = () => {
@@ -394,7 +406,7 @@ export function apply(ctx, config) {
       hydrateCompactionLog(entries)
     } catch (error) {
       const logger = ctx.logger
-      if (typeof logger?.warn === 'function') logger.warn('ctx-mon-and-con: could not load compaction log: ' + (error instanceof Error ? error.message : String(error)))
+      if (typeof logger?.warn === 'function') logger.warn('agent-embodiment: could not load compaction log: ' + (error instanceof Error ? error.message : String(error)))
     }
   }
   loadCompactionLog()
@@ -410,11 +422,11 @@ export function apply(ctx, config) {
         }
       } catch (error) {
         const logger = ctx.logger
-        if (typeof logger?.warn === 'function') logger.warn('ctx-mon-and-con: could not append compaction log: ' + (error instanceof Error ? error.message : String(error)))
+        if (typeof logger?.warn === 'function') logger.warn('agent-embodiment: could not append compaction log: ' + (error instanceof Error ? error.message : String(error)))
       }
     })
     return () => unsubscribe()
-  }, 'ctx-mon-and-con: compaction log persistence')
+  }, 'agent-embodiment: compaction log persistence')
   // 浏览器状态接口的数据源：按 session id 保留最近 MAX_MEASUREMENTS 条。
   const measurements = new Map()
 
@@ -461,7 +473,7 @@ export function apply(ctx, config) {
           : `本会话没有临时上下文，当前使用默认 ${formatTokens(budget)} tokens。\n`
       } else {
         if (!/^\d+$/.test(argument)) {
-          return { kind: 'error', text: '用法：/ctx [tokens|reset]（例如 /ctx 200000 或 /ctx reset）' }
+          return { kind: 'error', text: '用法：/embody [tokens|reset]（例如 /embody 200000 或 /embody reset；兼容 /ctx）' }
         }
         const next = Number(argument)
         if (!Number.isSafeInteger(next) || next <= 0) {
@@ -471,7 +483,7 @@ export function apply(ctx, config) {
           return { kind: 'error', text: '当前会话没有可用的 id，无法设置上下文。' }
         }
         budget = next
-        prefix = `已把本会话上下文改为 ${formatTokens(budget)} tokens（会话级覆盖；/ctx reset 可清除）。\n`
+        prefix = `已把本会话上下文改为 ${formatTokens(budget)} tokens（会话级覆盖；/embody reset 可清除）。\n`
       }
     }
     // agent.session 是会话对象；ctx.tokenMeter.measure(session) 返回
@@ -489,12 +501,16 @@ export function apply(ctx, config) {
   }
 
   // 用 effect 注册：卸载插件时 Cordis 执行返回的 disposer 注销命令。handler 是同步的。
-  ctx.effect(() => ctx.commands.register({
-    name: 'ctx',
-    description: 'Show this session context token usage',
-    input: { hint: '[tokens|reset]' },
-    handler,
-  }), 'ctx-mon-and-con: /ctx command')
+  // /embody 是规范命令；/ctx 保留为兼容别名，避免已有用户/脚本失效。
+  ctx.effect(() => {
+    const disposers = ['embody', 'ctx'].map((name) => ctx.commands.register({
+      name,
+      description: name === 'embody' ? 'Show this session context budget and usage' : 'Legacy alias for /embody',
+      input: { hint: '[tokens|reset]' },
+      handler,
+    }))
+    return () => disposers.forEach((dispose) => dispose())
+  }, 'agent-embodiment: /embody and /ctx commands')
 
   // 控制半侧（control.js）挂在 agent preset 的 compaction 组里。它是否已生效不靠
   // 猜：control.js 激活时把状态写进 ./state.js，这里直接读；再顺带探测本 realm
@@ -515,11 +531,11 @@ export function apply(ctx, config) {
       compacting: controlState.compacting,
       log: listCompactionLog().slice(-50),
       compactionVisible: visible,
-      presetRow: 'ctx-mon-and-con/control',
+      presetRow: 'agent-embodiment/control',
       ...presetMountState(),
       hint: controlState.active
         ? 'control row is mounted and enforcing the budget'
-        : 'mount ctx-mon-and-con/control inside the agent preset (Settings → Agent preset → compaction group)',
+        : 'mount agent-embodiment/control inside the agent preset (Settings → Agent preset → compaction group)',
     }
   }
 
@@ -527,7 +543,7 @@ export function apply(ctx, config) {
   let sessionProjections = null
   ctx.inject(['sessionProjections'], (sub) => {
     sessionProjections = sub?.sessionProjections ?? null
-    if (typeof sub.effect === 'function') sub.effect(() => () => { sessionProjections = null }, 'ctx-mon-and-con: projections presence')
+    if (typeof sub.effect === 'function') sub.effect(() => () => { sessionProjections = null }, 'agent-embodiment: projections presence')
   })
 
   /**
@@ -537,7 +553,7 @@ export function apply(ctx, config) {
    */
   const breakdownOf = (session, measurement) => {
     if (!session) return null
-    // /live 与 /ctx 已经测量过一次；把结果传进来，避免对长会话重复全量测量。
+    // /live 与 /embody 已经测量过一次；把结果传进来，避免对长会话重复全量测量。
     let measured = measurement
     if (measured === undefined) {
       try {
@@ -599,7 +615,7 @@ export function apply(ctx, config) {
   let sessions = null
   ctx.inject(['sessions'], (sub) => {
     sessions = sub?.sessions ?? null
-    if (typeof sub.effect === 'function') sub.effect(() => () => { sessions = null }, 'ctx-mon-and-con: sessions presence')
+    if (typeof sub.effect === 'function') sub.effect(() => () => { sessions = null }, 'agent-embodiment: sessions presence')
   })
 
   const requestUrl = (request) => new URL(request.url ?? '/', 'http://localhost')
@@ -700,8 +716,9 @@ export function apply(ctx, config) {
     return entries.find((entry) => typeof entry.options?.id === 'string' && entry.options.id.includes('preset')) ?? entries[0]
   }
 
-  const CONTROL_ROW_ID = 'ctx-mon-and-con-control'
-  const CONTROL_ROW = Object.freeze({ id: CONTROL_ROW_ID, name: 'ctx-mon-and-con/control', config: { mode: 'idle' } })
+  const CONTROL_ROW_ID = 'agent-embodiment-control'
+  const LEGACY_CONTROL_ROW_ID = 'ctx-mon-and-con-control'
+  const CONTROL_ROW = Object.freeze({ id: CONTROL_ROW_ID, name: 'agent-embodiment/control', config: { mode: 'idle' } })
 
   /** 读取 preset 里压缩组是否已经挂了我们的控制行。 */
   const presetMountState = () => {
@@ -709,9 +726,10 @@ export function apply(ctx, config) {
     if (!entry) return { presetMountable: false, presetMounted: false }
     const plugins = Array.isArray(entry.options?.config?.plugins) ? entry.options.config.plugins : []
     const group = plugins.find((row) => row && row.id === 'compaction' && Array.isArray(row.config))
+    const rows = group && Array.isArray(group.config) ? group.config : []
     return {
       presetMountable: true,
-      presetMounted: Boolean(group && group.config.some((row) => row && row.id === CONTROL_ROW_ID)),
+      presetMounted: rows.some((row) => row && row.id === CONTROL_ROW_ID) && !rows.some((row) => row && row.id === LEGACY_CONTROL_ROW_ID),
     }
   }
 
@@ -732,7 +750,7 @@ export function apply(ctx, config) {
       index = plugins.length - 1
     }
     const group = plugins[index] && typeof plugins[index] === 'object' ? plugins[index] : {}
-    const children = Array.isArray(group.config) ? group.config.filter((row) => !(row && row.id === CONTROL_ROW_ID)) : []
+    const children = Array.isArray(group.config) ? group.config.filter((row) => !(row && (row.id === CONTROL_ROW_ID || row.id === LEGACY_CONTROL_ROW_ID))) : []
     if (enable) children.push(CONTROL_ROW)
     plugins[index] = { ...group, config: children }
     return { ...base, plugins }
@@ -743,7 +761,7 @@ export function apply(ctx, config) {
   const enqueuePreset = (task) => {
     presetQueue = presetQueue.then(task).catch((error) => {
       const logger = ctx.logger
-      if (typeof logger?.warn === 'function') logger.warn(`ctx-mon-and-con: preset task failed: ${error instanceof Error ? error.message : String(error)}`)
+      if (typeof logger?.warn === 'function') logger.warn(`agent-embodiment: preset task failed: ${error instanceof Error ? error.message : String(error)}`)
     })
   }
 
@@ -758,7 +776,7 @@ export function apply(ctx, config) {
       .edit(entry, (current) => mutatePreset(current, true))
       .catch((error) => {
         const logger = ctx.logger
-        if (typeof logger?.warn === 'function') logger.warn(`ctx-mon-and-con: auto-mount failed: ${error instanceof Error ? error.message : String(error)}`)
+        if (typeof logger?.warn === 'function') logger.warn(`agent-embodiment: auto-mount failed: ${error instanceof Error ? error.message : String(error)}`)
       })
   }
 
@@ -799,7 +817,7 @@ export function apply(ctx, config) {
   let sessionQuery = null
   ctx.inject(['sessionQuery'], (sub) => {
     sessionQuery = sub?.sessionQuery ?? null
-    if (typeof sub.effect === 'function') sub.effect(() => () => { sessionQuery = null }, 'ctx-mon-and-con: sessionQuery presence')
+    if (typeof sub.effect === 'function') sub.effect(() => () => { sessionQuery = null }, 'agent-embodiment: sessionQuery presence')
   })
 
   const withTimeout = (promise, ms, label) =>
@@ -913,7 +931,7 @@ export function apply(ctx, config) {
   const statusHandler = (request, response) => {
     if (!requireMethod(request, response, 'GET')) return
     const body = JSON.stringify({
-      plugin: 'ctx-mon-and-con',
+      plugin: 'agent-embodiment',
       version: PLUGIN_VERSION,
       budget: {
         tokens: config.contextWindowTokens,
@@ -936,7 +954,7 @@ export function apply(ctx, config) {
   }
 
   // 所有写操作前自动备份（profile patch 与 session-toggles.json），保留最近 30 份。
-  const BACKUP_DIR = join(homedir(), '.dsh', 'ctx-mon-and-con', 'backups')
+  const BACKUP_DIR = join(STATE_DIR, 'backups')
   const backupFile = (filePath, label) => {
     try {
       if (!filePath || !existsSync(filePath)) return
@@ -954,7 +972,7 @@ export function apply(ctx, config) {
       }
     } catch (error) {
       const logger = ctx.logger
-      if (typeof logger?.warn === 'function') logger.warn('ctx-mon-and-con: backup failed: ' + (error instanceof Error ? error.message : String(error)))
+      if (typeof logger?.warn === 'function') logger.warn('agent-embodiment: backup failed: ' + (error instanceof Error ? error.message : String(error)))
     }
   }
 
@@ -981,7 +999,7 @@ export function apply(ctx, config) {
         autoMountControl()
       } catch {}
     }, 1200)
-    if (typeof sub.effect === 'function') sub.effect(() => () => { configEditor = null }, 'ctx-mon-and-con: config editor presence')
+    if (typeof sub.effect === 'function') sub.effect(() => () => { configEditor = null }, 'agent-embodiment: config editor presence')
   })
 
   /** 校验来自浏览器面板的配置补丁；不合法返回 null。 */
@@ -1027,7 +1045,7 @@ export function apply(ctx, config) {
     readJson(request, response, (input) => {
       const patch = parseConfigPatch(input)
       if (patch === null) return send(400, { ok: false, error: 'invalid config patch' })
-      const entry = editor.entries().find((candidate) => candidate?.options?.id === 'ctx-mon-and-con')
+      const entry = editor.entries().find((candidate) => candidate?.options?.id === 'agent-embodiment')
       if (!entry) return send(409, { ok: false, error: 'plugin entry is not editable in the active profile' })
       send(202, { ok: true, accepted: patch })
       // 落盘会触发重挂，本插件的旧实例（包括这条路由）随即被销毁。
@@ -1035,7 +1053,7 @@ export function apply(ctx, config) {
         .edit(entry, (current) => ({ ...(current ?? {}), ...patch }))
         .catch((error) => {
           const logger = ctx.logger
-          if (typeof logger?.warn === 'function') logger.warn(`ctx-mon-and-con: config write failed: ${error instanceof Error ? error.message : String(error)}`)
+          if (typeof logger?.warn === 'function') logger.warn(`agent-embodiment: config write failed: ${error instanceof Error ? error.message : String(error)}`)
         })
     }, 16 * 1024, 'invalid config patch')
   }
@@ -1059,7 +1077,7 @@ export function apply(ctx, config) {
             } catch {}
           }
         },
-        'ctx-mon-and-con: global tool restriction',
+        'agent-embodiment: global tool restriction',
       )
     } else install()
   })
@@ -1148,7 +1166,7 @@ export function apply(ctx, config) {
         return send(202, { ok: true, layer, kind, name, enabled, note: 'applies to the next request' })
       }
       const editor = configEditor
-      const entry = editor && typeof editor.entries === 'function' ? editor.entries().find((candidate) => candidate?.options?.id === 'ctx-mon-and-con') : undefined
+      const entry = editor && typeof editor.entries === 'function' ? editor.entries().find((candidate) => candidate?.options?.id === 'agent-embodiment') : undefined
       if (!editor || typeof editor.edit !== 'function' || !entry) return send(501, { ok: false, error: 'config editor unavailable in this profile' })
       const current = [...runtimeDisabledTools]
       const next = enabled ? current.filter((item) => item !== name) : current.includes(name) ? current : [...current, name]
@@ -1158,7 +1176,7 @@ export function apply(ctx, config) {
         .edit(entry, (value) => ({ ...(value ?? {}), disabledTools: next }))
         .catch((error) => {
           const logger = ctx.logger
-          if (typeof logger?.warn === 'function') logger.warn(`ctx-mon-and-con: inventory write failed: ${error instanceof Error ? error.message : String(error)}`)
+          if (typeof logger?.warn === 'function') logger.warn(`agent-embodiment: inventory write failed: ${error instanceof Error ? error.message : String(error)}`)
         })
     })
   }
@@ -1179,7 +1197,7 @@ export function apply(ctx, config) {
       }
       if (layer === 'global' || layer === 'all') {
         const editor = configEditor
-        const entry = editor && typeof editor.entries === 'function' ? editor.entries().find((candidate) => candidate?.options?.id === 'ctx-mon-and-con') : undefined
+        const entry = editor && typeof editor.entries === 'function' ? editor.entries().find((candidate) => candidate?.options?.id === 'agent-embodiment') : undefined
         if (!editor || typeof editor.edit !== 'function' || !entry) return send(501, { ok: false, error: 'config editor unavailable in this profile' })
         runtimePromptOverrides = {}
         runtimeExtraPrompts = {}
@@ -1222,7 +1240,7 @@ export function apply(ctx, config) {
   /** 把 extraPrompts / placements 写回 profile config；运行时先同步，避免等待重挂。 */
   const writeExtraPrompts = (next, placements, response, send) => {
     const editor = configEditor
-    const entry = editor && typeof editor.entries === 'function' ? editor.entries().find((candidate) => candidate?.options?.id === 'ctx-mon-and-con') : undefined
+    const entry = editor && typeof editor.entries === 'function' ? editor.entries().find((candidate) => candidate?.options?.id === 'agent-embodiment') : undefined
     if (!editor || typeof editor.edit !== 'function' || !entry) return send(501, { ok: false, error: 'config editor unavailable in this profile' })
     runtimeExtraPrompts = { ...next }
     runtimeExtraPromptPlacements = { ...placements }
@@ -1274,7 +1292,7 @@ export function apply(ctx, config) {
   /** 把 promptOverrides 写回 profile config。 */
   const writePromptOverrides = (next, response, send) => {
     const editor = configEditor
-    const entry = editor && typeof editor.entries === 'function' ? editor.entries().find((candidate) => candidate?.options?.id === 'ctx-mon-and-con') : undefined
+    const entry = editor && typeof editor.entries === 'function' ? editor.entries().find((candidate) => candidate?.options?.id === 'agent-embodiment') : undefined
     if (!editor || typeof editor.edit !== 'function' || !entry) return send(501, { ok: false, error: 'config editor unavailable in this profile' })
     runtimePromptOverrides = { ...next }
     setGlobalPromptOverrides(runtimePromptOverrides)
@@ -1461,7 +1479,7 @@ export function apply(ctx, config) {
       ]
       return () => offs.forEach((off) => off())
     }
-    if (typeof sub.effect === 'function') sub.effect(register, 'ctx-mon-and-con: routes')
+    if (typeof sub.effect === 'function') sub.effect(register, 'agent-embodiment: routes')
     else register()
   })
 

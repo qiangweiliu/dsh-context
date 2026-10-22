@@ -1,8 +1,8 @@
 # 实现说明
 
-本文描述 `ctx-mon-and-con` 的内部结构、集成点和验证方式。面向用户的功能说明见 [README.md](../README.md)；约束与已知限制见 [LIMITATIONS.md](LIMITATIONS.md)。
+本文描述 `agent-embodiment` 的内部结构、集成点和验证方式。面向用户的功能说明见 [README.md](../README.md)；约束与已知限制见 [LIMITATIONS.md](LIMITATIONS.md)。
 
-当前版本：`0.20.0`
+当前版本：`0.21.0`
 
 ## 1. 两个半侧
 
@@ -10,10 +10,10 @@
 
 | 文件 | 平面 | 作用 |
 | --- | --- | --- |
-| `index.js` | 宿主平面 | 读取 token 用量、注册 `/ctx` 与状态路由、保存全局配置 |
-| `control.js` | agent preset 内 | 执行自动压缩、工具/提示词开关、`/ctx-compact` |
+| `index.js` | 宿主平面 | 读取 token 用量、注册 `/embody` 与状态路由、保存全局配置 |
+| `control.js` | agent preset 内 | 执行自动压缩、工具/提示词开关、`/embody-compact` |
 | `state.js` | 共享状态 | 两个半侧共享默认预算、会话覆盖、控制状态 |
-| `client.js` | 浏览器平面 | 注册整页面板、设置分区、侧栏 `ctx` 和 composer dock |
+| `client.js` | 浏览器平面 | 注册整页面板、设置分区、侧栏 `embody` 和 composer dock |
 | `dsh.bundle.patch.yml` | bundle 层 | 向 profile boot graph 插入插件行 |
 | `locale/{en,zh}.json` | 插件市场 | `meta.title` / `meta.description` |
 
@@ -35,15 +35,15 @@
 
 注册内容：
 
-- `/ctx`、`/ctx <tokens>`、`/ctx reset`；
-- `GET /api/ctx-mon-and-con/status`；
+- `/embody`、`/embody <tokens>`、`/embody reset`；`/ctx` 为兼容别名；
+- `GET /api/agent-embodiment/status`；
 - `/status/live`、`/status/analytics`、`/status/session-detail`；
 - `/status/inventory`；
 - `/status/inventory/toggle`、`/status/inventory/reset`；
 - `/status/inventory/prompt`、`/status/inventory/prompt/reset`；
 - `/status/inventory/prompt/session`、`/status/inventory/prompt/session/reset`；
 - `/status/inventory/extra-prompt`、`/status/inventory/extra-prompt/reset`；
-- `POST /api/ctx-mon-and-con/config`（经 `ctx.configEditor` 写入 profile patch）。
+- `POST /api/agent-embodiment/config`（经 `ctx.configEditor` 写入 profile patch）。
 
 全局配置写入后会触发 Loader 重挂插件。写入对象是 profile 的插件 config 行，不直接改会话历史。
 
@@ -52,8 +52,8 @@
 `control.js` 必须挂进 agent preset 的 compaction 组：
 
 ```yaml
-- id: ctx-mon-and-con-control
-  name: 'ctx-mon-and-con/control'
+- id: agent-embodiment-control
+  name: 'agent-embodiment/control'
   config:
     mode: idle
 ```
@@ -92,7 +92,7 @@
 `extraPrompts` 的处理：
 
 - 配置 key 为用户名称；
-- 实际 section 名为 `ctx-mon-and-con:extra:<name>`；
+- 实际 section 名为 `agent-embodiment:extra:<name>`；
 - `extraPromptPlacements[name] === 'user'` 时**不插入 system section**，而是在 `agent/pre-step` 中追加到本轮新用户消息末尾；
 - 其余情况插入到 `harness:identity` 之后；
 - 内容为空则跳过；
@@ -129,7 +129,7 @@ inventory 属于进程内存，只反映最近一次装配；新会话需要先�
 写操作前自动备份，备份位于：
 
 ```text
-~/.dsh/ctx-mon-and-con/backups/
+~/.dsh/agent-embodiment/backups/
 ```
 
 面板「恢复全部」会清空：
@@ -141,7 +141,7 @@ inventory 属于进程内存，只反映最近一次装配；新会话需要先�
 
 ## 6. 自动挂载控制行
 
-插件启动时检查 `preset-standard` 的 compaction 组；如果没有 `ctx-mon-and-con/control` 行，就通过 `ctx.configEditor` 写入一行。
+插件启动时检查 `preset-standard` 的 compaction 组；如果没有 `agent-embodiment/control` 行，就通过 `ctx.configEditor` 写入一行。
 
 面板停用自动压缩时会：
 
@@ -157,7 +157,7 @@ inventory 属于进程内存，只反映最近一次装配；新会话需要先�
 
 `client.js` 在 `apply(ctx)` 中注册：
 
-- `sidebar.panellist`：左侧 `ctx` 图标；
+- `sidebar.panellist`：左侧 `embody` 图标；
 - `main`：整页「上下文监控」；
 - `settings.section`：设置 → 上下文；
 - `conversation.composer.dock`：输入框下方指示器。
@@ -172,8 +172,8 @@ inventory 属于进程内存，只反映最近一次装配；新会话需要先�
 
 ```text
 profile package.json dependencies
-→ node_modules/ctx-mon-and-con
-→ dsh.profile.bundles 追加 ctx-mon-and-con
+→ node_modules/agent-embodiment
+→ dsh.profile.bundles 追加 agent-embodiment
 → Loader 读取 dsh.bundle.patch.yml
 ```
 
@@ -182,7 +182,7 @@ profile package.json dependencies
 自动挂载或全局配置写入会在 profile patch 中留下顶层插件行与 preset 行。单纯 `dsh plugin remove` 不会清理这些行；需要时使用仓库脚本：
 
 ```bash
-node scripts/clean-ctx-profile-patch.mjs ~/.dsh/profiles/<profile>
+node scripts/clean-agent-embodiment-profile-patch.mjs ~/.dsh/profiles/<profile>
 ```
 
 WSL 安装脚本：
@@ -201,7 +201,7 @@ powershell -NoProfile -ExecutionPolicy Bypass -File scripts/verify-uninstall.ps1
 ## 9. 测试
 
 ```powershell
-npm test                      # static + metrics + state（不依赖 DSH 运行时）
+npm test                      # static + metrics + state + scaffold（不依赖 DSH 运行时）
 npm run test:integration      # prepare-deps + control + smoke + prompt-state（需要本机 app.asar）
 node --check index.js
 node --check control.js
@@ -218,7 +218,7 @@ metrics      23/23
 state        16/16
 scaffold    151/151
 control      54/54
-smoke        62/62
+smoke        63/63
 prompt-state 11/11
 ```
 
@@ -234,7 +234,7 @@ manifest 声明：
 
 已实测 WSL `dsh 0.2.0-rc.2` 和 Windows Desktop `0.2.1-rc.2`。其他版本保持 `unknown`。
 
-## 11. Agent 脚手架（0.20.0）
+## 11. Agent 脚手架（0.21.0）
 
 `scaffold.js` 是纯函数生成器（不读写磁盘、不 import npm 包），把 `EmbodimentSpec` 变成一份可安装的 Embodiment Pack：
 
@@ -250,12 +250,12 @@ manifest 声明：
 
 宿主路由：
 
-- `GET /api/ctx-mon-and-con/status/scaffold/templates`
+- `GET /api/agent-embodiment/status/scaffold/templates`
 - `POST .../scaffold/preview`（只返回文件计划，不写盘）
 - `POST .../scaffold/generate`（要求绝对 `targetDir`；默认拒绝覆盖，`overwrite:true` 才覆盖；路径逃逸校验）
 
 命令行：`node scripts/agent-scaffold.mjs --template <id> --out <absolute-workspace>`。
 
-模板只挂 preset 内需要的 row；`dsh-subagent` service 与 `spawn` provider 已由基础组合全局提供，preset 只挂 `dsh-tool-subagent`，避免重复注册导致 preset 激活失败。生成的 preset 复用 `ctx-mon-and-con/control` 做上下文压缩，因此同一 profile 需要安装本插件。
+模板只挂 preset 内需要的 row；`dsh-subagent` service 与 `spawn` provider 已由基础组合全局提供，preset 只挂 `dsh-tool-subagent`，避免重复注册导致 preset 激活失败。生成的 preset 复用 `agent-embodiment/control` 做上下文压缩，因此同一 profile 需要安装本插件。
 
 **子 agent 跨版本兼容**：DSH 0.2.1-rc.2 已移除 `dsh-tool-subagent` 的 `persona` 与 `toolFilter`（要求改用单独的 Agent Preset + `agentPreset` 选择）。生成器只保留 `provider`/`toolName`/`backgroundMode`/`maxDepth` 等跨版本字段，角色说明改为生成的 `delegate-<role>` skill；0.2.0-rc.2 与 0.2.1-rc.2 均已实测 preset 激活。

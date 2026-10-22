@@ -4,7 +4,7 @@ const baseUrl = process.argv[2]
 const port = 9343
 const { send, evaluate, close } = await openPage(baseUrl, { waitMs: 2000, port, profilePrefix: 'edge-rall-' })
 const result = await evaluate(`(async () => {
-  const base = '/api/ctx-mon-and-con/status'
+  const base = '/api/agent-embodiment/status'
   const inv = () => fetch(base + '/inventory', { headers: { accept: 'application/json' } }).then((r) => r.json())
   const post = (url, body) => fetch(url, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify(body) }).then((r) => r.json().then((j) => ({ status: r.status, body: j })))
   await post(base + '/inventory/toggle', { kind: 'tool', name: 'ask_user_question', layer: 'session', enabled: false })

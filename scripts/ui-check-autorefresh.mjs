@@ -8,7 +8,7 @@ const baseUrl = process.argv[2]
 const port = 9353
 const { send, evaluate, errors, close } = await openPage(baseUrl, { port, profilePrefix: 'edge-auto-' })
 const liveCount = () => evaluate(`performance.getEntriesByType('resource').filter((e) => e.name.includes('/status/live')).length`)
-const dockText = () => evaluate(`(() => { const el = document.querySelector('[data-ctx-dock]'); return el ? el.textContent.trim() : null })()`)
+const dockText = () => evaluate(`(() => { const el = document.querySelector('[data-embodiment-dock]'); return el ? el.textContent.trim() : null })()`)
 const sendMessage = (text) => sendText({ send, evaluate }, text)
 
 await evaluate(`(async () => { const b = Array.from(document.querySelectorAll('button')).find((x) => /新建会话/.test(x.getAttribute('aria-label') || '')); if (b) b.click(); await new Promise((r) => setTimeout(r, 1000)) })()`)

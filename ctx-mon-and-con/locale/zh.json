@@ -1,6 +1,0 @@
-{
-  "meta": {
-    "title": "ctx-mon-and-con",
-    "description": "显示上下文长度、token 预算与最近的 /ctx 测量结果，在窗口写满之前给出预警。"
-  }
-}

@@ -1,6 +1,6 @@
 # 约束与已知限制
 
-本文记录 `ctx-mon-and-con` 的使用约束、行为边界和未验证项。面向用户的功能说明见 [README.md](../README.md)，实现细节见 [IMPLEMENTATION.md](IMPLEMENTATION.md)。
+本文记录 `agent-embodiment` 的使用约束、行为边界和未验证项。面向用户的功能说明见 [README.md](../README.md)，实现细节见 [IMPLEMENTATION.md](IMPLEMENTATION.md)。
 
 ## 1. 安装、启停与更新
 
@@ -12,7 +12,7 @@ DSH 默认启用 HMR（`dsh-hmr` + `dsh-client-hmr`），因此：
 - **刷新页面**：如果页面仍显示旧界面，刷新一次即可重新加载客户端 bundle；这比重启 DSH 更轻。
 - **替换已安装包（升级到新版本）**：DSH 会缓存已挂载包的 manifest 与模块代际，官方明确该场景不是热升级路径，**仍需重启 DSH 进程**。
 - **宿主没有 HMR**：如果 profile 的自定义 patch 关闭了 `hmr`，运行中的进程不会重新组合，此时安装/卸载才需要重启。
-- **卸载**：HMR 会即时卸载 `/ctx`、`/ctx-compact` 和面板；只有替换/删除宿主模块或没有 HMR 时才需要重启。profile patch 里的残留行仍建议用清理脚本移除。
+- **卸载**：HMR 会即时卸载 `/embody`（`/ctx` 别名）、`/embody-compact`（`/ctx-compact` 别名）和面板；只有替换/删除宿主模块或没有 HMR 时才需要重启。profile patch 里的残留行仍建议用清理脚本移除。
 
 如果安装后仍未出现，按顺序检查：
 
@@ -84,7 +84,7 @@ Web 形态下，宿主自带的 `auto` 压缩行被 `dsh-web-app` 置为 disable
 
 - 只写用户提交的**绝对**工作区目录；拒绝文件系统根目录/用户 home，默认不覆盖已有文件。
 - 生成的是起点模板，不保证直接达到生产质量；必须用真实任务和 eval 继续迭代。
-- 生成的 preset 复用 `ctx-mon-and-con/control`；同一 profile 需要安装本插件，否则 preset 激活会失败。
+- 生成的 preset 复用 `agent-embodiment/control`；同一 profile 需要安装本插件，否则 preset 激活会失败。
 - MCP 行可由用户提交的 JSON 生成（stdio / streamable-http）；插件只写配置，不执行 MCP 命令；secret 用 `${ENV_VAR}`，安装/启用前仍需审查 command/args 与凭据。
 - `AGENTS.md` 支持带 marker 的幂等合并（保留用户内容）；不勾选 `writeAgents` 时只生成 `AGENTS.snippet.md`。
 - `evals/run.mjs` 只负责按 case 调 `dsh headless` 并记录 transcript，不自动判断正确性；需要人工按 `expect` 审阅。

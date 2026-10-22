@@ -22,16 +22,16 @@ if (phase === 'setup') {
   await sleep(10000)
   await sendMessage('second message so inventory is recorded')
   await sleep(10000)
-  const pre = await api('/api/ctx-mon-and-con/status/inventory')
+  const pre = await api('/api/agent-embodiment/status/inventory')
   const targetId = pre && pre.sessionId
-  await api('/api/ctx-mon-and-con/status/inventory/toggle', { kind: 'tool', name: 'bash', layer: 'session', enabled: false, sessionId: targetId })
-  await api('/api/ctx-mon-and-con/status/inventory/toggle', { kind: 'prompt', name: 'harness:identity', layer: 'session', enabled: false, sessionId: targetId })
+  await api('/api/agent-embodiment/status/inventory/toggle', { kind: 'tool', name: 'bash', layer: 'session', enabled: false, sessionId: targetId })
+  await api('/api/agent-embodiment/status/inventory/toggle', { kind: 'prompt', name: 'harness:identity', layer: 'session', enabled: false, sessionId: targetId })
   await sleep(1500)
-  const state = await api('/api/ctx-mon-and-con/status/inventory?sessionId=' + encodeURIComponent(targetId))
+  const state = await api('/api/agent-embodiment/status/inventory?sessionId=' + encodeURIComponent(targetId))
   out = { ...out, sessionId: state && state.sessionId, disabledSessionTools: state && state.disabledSessionTools, disabledSessionPrompts: state && state.disabledSessionPrompts }
 } else {
   const oldId = process.env.SESS_OLD_ID
-  const restored = oldId ? await api(`/api/ctx-mon-and-con/status/inventory?sessionId=${encodeURIComponent(oldId)}`) : null
+  const restored = oldId ? await api(`/api/agent-embodiment/status/inventory?sessionId=${encodeURIComponent(oldId)}`) : null
   out = {
     ...out,
     sessionId: oldId,
@@ -41,9 +41,9 @@ if (phase === 'setup') {
   }
   // 清理该会话开关
   if (oldId) {
-    await api('/api/ctx-mon-and-con/status/inventory/reset', { layer: 'session', sessionId: oldId })
+    await api('/api/agent-embodiment/status/inventory/reset', { layer: 'session', sessionId: oldId })
     await sleep(1200)
-    const cleaned = await api(`/api/ctx-mon-and-con/status/inventory?sessionId=${encodeURIComponent(oldId)}`)
+    const cleaned = await api(`/api/agent-embodiment/status/inventory?sessionId=${encodeURIComponent(oldId)}`)
     out.cleaned = cleaned ? { disabledSessionTools: cleaned.disabledSessionTools, disabledSessionPrompts: cleaned.disabledSessionPrompts } : null
   }
 }

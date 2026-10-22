@@ -16,9 +16,9 @@ const sendText = async (text) => {
   await sleep(500)
   await evaluate(`(async () => { const norm=(s)=>(s||'').replace(/\\s+/g,' ').trim(); const b=Array.from(document.querySelectorAll('button')).find((x)=>/发送消息/.test(norm(x.getAttribute('aria-label'))||'')); if (b) b.click() })()`)
 }
-const live = async () => (await api('/api/ctx-mon-and-con/status/live')).body
+const live = async () => (await api('/api/agent-embodiment/status/live')).body
 await evaluate(`(async () => { const b = Array.from(document.querySelectorAll('button')).find((x) => /新建会话/.test(x.getAttribute('aria-label') || '')); if (b) b.click(); await new Promise((r) => setTimeout(r, 1000)) })()`)
-await api('/api/ctx-mon-and-con/status/config', { contextWindowTokens: 20000, warnAt: 0.7, errorAt: 0.9 })
+await api('/api/agent-embodiment/status/config', { contextWindowTokens: 20000, warnAt: 0.7, errorAt: 0.9 })
 await sleep(6000)
 
 const filler = 'Please remember this context detail for later. ' + 'The quick brown fox jumps over the lazy dog. '.repeat(220)
@@ -31,15 +31,15 @@ for (let i = 1; i <= 4; i += 1) {
 }
 const before = await live()
 // 把预算下调到已用量以下，让下一条消息的 pre-step 触发压缩
-await api('/api/ctx-mon-and-con/status/config', { contextWindowTokens: 15000, warnAt: 0.7, errorAt: 0.9 })
+await api('/api/agent-embodiment/status/config', { contextWindowTokens: 15000, warnAt: 0.7, errorAt: 0.9 })
 await sleep(6000)
-const s0 = await api('/api/ctx-mon-and-con/status')
+const s0 = await api('/api/agent-embodiment/status')
 await sendText('Final message: please answer briefly and confirm you still have context.')
 await sleep(25000)
 const after = await live()
-const s1 = await api('/api/ctx-mon-and-con/status')
+const s1 = await api('/api/agent-embodiment/status')
 const body = await evaluate('(document.body.innerText || "").slice(-1600)')
-await api('/api/ctx-mon-and-con/status/config', { contextWindowTokens: 128000, warnAt: 0.7, errorAt: 0.9 })
+await api('/api/agent-embodiment/status/config', { contextWindowTokens: 128000, warnAt: 0.7, errorAt: 0.9 })
 console.log(JSON.stringify({
   errors,
   stages,

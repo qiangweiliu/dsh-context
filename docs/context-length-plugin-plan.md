@@ -154,7 +154,7 @@ export default class MyCompaction extends BasicCompactionEngine {
 > 上面这行 `import BasicCompactionEngine from '@deepseek-ai/dsh-compaction-basic'` 只有在以下条件之一成立时才有用：
 > ① 用 esbuild/tsup 把该包**打进**你的产物（`billion-context` 就是这么做的：2.3 MB 单文件 bundle）；
 > ② 把依赖源码复制进插件目录用**相对路径**引入。
-> 纯 JS 骨架请坚持「零 import」——只用 `ctx` 上注入的服务（这也是本仓库 `ctx-mon-and-con/index.js` 的做法）。
+> 纯 JS 骨架请坚持「零 import」——只用 `ctx` 上注入的服务（这也是本仓库 `agent-embodiment/index.js` 的做法）。
 
 **L3-b：完全自研后端**（继承 `CompactionEngine`，自己实现 `compactIfNeeded` / `compactNow` / `compactRegion`）。
 需要正确实现：`compaction/*` 事件、surface replace、影子价（heuristic 与路由价两种口径）、`replaceGeneration` 前进、
@@ -344,23 +344,23 @@ window.__ModuleLoader__.load({
 
 ## 7. 已交付的骨架与验证证据
 
-[`ctx-mon-and-con/`](../ctx-mon-and-con) 是一个**可直接安装运行**的最小骨架（L1 路线）：
+[`agent-embodiment/`](../agent-embodiment) 是一个**可直接安装运行**的最小骨架（L1 路线）：
 
 | 文件 | 作用 |
 |---|---|
-| `index.js` | Cordis 插件（宿主侧）：`name` / `inject = ['commands','tokenMeter']` / 手写 Standard Schema 的 `Config` / `apply(ctx, config)`；注册 `/ctx` 命令 + `GET /api/ctx-mon-and-con/status` 只读路由 |
-| `control.js` | Cordis 插件（preset 侧，`ctx-mon-and-con/control`）：上下文控制 —— `mode: idle` 在轮末调 `compactNow()` 并重试到低于上下文、`mode: pre-step` 在 step 边界调 `compactIfNeeded()`、`notify` 只记录；另注册 `/ctx-compact` |
+| `index.js` | Cordis 插件（宿主侧）：`name` / `inject = ['commands','tokenMeter']` / 手写 Standard Schema 的 `Config` / `apply(ctx, config)`；注册 `/ctx` 命令 + `GET /api/agent-embodiment/status` 只读路由 |
+| `control.js` | Cordis 插件（preset 侧，`agent-embodiment/control`）：上下文控制 —— `mode: idle` 在轮末调 `compactNow()` 并重试到低于上下文、`mode: pre-step` 在 step 边界调 `compactIfNeeded()`、`notify` 只记录；另注册 `/embody-compact` |
 | `state.js` | 两个半侧共享的进程内状态（默认上下文 / 会话级覆盖 / 控制状态），同包相对 import，不涉及 npm 依赖 |
-| `client.js` | `apply(ctx)` 注册 `sidebar.panellist`（左侧 `ctx` 图标）、`main`（整页 `key: ctx`）、`settings.section`（设置分区），共用同一面板；配置编辑通过宿主 `POST /api/ctx-mon-and-con/config` → `ctx.configEditor` 写回 profile patch |
-| `dsh.bundle.patch.yml` | `- insert: [- id: ctx-mon-and-con, name: ctx-mon-and-con]` |
+| `client.js` | `apply(ctx)` 注册 `sidebar.panellist`（左侧 `ctx` 图标）、`main`（整页 `key: ctx`）、`settings.section`（设置分区），共用同一面板；配置编辑通过宿主 `POST /api/agent-embodiment/config` → `ctx.configEditor` 写回 profile patch |
+| `dsh.bundle.patch.yml` | `- insert: [- id: agent-embodiment, name: agent-embodiment]` |
 | `package.json` | `dsh.bundle.patch` + `dsh.client` + `exports`（含 `./control`）+ `files` |
 | `locale/{en,zh}.json`、`icon.svg` | 插件管理与设置页的展示元数据 |
 | `test/static.mjs` | 32 项纯离线静态检查（导出形状、Config 拒绝非法/未知键、exports、locale、client mock、control 形状） |
 | `test/smoke.mjs` | 43 项真实 Cordis 集成冒烟（加载、`/ctx` 与 `/ctx reset`、命令输出、路由 200/405、卸载清理） |
-| `test/control.mjs` | 33 项控制半侧测试（上下文来源三级优先、idle 压缩与重试、cooldown、notify、pre-step 调 `compactIfNeeded` 并继续 waterfall、失败不打断、`/ctx-compact` 成功/失败、状态回写、卸载清理、`mode: off`） |
+| `test/control.mjs` | 33 项控制半侧测试（上下文来源三级优先、idle 压缩与重试、cooldown、notify、pre-step 调 `compactIfNeeded` 并继续 waterfall、失败不打断、`/embody-compact` 成功/失败、状态回写、卸载清理、`mode: off`） |
 
 实测结果：`node test/static.mjs` **32/32**、`node test/smoke.mjs` **43/43**、`node test/control.mjs` **33/33**、
-`node --check` 通过、`--dump-config` 里能看到 `- id: ctx-mon-and-con / name: ctx-mon-and-con`（说明 bundle 组合层真的生效）。
+`node --check` 通过、`--dump-config` 里能看到 `- id: agent-embodiment / name: agent-embodiment`（说明 bundle 组合层真的生效）。
 
 它刻意**不 import 任何 npm 包**。宿主半侧只读测量；控制半侧只在 preset 内挂载后生效，
 且只通过官方 `ctx.compaction` 服务（`compactNow` / `compactIfNeeded`）操作，从不自己写 `surfaceOp`。
@@ -371,7 +371,7 @@ window.__ModuleLoader__.load({
 
 | # | 内容 | 路径 |
 |---|---|---|
-| 1 | 可安装的最小骨架（L1） | [`ctx-mon-and-con/`](../ctx-mon-and-con)（含 README 的装法/验证/限制） |
+| 1 | 可安装的最小骨架（L1） | [`agent-embodiment/`](../agent-embodiment)（含 README 的装法/验证/限制） |
 
 | 内容 | 路径 |
 |---|---|

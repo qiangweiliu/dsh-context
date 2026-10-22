@@ -21,7 +21,7 @@ https://awesome-dsh-plugin.com/plugins.json
 | 检查项 | 结果 |
 | --- | --- |
 | 目录里有没有 `qiangweiliu` | 没有。`plugins.json` 共 5065 条，owner 过滤为空 |
-| 有没有同名/同包名条目 | 没有 `ctx-mon-and-con`；但有相近的 `context-guardian`（包名 `dsh-context-guardian`，session 类） |
+| 有没有同名/同包名条目 | 没有 `agent-embodiment`；但有相近的 `context-guardian`（包名 `dsh-context-guardian`，session 类） |
 | 是否发布过 npm | 没有，所以也没有「npm → 仓库」的自动关联 |
 | 是否有 GitHub Release tarball | 没有 |
 | 从源码能不能装 | **能，已实测**（见 §3） |
@@ -32,17 +32,17 @@ https://awesome-dsh-plugin.com/plugins.json
 
 ```powershell
 $env:DSH_HOME = "$env:TEMP\dsh-mkt-test"
-dsh plugin --profile mkt-add add "github:qiangweiliu/dsh-context#path:/ctx-mon-and-con"
+dsh plugin --profile mkt-add add "github:qiangweiliu/dsh-context#path:/agent-embodiment"
 ```
 
-结果：pnpm 成功解析并安装 `ctx-mon-and-con@0.3.0`，包内 `index.js`、`client.js`、
+结果：pnpm 成功解析并安装 `agent-embodiment@0.21.0`，包内 `index.js`、`client.js`、
 `dsh.bundle.patch.yml`、`locale/*` 齐全；随后 `dsh --profile mkt-add --dump-config`
 输出里出现
 
 ```
-# == ctx-mon-and-con
-- id: ctx-mon-and-con
-  name: ctx-mon-and-con
+# == agent-embodiment
+- id: agent-embodiment
+  name: agent-embodiment
 ```
 
 说明 bundle 补丁在安装后的 profile 里确实生效 —— 也就是「可安装」这一关已经过了。
@@ -61,15 +61,15 @@ dsh plugin --profile mkt-add add "github:qiangweiliu/dsh-context#path:/ctx-mon-a
 ### 4.1 收录申请 PR（唯一能让它出现在市场的方式）
 
 给 `awesome-dsh-plugin` 提一个 PR，**只加一个文件**
-`data/plugins/qiangweiliu__dsh-context--ctx-mon-and-con.yml`，内容已备好：
-`submission/qiangweiliu__dsh-context--ctx-mon-and-con.yml`，直接复制过去即可。
+`data/plugins/qiangweiliu__dsh-context--agent-embodiment.yml`，内容已备好：
+`submission/qiangweiliu__dsh-context--agent-embodiment.yml`，直接复制过去即可。
 
 要点：
 
 - 条目必须指向**子目录**而不是仓库根：根 `package.json` 没有 `dsh.bundle`，
   根条目会被 CI 判为「装了也没东西」，并提示改成子目录形式。
-- 文件名与 `name` 字段要带上子目录：`name: qiangweiliu/dsh-context#ctx-mon-and-con`。
-- `url` 必须与仓库地址逐字一致（`/tree/main/ctx-mon-and-con`）。
+- 文件名与 `name` 字段要带上子目录：`name: qiangweiliu/dsh-context#agent-embodiment`。
+- `url` 必须与仓库地址逐字一致（`/tree/main/agent-embodiment`）。
 - 一个 PR 最多 3 条，这里只交 1 条。
 
 ### 4.2 仓库满足两个硬性条件
@@ -89,14 +89,14 @@ Invoke-RestMethod -Method Put -Headers @{ Authorization = "Bearer $env:GH_TOKEN"
 
 ### 4.3 可选，但强烈建议
 
-- ~~改包名~~：**已完成，定稿 `ctx-mon-and-con`（0.3.0）**。曾用名 `dsh-context-guard` /
-  `context-monitor-and-control`，前者与已收录的 `context-guardian`（`dsh-context-guardian`）只差三个字母容易混，
-  后者太长；现名与目录里任何条目都不同名。改名必须同时改这些标识，测试里都有断言：
+- ~~改包名~~：**已完成，定稿 `agent-embodiment`（0.21.0）**。曾用名 `dsh-context-guard` /
+  `ctx-mon-and-con`，前者与已收录的 `context-guardian`（`dsh-context-guardian`）只差三个字母容易混，
+  后者描述性弱且未体现 agent 具身定位；现名与目录里任何条目都不同名。改名必须同时改这些标识，测试里都有断言：
   `package.json` 的 `name`、`dsh.bundle.patch.yml` 的 `id`/`name`、`index.js` 的 `export const name`、
-  状态路由 `/api/ctx-mon-and-con/status`、`client.js` 的模块 id 与 locale 命名空间、`settings.section` 的 id。
+  状态路由 `/api/agent-embodiment/status`、`client.js` 的模块 id 与 locale 命名空间、`settings.section` 的 id。
 - **发布 npm**：收录不看 npm，但有了 npm 包市场会显示下载量、安装也免掉源码构建步骤；
   发布时 `repository` 字段必须指回本仓库，否则不会被关联。
-- **截图**：在 `ctx-mon-and-con/` 下放 `screenshots.json` 列 1–8 张图，市场详情页会展示。
+- **截图**：在 `agent-embodiment/` 下放 `screenshots.json` 列 1–8 张图，市场详情页会展示。
 
 ## 5. 一个要提前想清楚的问题：会不会被判「已被覆盖」
 
@@ -105,8 +105,6 @@ Invoke-RestMethod -Method Put -Headers @{ Authorization = "Bearer $env:GH_TOKEN"
 `context-guardian`、`dsh-ballast`（上下文占用归属面板）等。收录规则第 4 条是
 「已被现有条目覆盖的，先来者保留位置」。
 
-当前骨架的定位是**参考实现 + 只读用量面板**（`/ctx` 显示用量/上下文/阈值，只读状态接口，
-不改历史），这个定位本身是可以如实描述的，描述里已经写明「不压缩、不改写历史」，
-不会因夸大被打回。但如果希望一次就过、且真的有人用，建议先补一个别人没有的点再提交，
-例如：按 provider/model 自动取窗口上下文、把 `compaction-basic` 的 `auto` 与阈值做成设置面板、
-在超过阈值时主动提示并给出一键 `/compact`。
+当前定位是**上下文预算/压缩 + 环境感知 + 工具与提示词控制 + Agent 脚手架**：`/embody` 显示用量/上下文/阈值，
+control 半侧走官方 compaction seam，Agent 脚手架生成可安装 preset 与工作区 skills。这组能力与目录里
+纯监控或纯压缩插件有区分度，可以在描述里如实强调「监控只读、压缩走官方 seam」。

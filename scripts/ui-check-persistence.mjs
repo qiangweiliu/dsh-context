@@ -19,33 +19,33 @@ const api = async (path, body) => evaluate(`(async () => {
 
 let out = { phase, errors }
 if (phase === 'setup') {
-  const before = await api('/api/ctx-mon-and-con/status/inventory')
+  const before = await api('/api/agent-embodiment/status/inventory')
   const sessionId = before && before.sessionId
   await evaluate(`(async () => { const b = Array.from(document.querySelectorAll('button')).find((x) => /新建会话/.test(x.getAttribute('aria-label') || '')); if (b) b.click(); await new Promise((r) => setTimeout(r, 1000)) })()`)
   await sendMessage('hi')
   await sleep(10000)
   await sendMessage('second message so inventory is recorded')
   await sleep(10000)
-  const t1 = await api('/api/ctx-mon-and-con/status/inventory/prompt', { name: 'harness:identity', text: OVERRIDE })
-  const t2 = await api('/api/ctx-mon-and-con/status/inventory/toggle', { kind: 'tool', name: 'ask_user_question', layer: 'global', enabled: false })
-  const t3 = await api('/api/ctx-mon-and-con/status/inventory/toggle', { kind: 'tool', name: 'bash', layer: 'session', enabled: false })
+  const t1 = await api('/api/agent-embodiment/status/inventory/prompt', { name: 'harness:identity', text: OVERRIDE })
+  const t2 = await api('/api/agent-embodiment/status/inventory/toggle', { kind: 'tool', name: 'ask_user_question', layer: 'global', enabled: false })
+  const t3 = await api('/api/agent-embodiment/status/inventory/toggle', { kind: 'tool', name: 'bash', layer: 'session', enabled: false })
   await sleep(5000)
-  const after = await api('/api/ctx-mon-and-con/status/inventory')
+  const after = await api('/api/agent-embodiment/status/inventory')
   out = { ...out, sessionId: after && after.sessionId, set: [t1 && t1.ok, t2 && t2.ok, t3 && t3.ok], promptOverrides: after && after.promptOverrides, disabledTools: after && after.disabledTools, disabledSessionTools: after && after.disabledSessionTools }
 } else {
   // 重启后、尚未发请求时：配置应已加载，inventory 应为 null
-  const cold = await api('/api/ctx-mon-and-con/status/inventory')
+  const cold = await api('/api/agent-embodiment/status/inventory')
   await evaluate(`(async () => { const b = Array.from(document.querySelectorAll('button')).find((x) => /新建会话/.test(x.getAttribute('aria-label') || '')); if (b) b.click(); await new Promise((r) => setTimeout(r, 1000)) })()`)
   await sendMessage('hi after restart')
   await sleep(10000)
   await sendMessage('second message after restart')
   await sleep(10000)
-  const warm = await api('/api/ctx-mon-and-con/status/inventory')
+  const warm = await api('/api/agent-embodiment/status/inventory')
   const sections = warm && warm.inventory ? warm.inventory.sections : []
   const tools = warm && warm.inventory ? warm.inventory.tools : []
   const identity = sections.find((s) => s.name === 'harness:identity')
   const oldSession = process.env.PERSIST_OLD_SESSION
-  const oldState = oldSession ? await api(`/api/ctx-mon-and-con/status/inventory?sessionId=${encodeURIComponent(oldSession)}`) : null
+  const oldState = oldSession ? await api(`/api/agent-embodiment/status/inventory?sessionId=${encodeURIComponent(oldSession)}`) : null
   out = {
     ...out,
     cold: { inventory: cold && cold.inventory, promptOverrides: cold && cold.promptOverrides, disabledTools: cold && cold.disabledTools },
@@ -59,9 +59,9 @@ if (phase === 'setup') {
     oldSessionState: oldState ? { disabledSessionTools: oldState.disabledSessionTools } : null,
   }
   // 清理：清掉全局覆盖与全局工具禁用
-  await api('/api/ctx-mon-and-con/status/inventory/reset', { layer: 'all' })
+  await api('/api/agent-embodiment/status/inventory/reset', { layer: 'all' })
   await sleep(4000)
-  const cleaned = await api('/api/ctx-mon-and-con/status/inventory')
+  const cleaned = await api('/api/agent-embodiment/status/inventory')
   out.cleaned = { promptOverrides: cleaned && cleaned.promptOverrides, disabledTools: cleaned && cleaned.disabledTools }
 }
 

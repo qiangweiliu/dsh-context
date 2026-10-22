@@ -3,7 +3,7 @@
 set -uo pipefail
 export PATH="$HOME/.local/bin:$PATH"
 PORT="${1:-3080}"
-LOG=/tmp/ctx-ui-version.log
+LOG=/tmp/embody-ui-version.log
 # 清掉旧的测试实例（本脚本只用于本地验证，会占用 $PORT）
 pkill -f "dsh.*--profile web" >/dev/null 2>&1 || true
 pkill -f "/dsh web$" >/dev/null 2>&1 || true

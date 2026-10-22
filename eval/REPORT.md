@@ -121,7 +121,7 @@ cm 与 am 逐题完全相同 → **四步协议在 MATH L5 上同样是零收益
 
 ## 实验 6：插件内置「方法论」模板（cmc v0.18.0 的动作）
 
-模板文本就是 `ctx-mon-and-con` 里 `PROMPT_TEMPLATES[0].text`（经 `eval/make-template-patch.mjs`
+模板文本就是 `agent-embodiment` 里 `PROMPT_TEMPLATES[0].text`（经 `eval/make-template-patch.mjs`
 直接生成 patch，测的就是将下发的那份文本），作为 system 提示词追加，**不带输出契约**。
 
 | 条件 | GSM8K 宽松审计 | MATH L5 | MATH 平均耗时 |

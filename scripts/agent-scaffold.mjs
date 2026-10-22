@@ -10,7 +10,7 @@
  */
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs'
 import { dirname, isAbsolute, join, resolve, sep } from 'node:path'
-import { SCAFFOLD_TEMPLATES, mergeAgentsContent, planScaffold } from '../ctx-mon-and-con/scaffold.js'
+import { SCAFFOLD_TEMPLATES, mergeAgentsContent, planScaffold } from '../agent-embodiment/scaffold.js'
 
 const args = process.argv.slice(2)
 const flag = (name, fallback) => {

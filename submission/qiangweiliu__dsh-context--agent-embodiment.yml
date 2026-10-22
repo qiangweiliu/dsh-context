@@ -1,0 +1,10 @@
+# 收录申请文件（PR 用）
+# 目标仓库：https://github.com/awesome-dsh-plugin/awesome-dsh-plugin
+# 放置路径：data/plugins/qiangweiliu__dsh-context--agent-embodiment.yml
+# 文件名规则：<owner>__<repo>--<子目录路径，斜杠换成连字符>.yml
+url: https://github.com/qiangweiliu/dsh-context/tree/main/agent-embodiment
+name: qiangweiliu/dsh-context#agent-embodiment
+category: session
+description:
+  en: 'Package: `agent-embodiment`. Give DeepSeek Harness agents a body: context budget monitoring and compaction, environment sensing (files, git, shell, web, MCP), tool/prompt control, subagents, and a verification loop. The built-in Agent Embodiment scaffold generates installable DSH presets and workspace skills for coding, research, ops, browser, data, and support agents. Monitoring is read-only; compaction and installs use official DSH seams. Legacy commands `/ctx` and `/ctx-compact` remain aliases for `/embody` and `/embody-compact`.'
+  zh: '包名 `agent-embodiment`。给 DeepSeek Harness agent 一副身体：上下文预算监控与压缩、环境感知（文件/git/shell/web/MCP）、工具与提示词控制、子 agent 与验证闭环。内置 Agent 脚手架可生成可安装的 DSH preset 与工作区 skills，覆盖编码、调研、运维、浏览器、数据、客服等场景。监控只读；压缩与安装走官方 seam。旧命令 `/ctx`、`/ctx-compact` 保留为 `/embody`、`/embody-compact` 的兼容别名。'

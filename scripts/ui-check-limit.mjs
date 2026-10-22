@@ -12,14 +12,14 @@ const api = (path, body) => evaluate(`(async () => {
   const r = await fetch(${JSON.stringify(path)}, ${body === undefined ? '{ headers: { accept: "application/json" } }' : JSON.stringify({ method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify(body) })})
   return { status: r.status, body: await r.json().catch(() => null) }
 })()`)
-const status = async () => (await api('/api/ctx-mon-and-con/status')).body
+const status = async () => (await api('/api/agent-embodiment/status')).body
 const bool = (value) => Boolean(value)
 
 await evaluate(`(async () => { const b = Array.from(document.querySelectorAll('button')).find((x) => /新建会话/.test(x.getAttribute('aria-label') || '')); if (b) b.click(); await new Promise((r) => setTimeout(r, 1000)) })()`)
 
 const out = { phases: {}, errors }
 const setBudget = async (tokens) => {
-  const r = await api('/api/ctx-mon-and-con/status/config', { contextWindowTokens: tokens, warnAt: 0.7, errorAt: 0.9 })
+  const r = await api('/api/agent-embodiment/status/config', { contextWindowTokens: tokens, warnAt: 0.7, errorAt: 0.9 })
   await sleep(5000)
   return r
 }
@@ -63,7 +63,7 @@ out.phases.usableAfterCompact = {
 }
 
 // ── B. UI 超限状态（临时关控制半侧，避免立即被压掉）──────────────────────
-await api('/api/ctx-mon-and-con/status/config/preset', { enable: false })
+await api('/api/agent-embodiment/status/config/preset', { enable: false })
 await sleep(6000)
 await setBudget(3000)
 await sendMessage('this turn should stay over the context limit because control is off')
@@ -72,7 +72,7 @@ const over = await status()
 await sendMessage('/ctx')
 await sleep(5000)
 const overBody = await evaluate('(document.body.innerText || "").slice(0, 4000)')
-const dockColor = await evaluate(`(() => { const el = document.querySelector('[data-ctx-dock]'); return el ? getComputedStyle(el).color : null })()`)
+const dockColor = await evaluate(`(() => { const el = document.querySelector('[data-embodiment-dock]'); return el ? getComputedStyle(el).color : null })()`)
 out.phases.overLimitUi = {
   ratio: over && over.measurements && over.measurements[0] ? over.measurements[0].ratio : null,
   budget: over && over.budget && over.budget.tokens,
@@ -80,7 +80,7 @@ out.phases.overLimitUi = {
   dockColor,
   controlActive: over && over.control && over.control.active,
 }
-await api('/api/ctx-mon-and-con/status/config/preset', { enable: true })
+await api('/api/agent-embodiment/status/config/preset', { enable: true })
 await sleep(6000)
 
 // ── C. 长文本压力（真实大消息）──────────────────────────────────────────

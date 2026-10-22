@@ -85,7 +85,7 @@ check('targetAt >= triggerAt 被拒绝', Array.isArray(targetAboveTrigger.issues
 
 // ── 3. 包资源解析（宿主 readPluginMeta / client-modules 都走 ESM 解析器）──
 const require = createRequire(new URL('../package.json', import.meta.url))
-for (const specifier of ['ctx-mon-and-con/client', 'ctx-mon-and-con/control', 'ctx-mon-and-con/icon', 'ctx-mon-and-con/locale/en.json', 'ctx-mon-and-con/locale/zh.json']) {
+for (const specifier of ['agent-embodiment/client', 'agent-embodiment/control', 'agent-embodiment/icon', 'agent-embodiment/locale/en.json', 'agent-embodiment/locale/zh.json']) {
   let resolved
   try {
     resolved = require.resolve(specifier)
@@ -111,7 +111,7 @@ for (const language of ['en', 'zh']) {
 const control = await import(new URL('../control.js', import.meta.url))
 check(
   'control 导出 name/inject/Config/apply',
-  control.name === 'ctx-mon-and-con-control' &&
+  control.name === 'agent-embodiment-control' &&
     control.inject?.join(',') === 'tokenMeter' &&
     typeof control.Config?.['~standard']?.validate === 'function' &&
     typeof control.apply === 'function',
@@ -138,7 +138,7 @@ check('dsh.client 声明合法', manifest.dsh?.client?.platform === 'web' && typ
 check('dsh.bundle.patch 指向存在的文件', existsSync(new URL(`../${manifest.dsh?.bundle?.patch ?? 'missing'}`, import.meta.url)))
 const patch = readFileSync(new URL('../dsh.bundle.patch.yml', import.meta.url), 'utf8')
 check('bundle patch 含 insert 层', /^- insert:/m.test(patch))
-check('bundle patch 插入 id/name', /- id: ctx-mon-and-con\s*\n\s*name: ctx-mon-and-con/.test(patch))
+check('bundle patch 插入 id/name', /- id: agent-embodiment\s*\n\s*name: agent-embodiment/.test(patch))
 const icon = readFileSync(new URL('../icon.svg', import.meta.url), 'utf8')
 check('icon.svg 是 SVG 且体积极小', icon.trimStart().startsWith('<svg') && Buffer.byteLength(icon) <= 256 * 1024, `${Buffer.byteLength(icon)}B`)
 
@@ -165,43 +165,43 @@ for (const inject of client.slotInjects) inject.callback()
 const bySlot = (name) => client.slotRegistrations.find((entry) => entry.definition.name === name) ?? {}
 const section = bySlot('settings.section').definition ?? {}
 check('client 注册 settings.section', section.name === 'settings.section', JSON.stringify(section))
-check('settings.section id/order/locale', section.id === 'ctx-mon-and-con' && typeof section.order === 'number' && section.locale === 'ctxMonAndCon', JSON.stringify(section))
-check('settings.section label 走中文词典', section.label?.() === '上下文长度', section.label?.())
+check('settings.section id/order/locale', section.id === 'agent-embodiment' && typeof section.order === 'number' && section.locale === 'agentEmbodiment', JSON.stringify(section))
+check('settings.section label 走中文词典', section.label?.() === '智能体具身', section.label?.())
 check('settings.section 组件是函数', typeof bySlot('settings.section').component === 'function', typeof bySlot('settings.section').component)
 
 const mainEntry = bySlot('main').definition ?? {}
-check('client 注册 main 整页', mainEntry.name === 'main' && mainEntry.key === 'ctx', JSON.stringify(mainEntry))
+check('client 注册 main 整页', mainEntry.name === 'main' && mainEntry.key === 'embody', JSON.stringify(mainEntry))
 check('main 页组件是函数', typeof bySlot('main').component === 'function', typeof bySlot('main').component)
 
 const panelEntry = bySlot('sidebar.panellist').definition ?? {}
-check('client 注册 sidebar.panellist', panelEntry.name === 'sidebar.panellist' && panelEntry.id === 'ctx', JSON.stringify(panelEntry))
-check('sidebar.panellist 标题是 ctx', panelEntry.label?.() === 'ctx', panelEntry.label?.())
+check('client 注册 sidebar.panellist', panelEntry.name === 'sidebar.panellist' && panelEntry.id === 'embody', JSON.stringify(panelEntry))
+check('sidebar.panellist 标题是 embody', panelEntry.label?.() === 'embody', panelEntry.label?.())
 const dockEntry = bySlot('conversation.composer.dock').definition ?? {}
-check('client 注册 composer dock 指示器', dockEntry.name === 'conversation.composer.dock' && dockEntry.id === 'ctx-usage', JSON.stringify(dockEntry))
+check('client 注册 composer dock 指示器', dockEntry.name === 'conversation.composer.dock' && dockEntry.id === 'embody-usage', JSON.stringify(dockEntry))
 check('dock 指示器组件是函数', typeof bySlot('conversation.composer.dock').component === 'function', typeof bySlot('conversation.composer.dock').component)
-const balanceEntry = client.slotRegistrations.find((entry) => entry.definition.id === 'ctx-balance')?.definition ?? {}
+const balanceEntry = client.slotRegistrations.find((entry) => entry.definition.id === 'embody-balance')?.definition ?? {}
 check('client 注册 DSH 余额 dock 胶囊', balanceEntry.name === 'conversation.composer.dock' && balanceEntry.order > dockEntry.order, JSON.stringify(balanceEntry))
-check('余额胶囊使用 data-ctx-balance 标记', clientSource.includes("'data-ctx-balance': '1'"))
-check('余额弹层使用 data-ctx-balance-panel 标记', clientSource.includes("'data-ctx-balance-panel': '1'"))
-check('余额胶囊默认关闭、开关可持久化', clientSource.includes("ctx-mon-and-con:balance-enabled:v1") && clientSource.includes("'data-ctx-balance-toggle': '1'"))
+check('余额胶囊使用 data-embodiment-balance 标记', clientSource.includes("'data-embodiment-balance': '1'"))
+check('余额弹层使用 data-embodiment-balance-panel 标记', clientSource.includes("'data-embodiment-balance-panel': '1'"))
+check('余额胶囊默认关闭、开关可持久化', clientSource.includes("agent-embodiment:balance-enabled:v1") && clientSource.includes("'data-embodiment-balance-toggle': '1'"))
 check('余额视图区分 status:failed（不再一直显示加载中）', clientSource.includes("value.status === 'failed'"))
 check('余额视图带充值入口与平台链接', clientSource.includes('links.topUpUrl') && clientSource.includes('links.usageUrl'))
 check('余额重读有最小间隔', clientSource.includes('BALANCE_READ_MIN_MS = 30000'))
 check('提示词来源从 inventory.sources 读（曾错读顶层 sources 而恒显示未识别）', clientSource.includes('data.inventory && data.inventory.sources'))
-check('新增提示词提供内置模板入口', clientSource.includes("'data-ctx-extra-template'") && clientSource.includes('data.promptTemplates'))
+check('新增提示词提供内置模板入口', clientSource.includes("'data-embodiment-extra-template'") && clientSource.includes('data.promptTemplates'))
 check('sidebar.panellist 图标组件是函数', typeof bySlot('sidebar.panellist').component === 'function', typeof bySlot('sidebar.panellist').component)
 
 const stateModule = await import(new URL('../state.js', import.meta.url).href)
 check('state 导出压缩记录接口', ['recordCompactionEvent', 'listCompactionLog', 'hydrateCompactionLog', 'subscribeCompactionLog'].every((name) => typeof stateModule[name] === 'function'))
-check('client 含可折叠压缩记录容器', clientSource.includes('data-ctx-compact-log') && clientSource.includes('data-ctx-log-toggle'))
-check('client API 路径相对 document.baseURI 解析（兼容反代前缀）', clientSource.includes('document.baseURI') && clientSource.includes("new URL('api/ctx-mon-and-con/status'"), null)
+check('client 含可折叠压缩记录容器', clientSource.includes('data-embodiment-compact-log') && clientSource.includes('data-embodiment-log-toggle'))
+check('client API 路径相对 document.baseURI 解析（兼容反代前缀）', clientSource.includes('document.baseURI') && clientSource.includes("new URL('api/agent-embodiment/status'"), null)
 const clientVersion = clientSource.match(/CLIENT_VERSION\s*=\s*'([^']+)'/)?.[1]
 check('client CLIENT_VERSION 与 package.json 一致', clientVersion === manifest.version, `${clientVersion} vs ${manifest.version}`)
-check('client 宿主/客户端版本不一致时提示刷新页面', clientSource.includes('data-ctx-version-mismatch') && clientSource.includes('data-ctx-reload') && clientSource.includes('CLIENT_VERSION'))
-check('client 注册 Agent 脚手架 tab 与面板', clientSource.includes("tabsScaffold") && clientSource.includes('data-ctx-scaffold') && clientSource.includes('ScaffoldPanel'))
+check('client 宿主/客户端版本不一致时提示刷新页面', clientSource.includes('data-embodiment-version-mismatch') && clientSource.includes('data-embodiment-reload') && clientSource.includes('CLIENT_VERSION'))
+check('client 注册 Agent 脚手架 tab 与面板', clientSource.includes("tabsScaffold") && clientSource.includes('data-embodiment-scaffold') && clientSource.includes('ScaffoldPanel'))
 check('client 脚手架面板调用宿主路由', clientSource.includes('/scaffold/templates') && clientSource.includes("post('preview'") && clientSource.includes("post('generate'"))
-check('client 脚手架支持 MCP/AGENTS 选项', clientSource.includes('data-ctx-scaffold-mcp') && clientSource.includes('writeAgents'))
-check('scaffold 中英文词典齐全', Boolean(client.dictionaries.ctxMonAndCon?.en?.scaffoldTitle) && Boolean(client.dictionaries.ctxMonAndCon?.zh?.scaffoldTitle))
+check('client 脚手架支持 MCP/AGENTS 选项', clientSource.includes('data-embodiment-scaffold-mcp') && clientSource.includes('writeAgents'))
+check('scaffold 中英文词典齐全', Boolean(client.dictionaries.agentEmbodiment?.en?.scaffoldTitle) && Boolean(client.dictionaries.agentEmbodiment?.zh?.scaffoldTitle))
 
 // 同一个 window 下加载两次：第二次 apply 必须被挂载守卫挡住，不能重复注册槽位。
 const sharedScope = {}

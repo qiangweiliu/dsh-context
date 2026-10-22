@@ -18,16 +18,16 @@ const sendText = async (text) => {
   await evaluate(`(async () => { const norm=(s)=>(s||'').replace(/\\s+/g,' ').trim(); const b=Array.from(document.querySelectorAll('button')).find((x)=>/发送消息/.test(norm(x.getAttribute('aria-label'))||'')); if (b) b.click() })()`)
 }
 await evaluate(`(async () => { const b = Array.from(document.querySelectorAll('button')).find((x) => /新建会话/.test(x.getAttribute('aria-label') || '')); if (b) b.click(); await new Promise((r) => setTimeout(r, 1000)) })()`)
-await api('/api/ctx-mon-and-con/status/config', { contextWindowTokens: 3000, warnAt: 0.7, errorAt: 0.9 })
+await api('/api/agent-embodiment/status/config', { contextWindowTokens: 3000, warnAt: 0.7, errorAt: 0.9 })
 await sleep(6000)
 await sendText('first task message before compaction')
 await sleep(12000)
 await sendText('second task message should still be answered')
 await sleep(18000)
-const status = await api('/api/ctx-mon-and-con/status')
-const live = await api('/api/ctx-mon-and-con/status/live')
+const status = await api('/api/agent-embodiment/status')
+const live = await api('/api/agent-embodiment/status/live')
 const body = await evaluate('(document.body.innerText || "").slice(0, 2500)')
-await api('/api/ctx-mon-and-con/status/config', { contextWindowTokens: 128000, warnAt: 0.7, errorAt: 0.9 })
+await api('/api/agent-embodiment/status/config', { contextWindowTokens: 128000, warnAt: 0.7, errorAt: 0.9 })
 console.log(JSON.stringify({
   errors,
   control: status.body && status.body.control,

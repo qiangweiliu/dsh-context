@@ -9,8 +9,8 @@
  * 验证点：
  *   1. 插件是合法 Cordis 插件（name/inject/Config/apply 被识别）
  *   2. Config 走 Standard Schema 同步校验，非法配置被拒绝
- *   3. /ctx 注册成功、输出格式正确、参数覆盖上下文生效、非法参数返回 error
- *   4. 浏览器状态路由 /api/ctx-mon-and-con/status 注册、返回 JSON、非 GET 405
+ *   3. /embody 注册成功（/ctx 为兼容别名）、输出格式正确、参数覆盖上下文生效、非法参数返回 error
+ *   4. 浏览器状态路由 /api/agent-embodiment/status 注册、返回 JSON、非 GET 405
  *   5. 卸载插件后命令注销（disposer 生效）
  *   6. 包资源（client/icon/locale）能被 exports 解析，dsh.client 声明合法
  *   7. client.js 在 mock 的 __ModuleLoader__/cordis 上下文里能 apply 并注册 settings.section
@@ -95,7 +95,7 @@ class MockWebServer extends Service {
 
 
 // ── 1. 合法插件形状 ───────────────────────────────────────────────────────
-check('exports name', plugin.name === 'ctx-mon-and-con', plugin.name)
+check('exports name', plugin.name === 'agent-embodiment', plugin.name)
 check('exports inject', Array.isArray(plugin.inject) && plugin.inject.join(',') === 'commands,tokenMeter', JSON.stringify(plugin.inject))
 check('exports Config standard schema', typeof plugin.Config?.['~standard']?.validate === 'function')
 check('exports apply function', typeof plugin.apply === 'function')
@@ -111,9 +111,10 @@ const fiber = root.plugin(plugin, { contextWindowTokens: 128000, warnAt: 0.75, e
 await fiber
 
 // ── 2. 命令注册 ───────────────────────────────────────────────────────────
-const definition = commands.definitions.get('ctx')
-check('/ctx registered', Boolean(definition), [...commands.definitions.keys()].join(','))
-check('/ctx has input hint', definition?.input?.hint === '[tokens|reset]', definition?.input?.hint)
+const definition = commands.definitions.get('embody')
+check('/embody registered', Boolean(definition), [...commands.definitions.keys()].join(','))
+check('/embody has input hint', definition?.input?.hint === '[tokens|reset]', definition?.input?.hint)
+check('/ctx legacy alias registered', commands.definitions.has('ctx'), [...commands.definitions.keys()].join(','))
 
 const agent = { session: { id: 'smoke-session' } }
 const invoke = async (rawInput = '') => {
@@ -123,33 +124,33 @@ const invoke = async (rawInput = '') => {
 
 // ── 3. 输出与参数 ─────────────────────────────────────────────────────────
 const normal = await invoke()
-check('/ctx 正常输出 success', normal.kind === 'success', normal.text)
-check('/ctx 显示总用量', normal.text?.includes('42,350'), normal.text)
-check('/ctx 显示上下文', normal.text?.includes('128,000'), normal.text)
-check('/ctx 显示百分比与状态', normal.text?.includes('33.1%') && normal.text?.includes('ok'), normal.text)
+check('/embody 正常输出 success', normal.kind === 'success', normal.text)
+check('/embody 显示总用量', normal.text?.includes('42,350'), normal.text)
+check('/embody 显示上下文', normal.text?.includes('128,000'), normal.text)
+check('/embody 显示百分比与状态', normal.text?.includes('33.1%') && normal.text?.includes('ok'), normal.text)
 
 const warned = await invoke('48000')
-check('/ctx 参数覆盖上下文', warned.kind === 'success' && warned.text?.includes('48,000'), warned.text)
-check('/ctx 到达 warnAt 标记警告', warned.text?.includes('88.2%') && warned.text?.includes('警告'), warned.text)
+check('/embody 参数覆盖上下文', warned.kind === 'success' && warned.text?.includes('48,000'), warned.text)
+check('/embody 到达 warnAt 标记警告', warned.text?.includes('88.2%') && warned.text?.includes('警告'), warned.text)
 
 const over = await invoke('40000')
-check('/ctx 超过 errorAt 标记超限', over.text?.includes('105.9%') && over.text?.includes('超限'), over.text)
+check('/embody 超过 errorAt 标记超限', over.text?.includes('105.9%') && over.text?.includes('超限'), over.text)
 
 const bad = await invoke('abc')
-check('/ctx 非法参数返回 error', bad.kind === 'error' && bad.text?.includes('/ctx'), bad.text)
+check('/embody 非法参数返回 error', bad.kind === 'error' && bad.text?.includes('/embody'), bad.text)
 
 const reset = await invoke('reset')
-check('/ctx reset 清除会话覆盖', reset.kind === 'success' && reset.text?.includes('128,000'), reset.text)
+check('/embody reset 清除会话覆盖', reset.kind === 'success' && reset.text?.includes('128,000'), reset.text)
 const resetAgain = await invoke('reset')
-check('/ctx reset 无覆盖时说明使用默认', resetAgain.kind === 'success' && resetAgain.text?.includes('没有临时上下文'), resetAgain.text)
+check('/embody reset 无覆盖时说明使用默认', resetAgain.kind === 'success' && resetAgain.text?.includes('没有临时上下文'), resetAgain.text)
 
 const cancelled = await definition.handler({ commandId: 'c', agent, rawInput: '', signal: AbortSignal.abort() })
-check('/ctx 已取消信号返回 error', cancelled.kind === 'error', cancelled.text)
+check('/embody 已取消信号返回 error', cancelled.kind === 'error', cancelled.text)
 
 // ── 3b. 浏览器状态路由（client.js 的数据源）────────────────────────────────
 await new Promise((resolve) => setTimeout(resolve, 0))
-const statusRoute = webServer.routes.get('/api/ctx-mon-and-con/status')
-check('注册状态路由 /api/ctx-mon-and-con/status', statusRoute?.kind === 'exact', statusRoute?.path)
+const statusRoute = webServer.routes.get('/api/agent-embodiment/status')
+check('注册状态路由 /api/agent-embodiment/status', statusRoute?.kind === 'exact', statusRoute?.path)
 const makeResponse = () => ({
   statusCode: 0,
   headers: {},
@@ -176,7 +177,7 @@ check('状态含压缩记录数组', Array.isArray(statusPayload.control?.log), 
 // 压缩记录落盘：state 事件 -> 宿主订阅 -> JSONL 文件（写入临时 HOME）
 const stateModule = await import(new URL('../state.js', import.meta.url).href)
 stateModule.recordCompactionEvent({ outcome: 'success', trigger: 'manual', sessionId: 'smoke-session', before: 150000, after: 50000, budget: 128000, rounds: 1 })
-const compactionLogPath = join(testHome, '.dsh', 'ctx-mon-and-con', 'compaction-log.jsonl')
+const compactionLogPath = join(testHome, '.dsh', 'agent-embodiment', 'compaction-log.jsonl')
 const compactionLogLines = existsSync(compactionLogPath) ? readFileSync(compactionLogPath, 'utf8').trim().split('\n').filter(Boolean) : []
 check('压缩事件落盘 JSONL（宿主订阅）', compactionLogLines.length === 1 && JSON.parse(compactionLogLines[0]).outcome === 'success' && JSON.parse(compactionLogLines[0]).after === 50000, JSON.stringify(compactionLogLines))
 const logResponse = makeResponse()
@@ -188,9 +189,9 @@ statusRoute?.handler({ method: 'POST' }, methodResponse)
 check('状态路由非 GET 返回 405', methodResponse.statusCode === 405, methodResponse.statusCode)
 
 // ── 3c. Agent Embodiment Scaffold 路由 ────────────────────────────────────
-const scaffoldTemplates = webServer.routes.get('/api/ctx-mon-and-con/status/scaffold/templates')
-const scaffoldPreview = webServer.routes.get('/api/ctx-mon-and-con/status/scaffold/preview')
-const scaffoldGenerate = webServer.routes.get('/api/ctx-mon-and-con/status/scaffold/generate')
+const scaffoldTemplates = webServer.routes.get('/api/agent-embodiment/status/scaffold/templates')
+const scaffoldPreview = webServer.routes.get('/api/agent-embodiment/status/scaffold/preview')
+const scaffoldGenerate = webServer.routes.get('/api/agent-embodiment/status/scaffold/generate')
 check('注册 scaffold/templates 路由', scaffoldTemplates?.kind === 'exact', scaffoldTemplates?.path)
 check('注册 scaffold/preview 路由', scaffoldPreview?.kind === 'exact', scaffoldPreview?.path)
 check('注册 scaffold/generate 路由', scaffoldGenerate?.kind === 'exact', scaffoldGenerate?.path)
@@ -270,14 +271,14 @@ check('未知配置键被拒绝', unknownKeyError?.name === 'ValidationError' &&
 
 // ── 5. 卸载清理 ───────────────────────────────────────────────────────────
 await fiber.dispose()
-check('卸载后 /ctx 注销', !commands.definitions.has('ctx'), [...commands.definitions.keys()].join(','))
+check('卸载后 /embody 与 /ctx 注销', !commands.definitions.has('embody') && !commands.definitions.has('ctx'), [...commands.definitions.keys()].join(','))
 await root.fiber.dispose()
 
 // ── 6. 包资源（client / icon / locale）────────────────────────────────────
 // 宿主（dsh-app-boot 的 readPluginMeta）用 Node ESM 解析器按 exports 取
 // `<包名>/locale/<lang>.json` 与 `<包名>/icon`，所以这里用同一套解析验证。
 const require = createRequire(new URL('../package.json', import.meta.url))
-for (const specifier of ['ctx-mon-and-con/client', 'ctx-mon-and-con/icon', 'ctx-mon-and-con/locale/en.json', 'ctx-mon-and-con/locale/zh.json']) {
+for (const specifier of ['agent-embodiment/client', 'agent-embodiment/icon', 'agent-embodiment/locale/en.json', 'agent-embodiment/locale/zh.json']) {
   let resolved
   try {
     resolved = require.resolve(specifier)
@@ -323,12 +324,12 @@ const client = (() => {
   return loaded
 })()
 check('client exports inject = ["slots","locale"]', client.moduleExports.inject?.join(',') === 'slots,locale', JSON.stringify(client.moduleExports.inject))
-check('client 注册词典', Object.keys(client.dictionaries).join(',') === 'ctxMonAndCon', Object.keys(client.dictionaries).join(','))
+check('client 注册词典', Object.keys(client.dictionaries).join(',') === 'agentEmbodiment', Object.keys(client.dictionaries).join(','))
 client.slotInjects[0]?.callback()
 const section = client.slotRegistrations[0]?.definition ?? {}
 check('client 注册 settings.section', section.name === 'settings.section', JSON.stringify(section))
-check('settings.section id/order/locale', section.id === 'ctx-mon-and-con' && typeof section.order === 'number' && section.locale === 'ctxMonAndCon', JSON.stringify(section))
-check('settings.section label 走中文词典', section.label?.() === '上下文长度', section.label?.())
+check('settings.section id/order/locale', section.id === 'agent-embodiment' && typeof section.order === 'number' && section.locale === 'agentEmbodiment', JSON.stringify(section))
+check('settings.section label 走中文词典', section.label?.() === '智能体具身', section.label?.())
 check('settings.section 组件是函数', typeof client.slotRegistrations[0]?.component === 'function', typeof client.slotRegistrations[0]?.component)
 
 try {

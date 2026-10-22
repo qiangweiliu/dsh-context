@@ -17,23 +17,23 @@ const sendText = async (text) => {
   await evaluate(`(async () => { const norm=(s)=>(s||'').replace(/\\s+/g,' ').trim(); const b=Array.from(document.querySelectorAll('button')).find((x)=>/发送消息/.test(norm(x.getAttribute('aria-label'))||'')); if (b) b.click() })()`)
 }
 await evaluate(`(async () => { const b = Array.from(document.querySelectorAll('button')).find((x) => /新建会话/.test(x.getAttribute('aria-label') || '')); if (b) b.click(); await new Promise((r) => setTimeout(r, 1000)) })()`)
-await api('/api/ctx-mon-and-con/status/config', { contextWindowTokens: 3000, warnAt: 0.7, errorAt: 0.9 })
+await api('/api/agent-embodiment/status/config', { contextWindowTokens: 3000, warnAt: 0.7, errorAt: 0.9 })
 await sleep(6000)
 await sendText('first message')
 await sleep(10000)
 await sendText('second message triggers pre-step check')
 await sleep(15000)
-const status = await api('/api/ctx-mon-and-con/status')
+const status = await api('/api/agent-embodiment/status')
 const panel = await evaluate(`(async () => {
   const norm = (s) => (s || '').replace(/\\s+/g, ' ').trim()
   const btn = Array.from(document.querySelectorAll('button')).find((b) => norm(b.getAttribute('aria-label')) === 'ctx')
   if (!btn) return { ok: false, why: 'sidebar ctx not found' }
   btn.click()
   await new Promise((r) => setTimeout(r, 2500))
-  const el = document.querySelector('[data-ctx-lasterror]')
+  const el = document.querySelector('[data-embodiment-lasterror]')
   return { ok: true, lastErrorText: el ? el.textContent.trim() : null, body: (document.body.innerText || '').slice(0, 1200) }
 })()`)
-await api('/api/ctx-mon-and-con/status/config', { contextWindowTokens: 128000, warnAt: 0.7, errorAt: 0.9 })
+await api('/api/agent-embodiment/status/config', { contextWindowTokens: 128000, warnAt: 0.7, errorAt: 0.9 })
 console.log(JSON.stringify({ controlLastError: status.body?.control?.lastError, panel }, null, 2))
 await close()
 process.exit(0)

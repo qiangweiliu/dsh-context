@@ -1,17 +1,17 @@
 /**
- * ctx-mon-and-con — 浏览器半侧
+ * agent-embodiment — 浏览器半侧
  *
  * 三个挂载点共用一套视觉：
  *   1. conversation.composer.dock —— 输入框下方，与 DSH 内置 ContextMeter 同一排版
- *   2. main (key = 'ctx')         —— 左侧导航整页
- *   3. settings.section           —— 设置 → 上下文长度
+ *   2. main (key = 'embody')         —— 左侧导航整页
+ *   3. settings.section           —— 设置 → 智能体具身
  *
  * 视觉参考：DSH 自带 ContextMeter 的 trigger/panel 尺寸与颜色 token；
  * 面板卡片布局参考 dsh-context 插件（lc-card / lc-card-title / lc-chip 的信息密度），
  * 但全部用内联样式 + --dsw-alias-* token 实现，不引入 CSS 文件、不依赖 Tailwind。
  */
 window.__ModuleLoader__.load({
-  id: 'ctx-mon-and-con',
+  id: 'agent-embodiment',
   factory: (require) => {
     var module = { exports: {} }
     var exports = module.exports
@@ -19,9 +19,9 @@ window.__ModuleLoader__.load({
 
     const react = require('react')
 
-    const NS = 'ctxMonAndCon'
+    const NS = 'agentEmbodiment'
     /** 与 package.json 版本保持一致；宿主版本不同时提示刷新页面而不是重启 DSH。 */
-    const CLIENT_VERSION = '0.20.0'
+    const CLIENT_VERSION = '0.21.0'
     /**
      * API 路径必须相对页面 base 解析，而不是写死根路径：
      * 反向代理部署在 /app/dsh/ 这类前缀下时，根路径 /api/... 会打到网关根并 404。
@@ -29,31 +29,31 @@ window.__ModuleLoader__.load({
      */
     const STATUS_PATH = (() => {
       try {
-        if (typeof document === 'undefined' || typeof document.baseURI !== 'string') return '/api/ctx-mon-and-con/status'
+        if (typeof document === 'undefined' || typeof document.baseURI !== 'string') return '/api/agent-embodiment/status'
         const base = new URL(document.baseURI)
         if (!base.pathname.endsWith('/')) {
           const last = base.pathname.slice(base.pathname.lastIndexOf('/') + 1)
           if (last.includes('.')) base.pathname = base.pathname.slice(0, base.pathname.lastIndexOf('/') + 1)
           else base.pathname += '/'
         }
-        return new URL('api/ctx-mon-and-con/status', base).pathname
+        return new URL('api/agent-embodiment/status', base).pathname
       } catch {
-        return '/api/ctx-mon-and-con/status'
+        return '/api/agent-embodiment/status'
       }
     })()
-    const PANEL_ID = 'ctx'
-    const CONFIG_NAMESPACE = 'ctx-mon-and-con'
+    const PANEL_ID = 'embody'
+    const CONFIG_NAMESPACE = 'agent-embodiment'
 
     const en = {
-      nav: 'Context length',
-      panel: 'ctx',
-      ctxBrand: 'ctx',
-      title: 'Context length',
-      pageTitle: 'Context monitor',
+      nav: 'Agent Embodiment',
+      panel: 'embody',
+      ctxBrand: 'embody',
+      title: 'Agent Embodiment',
+      pageTitle: 'Agent Embodiment',
       versionLabel: 'Plugin version',
       reloadUi: 'Reload page',
       reloadHint: 'The plugin was updated; reload the page to load the new UI (no DSH restart needed).',
-      description: 'Monitors this session’s context usage and edits the plugin’s global context limit.',
+      description: 'Context budgets, environment sensing, tools, and agent scaffolds for DeepSeek Harness.',
       budget: 'Context limit',
       budgetLimit: 'Budget cap',
       used: 'Measured',
@@ -73,20 +73,20 @@ window.__ModuleLoader__.load({
       invalidTarget: 'Target ratio must be in (0, 1) and below the trigger ratio.',
       compacting: 'Compacting…',
       compactingHint: 'Compaction is running; the next request may wait a moment.',
-      recent: 'Recent /ctx measurements',
+      recent: 'Recent /embody measurements',
       refresh: 'Refresh',
       collapse: 'Collapse',
       expand: 'Expand',
       lastDelta: 'Since last sync',
       retry: 'Retry',
       error: 'Could not load status',
-      hint: 'Tip: /ctx <tokens> temporarily overrides this session; /ctx reset restores the default.',
+      hint: 'Tip: /embody <tokens> temporarily overrides this session; /embody reset restores the default. /ctx is a legacy alias.',
       tokens: 'tokens',
       control: 'Control',
       controlOn: 'enabled',
       controlOff: 'not active',
       controlReady: 'Control row is mounted in the agent preset; the context limit is enforced automatically.',
-      controlMissing: 'Not active yet — mount ctx-mon-and-con/control inside the agent preset (Settings → Agent preset → compaction group).',
+      controlMissing: 'Not active yet — mount agent-embodiment/control inside the agent preset (Settings → Agent preset → compaction group).',
       controlLast: 'Last compaction',
       compactLog: 'Compaction log',
       compactSuccess: 'success',
@@ -265,15 +265,15 @@ window.__ModuleLoader__.load({
     }
 
     const zh = {
-      nav: '上下文长度',
-      panel: 'ctx',
-      ctxBrand: 'ctx',
-      title: '上下文长度',
-      pageTitle: '上下文监控',
+      nav: '智能体具身',
+      panel: 'embody',
+      ctxBrand: 'embody',
+      title: '智能体具身',
+      pageTitle: '智能体具身',
       versionLabel: '插件版本',
       reloadUi: '刷新页面',
       reloadHint: '插件已更新，刷新页面即可加载新界面（无需重启 DSH）。',
-      description: '监控当前会话的上下文占用，并编辑插件的全局上下文配置。',
+      description: '为 DeepSeek Harness agent 提供上下文预算、环境感知、工具与脚手架。',
       budget: '上下文',
       budgetLimit: '预算上限',
       used: '实测用量',
@@ -293,20 +293,20 @@ window.__ModuleLoader__.load({
       invalidTarget: '目标比例必须在 (0, 1) 之间，且小于触发比例。',
       compacting: '压缩中…',
       compactingHint: '正在压缩历史；下一次请求可能会等待片刻。',
-      recent: '最近的 /ctx 测量',
+      recent: '最近的 /embody 测量',
       refresh: '刷新',
       collapse: '收起',
       expand: '展开',
       lastDelta: '较上次同步',
       retry: '重试',
       error: '读取状态失败',
-      hint: '提示：/ctx <tokens> 临时覆盖本会话上下文；/ctx reset 恢复默认。',
+      hint: '提示：/embody <tokens> 临时覆盖本会话上下文；/embody reset 恢复默认；/ctx 是兼容别名。',
       tokens: 'tokens',
       control: '控制',
       controlOn: '已启用',
       controlOff: '未启用',
       controlReady: '控制行已挂在 agent preset 内，超出上下文会自动压缩。',
-      controlMissing: '尚未生效 —— 需要把 ctx-mon-and-con/control 加到 agent preset 的 compaction 组里（设置 → Agent preset → compaction group）。',
+      controlMissing: '尚未生效 —— 需要把 agent-embodiment/control 加到 agent preset 的 compaction 组里（设置 → Agent preset → compaction group）。',
       controlLast: '最近一次压缩',
       compactLog: '压缩记录',
       compactSuccess: '成功',
@@ -608,7 +608,7 @@ window.__ModuleLoader__.load({
       const state = props.state || 'ok'
       const label = props.label || (state === 'error' ? t('statusError') : state === 'warn' ? t('statusWarn') : t('statusOk'))
       const style = state === 'error' ? styles.badgeError : state === 'warn' ? styles.badgeWarn : styles.badgeOk
-      return h('span', { style: { ...styles.badge, ...style }, 'data-ctx-status': state }, h('i', { style: { ...styles.dot, width: '6px', height: '6px', borderRadius: '999px', background: 'currentColor' } }), label)
+      return h('span', { style: { ...styles.badge, ...style }, 'data-embodiment-status': state }, h('i', { style: { ...styles.dot, width: '6px', height: '6px', borderRadius: '999px', background: 'currentColor' } }), label)
     }
 
     // ── 上下文构成四色（前三色沿用内置 HUD，第 4 色用主题 accent） ─────────────
@@ -655,7 +655,7 @@ window.__ModuleLoader__.load({
         filled.map((row) =>
           h('div', {
             key: row.key,
-            'data-ctx-seg': row.key,
+            'data-embodiment-seg': row.key,
             title: `${row.label} · ${compactTokens(row.tokens)} (${formatPercent(row.share)})`,
             style: {
               ...styles.barSegment,
@@ -910,7 +910,7 @@ window.__ModuleLoader__.load({
       const circumference = 2 * Math.PI * radius
       return h(
         'div',
-        { style: styles.ringWrap, 'data-ctx-ring': String(Math.round(percent)), title: props.title },
+        { style: styles.ringWrap, 'data-embodiment-ring': String(Math.round(percent)), title: props.title },
         h(
           'svg',
           { viewBox: '0 0 104 104', width: 104, height: 104, style: styles.ringSvg, 'aria-hidden': true },
@@ -946,7 +946,7 @@ window.__ModuleLoader__.load({
         categories.map((row) =>
           h(
             'div',
-            { key: row.key, style: styles.legendItem, 'data-ctx-legend': row.key, title: `${row.label} · ${formatTokens(row.tokens)} ${props.tokensLabel || ''}` },
+            { key: row.key, style: styles.legendItem, 'data-embodiment-legend': row.key, title: `${row.label} · ${formatTokens(row.tokens)} ${props.tokensLabel || ''}` },
             h('i', { style: { ...styles.dot, background: row.color } }),
             h('span', { style: styles.legendName }, row.label),
             h('span', { style: styles.legendValue }, `${compactTokens(row.tokens)} · ${formatPercent(row.share)}`),
@@ -980,7 +980,7 @@ window.__ModuleLoader__.load({
     }
 
     // ── 卡片折叠状态（记忆到 localStorage，按卡片 id 存） ──────────────────
-    const COLLAPSED_STORAGE_KEY = 'ctx-mon-and-con:collapsed:v1'
+    const COLLAPSED_STORAGE_KEY = 'agent-embodiment:collapsed:v1'
 
     function readCollapsedMap() {
       try {
@@ -1010,7 +1010,7 @@ window.__ModuleLoader__.load({
       }
       return h(
         'div',
-        { style: { ...styles.card, ...(props.style || {}) }, 'data-ctx-card': cardId || undefined, 'data-ctx-collapsed': collapsed ? '1' : '0' },
+        { style: { ...styles.card, ...(props.style || {}) }, 'data-embodiment-card': cardId || undefined, 'data-embodiment-collapsed': collapsed ? '1' : '0' },
         h(
           'div',
           { style: styles.cardHead },
@@ -1023,7 +1023,7 @@ window.__ModuleLoader__.load({
                   title: collapsed ? t('expand') : t('collapse'),
                   'aria-label': collapsed ? t('expand') : t('collapse'),
                   'aria-expanded': !collapsed,
-                  'data-ctx-card-toggle': cardId,
+                  'data-embodiment-card-toggle': cardId,
                   onClick: toggle,
                 },
                 h('span', { style: { display: 'inline-block', transform: collapsed ? 'none' : 'rotate(90deg)', transition: 'transform .15s ease' } }, '›'),
@@ -1178,14 +1178,15 @@ window.__ModuleLoader__.load({
     }
 
     // ── 余额胶囊显示偏好：默认关闭，本机持久化 ───────────────────────────
-    const BALANCE_ENABLED_KEY = 'ctx-mon-and-con:balance-enabled:v1'
+    const BALANCE_ENABLED_KEY = 'agent-embodiment:balance-enabled:v1'
+    const LEGACY_BALANCE_ENABLED_KEY = 'ctx-mon-and-con:balance-enabled:v1'
     /** 常驻 dock 的最小重读间隔：官方无轮询，这里也只在触发点后跳过过密的读。 */
     const BALANCE_READ_MIN_MS = 30000
     const balanceEnabledSubscribers = new Set()
     function readBalanceEnabled() {
       try {
         if (typeof window === 'undefined' || !window.localStorage) return false
-        return window.localStorage.getItem(BALANCE_ENABLED_KEY) === '1'
+        return window.localStorage.getItem(BALANCE_ENABLED_KEY) === '1' || window.localStorage.getItem(LEGACY_BALANCE_ENABLED_KEY) === '1'
       } catch {
         return false
       }
@@ -1205,7 +1206,7 @@ window.__ModuleLoader__.load({
         balanceEnabledSubscribers.add(sync)
         sync()
         const onStorage = (event) => {
-          if (event.key === BALANCE_ENABLED_KEY) sync()
+          if (event.key === BALANCE_ENABLED_KEY || event.key === LEGACY_BALANCE_ENABLED_KEY) sync()
         }
         window.addEventListener('storage', onStorage)
         return () => {
@@ -1242,7 +1243,7 @@ window.__ModuleLoader__.load({
           label: t('balance'),
           title: t('balance'),
           percent: ready ? walletSummary(snapshot) || '—' : '—',
-          attrs: { 'data-ctx-balance-panel': '1' },
+          attrs: { 'data-embodiment-balance-panel': '1' },
           action: h(
             'div',
             { style: { display: 'flex', gap: '8px', alignItems: 'center' } },
@@ -1364,7 +1365,7 @@ window.__ModuleLoader__.load({
             ...triggerProps,
             title: detail,
             'aria-label': `${t('balance')} ${total}`,
-            'data-ctx-balance': '1',
+            'data-embodiment-balance': '1',
           },
           h('span', null, t('balance')),
           h('span', { style: { color: 'var(--dsw-alias-label-primary)', fontVariantNumeric: 'tabular-nums' } }, total),
@@ -1412,7 +1413,7 @@ window.__ModuleLoader__.load({
         const target = candidates.find((element) => {
           const label = (element.getAttribute('aria-label') || '').trim()
           const text = (element.textContent || '').replace(/\s+/g, ' ').trim()
-          return label === 'ctx' || text === 'ctx'
+          return label === 'embody' || text === 'embody' || label === 'ctx' || text === 'ctx'
         })
         if (target) {
           target.click()
@@ -1488,7 +1489,7 @@ window.__ModuleLoader__.load({
             ...triggerProps,
             'aria-label': `${t('meterAria')}${percent === null ? '' : ` ${percent}%`}`,
             title: used !== null && budget !== null ? `${formatTokens(used)} / ${formatTokens(budget)} ${t('tokens')}${state === 'error' ? ` · ${t('statusError')}` : state === 'warn' ? ` · ${t('statusWarn')}` : ''}` : t('meterAria'),
-            'data-ctx-dock': '1',
+            'data-embodiment-dock': '1',
           },
           h(Ring, { percent: percent ?? 0, color }),
           h('span', { style: { color } }, label),
@@ -1503,7 +1504,7 @@ window.__ModuleLoader__.load({
                 figures: `~${compactTokens(used)} / ${compactTokens(budget)}`,
                 action: h(
                   'button',
-                  { type: 'button', style: styles.copyBtn, 'data-ctx-open-panel': '1', onClick: () => { setOpen(false); openCtxPanelPage() } },
+                  { type: 'button', style: styles.copyBtn, 'data-embodiment-open-panel': '1', onClick: () => { setOpen(false); openCtxPanelPage() } },
                   t('openPanel'),
                 ),
               },
@@ -1794,7 +1795,7 @@ window.__ModuleLoader__.load({
           return h(
             'span',
             { style: { display: 'inline-flex', gap: '4px', alignItems: 'center' } },
-            h('button', { type: 'button', style: styles.copyBtn, onClick: confirm, 'data-ctx-confirm': '1' }, t('confirm')),
+            h('button', { type: 'button', style: styles.copyBtn, onClick: confirm, 'data-embodiment-confirm': '1' }, t('confirm')),
             h('button', { type: 'button', style: styles.copyBtn, onClick: () => setPending(null) }, t('cancel')),
           )
         }
@@ -1804,7 +1805,7 @@ window.__ModuleLoader__.load({
             type: 'button',
             role: 'switch',
             'aria-checked': enabled,
-            'data-ctx-switch': key,
+            'data-embodiment-switch': key,
             title: `${t(layer === 'global' ? 'globalSwitch' : 'sessionSwitch')}${enabled ? ' ✓' : ''}`,
             style: {
               width: '30px',
@@ -1841,7 +1842,7 @@ window.__ModuleLoader__.load({
             h('span', { style: styles.cardSub }, t('copy')),
             h('button', { type: 'button', style: styles.copyBtn, onClick: () => copy(key, text) }, copied === key ? t('copied') : t('copy')),
           ),
-          h('pre', { style: styles.pre, 'data-ctx-detail': key }, text),
+          h('pre', { style: styles.pre, 'data-embodiment-detail': key }, text),
         )
       }
 
@@ -1856,7 +1857,7 @@ window.__ModuleLoader__.load({
       const extraPrompts = data.extraPrompts && typeof data.extraPrompts === 'object' ? data.extraPrompts : {}
       const extraPromptPlacements = data.extraPromptPlacements && typeof data.extraPromptPlacements === 'object' ? data.extraPromptPlacements : {}
       for (const [name, text] of Object.entries(extraPrompts)) {
-        const sectionName = name.startsWith('ctx-mon-and-con:extra:') ? name : `ctx-mon-and-con:extra:${name}`
+        const sectionName = name.startsWith('agent-embodiment:extra:') ? name : `agent-embodiment:extra:${name}`
         const placement = extraPromptPlacements[name] === 'user' ? 'user' : 'system'
         const existing = sections.find((section) => section.name === sectionName)
         if (existing) {
@@ -1905,7 +1906,7 @@ window.__ModuleLoader__.load({
             { style: styles.inventoryRow },
             h(
               'button',
-              { type: 'button', style: styles.inventoryHead, 'data-ctx-expand': key, 'aria-expanded': isOpen, onClick: () => setExpanded({ ...expanded, [key]: !isOpen }) },
+              { type: 'button', style: styles.inventoryHead, 'data-embodiment-expand': key, 'aria-expanded': isOpen, onClick: () => setExpanded({ ...expanded, [key]: !isOpen }) },
               chevron(isOpen),
               h('span', { style: styles.inventoryName }, tool.name),
               tool.tokens !== null && tool.tokens !== undefined ? h('span', { style: styles.cardSub }, `~${compactTokens(tool.tokens)} ${t('tokensShort')}`) : null,
@@ -1931,7 +1932,7 @@ window.__ModuleLoader__.load({
                         h('span', { style: styles.cardSub }, t('parameters')),
                         h('button', { type: 'button', style: styles.copyBtn, onClick: () => copy(`${key}:schema`, schemaText) }, copied === `${key}:schema` ? t('copied') : t('copy')),
                       ),
-                      h('pre', { style: styles.pre, 'data-ctx-schema': key }, schemaText),
+                      h('pre', { style: styles.pre, 'data-embodiment-schema': key }, schemaText),
                     )
                   : null,
               )
@@ -1955,7 +1956,7 @@ window.__ModuleLoader__.load({
               style: styles.promptEditor,
               rows: 8,
               value: editDraft.text,
-              'data-ctx-prompt-editor': section.name,
+              'data-embodiment-prompt-editor': section.name,
               onChange: (event) => setEditDraft({ ...editDraft, text: event.target.value }),
             })
           : h('div', { style: styles.detailBox },
@@ -1963,24 +1964,24 @@ window.__ModuleLoader__.load({
                 h('span', { style: styles.cardSub }, isExtra ? `${t('extraLabel')} · ${extraBadge}` : dirty ? (section.sessionOverridden ? t('sessionOverridden') : t('globalOverridden')) : t('editHint')),
                 h('span', { style: { ...styles.cardSub, fontFamily: 'ui-monospace, monospace', maxWidth: '46%', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }, title: sourceOf(section.name) || t('sourceUnknown') }, `${t('source')}: ${sourceOf(section.name) || t('sourceUnknown')}`),
                 h('span', { style: { display: 'inline-flex', gap: '6px' } },
-                  h('button', { type: 'button', style: styles.copyBtn, 'data-ctx-prompt-edit': section.name, onClick: () => { setEditDraft({ name: section.name, text: effectiveText }); setPromptSave(null) }, disabled: promptBusy || extraBusy }, t('edit')),
+                  h('button', { type: 'button', style: styles.copyBtn, 'data-embodiment-prompt-edit': section.name, onClick: () => { setEditDraft({ name: section.name, text: effectiveText }); setPromptSave(null) }, disabled: promptBusy || extraBusy }, t('edit')),
                   isExtra
                     ? extraDeletePending === section.name
                       ? [
-                          h('button', { key: 'del', type: 'button', style: styles.copyBtn, 'data-ctx-extra-delete-confirm': section.name, onClick: () => postExtraPromptReset(displayName), disabled: extraBusy }, t('confirm')),
+                          h('button', { key: 'del', type: 'button', style: styles.copyBtn, 'data-embodiment-extra-delete-confirm': section.name, onClick: () => postExtraPromptReset(displayName), disabled: extraBusy }, t('confirm')),
                           h('button', { key: 'no', type: 'button', style: styles.copyBtn, onClick: () => setExtraDeletePending(null) }, t('cancel')),
                         ]
                       : [
-                          h('button', { key: 'placement', type: 'button', style: styles.copyBtn, 'data-ctx-extra-placement-toggle': section.name, onClick: () => postExtraPrompt(displayName, effectiveText, extraPlacement === 'user' ? 'system' : 'user'), disabled: extraBusy }, extraPlacement === 'user' ? t('extraPromptSwitchSystem') : t('extraPromptSwitchUser')),
-                          h('button', { key: 'delete', type: 'button', style: styles.copyBtn, 'data-ctx-extra-delete': section.name, onClick: () => setExtraDeletePending(section.name), disabled: extraBusy }, t('extraPromptDelete')),
+                          h('button', { key: 'placement', type: 'button', style: styles.copyBtn, 'data-embodiment-extra-placement-toggle': section.name, onClick: () => postExtraPrompt(displayName, effectiveText, extraPlacement === 'user' ? 'system' : 'user'), disabled: extraBusy }, extraPlacement === 'user' ? t('extraPromptSwitchSystem') : t('extraPromptSwitchUser')),
+                          h('button', { key: 'delete', type: 'button', style: styles.copyBtn, 'data-embodiment-extra-delete': section.name, onClick: () => setExtraDeletePending(section.name), disabled: extraBusy }, t('extraPromptDelete')),
                         ]
                     : dirty
-                      ? h('button', { type: 'button', style: styles.copyBtn, 'data-ctx-prompt-reset': section.name, onClick: () => (section.sessionOverridden ? postSessionPromptReset(section.name) : postPrompt('/reset', { name: section.name })), disabled: promptBusy }, section.sessionOverridden ? t('resetSession') : t('resetOriginal'))
+                      ? h('button', { type: 'button', style: styles.copyBtn, 'data-embodiment-prompt-reset': section.name, onClick: () => (section.sessionOverridden ? postSessionPromptReset(section.name) : postPrompt('/reset', { name: section.name })), disabled: promptBusy }, section.sessionOverridden ? t('resetSession') : t('resetOriginal'))
                       : null,
                   h('button', { type: 'button', style: styles.copyBtn, onClick: () => copy(key, effectiveText) }, copied === key ? t('copied') : t('copy')),
                 ),
               ),
-              h('pre', { style: styles.pre, 'data-ctx-detail': key }, effectiveText),
+              h('pre', { style: styles.pre, 'data-embodiment-detail': key }, effectiveText),
             )
         return h(
           'li',
@@ -1990,7 +1991,7 @@ window.__ModuleLoader__.load({
             { style: styles.inventoryRow },
             h(
               'button',
-              { type: 'button', style: styles.inventoryHead, 'data-ctx-expand': key, 'aria-expanded': isOpen, onClick: () => setExpanded({ ...expanded, [key]: !isOpen }) },
+              { type: 'button', style: styles.inventoryHead, 'data-embodiment-expand': key, 'aria-expanded': isOpen, onClick: () => setExpanded({ ...expanded, [key]: !isOpen }) },
               chevron(isOpen),
               h('span', { style: styles.inventoryName }, displayName),
               isExtra ? h('span', { style: styles.cardSub }, `${t('extraLabel')} · ${extraBadge}`) : dirty ? h('span', { style: styles.cardSub }, section.sessionOverridden ? t('sessionOverridden') : t('globalOverridden')) : null,
@@ -2006,15 +2007,15 @@ window.__ModuleLoader__.load({
           isOpen && editing
             ? h('div', { style: { display: 'flex', gap: '6px', alignItems: 'center', flexWrap: 'wrap' } },
                 isExtra
-                  ? [h('button', { key: 'save', type: 'button', style: styles.copyBtn, 'data-ctx-extra-save': section.name, onClick: () => postExtraPrompt(displayName, editDraft.text, extraPlacement), disabled: extraBusy }, t('save')),
+                  ? [h('button', { key: 'save', type: 'button', style: styles.copyBtn, 'data-embodiment-extra-save': section.name, onClick: () => postExtraPrompt(displayName, editDraft.text, extraPlacement), disabled: extraBusy }, t('save')),
                      h('button', { key: 'cancel', type: 'button', style: styles.copyBtn, onClick: () => { setEditDraft(null); setPromptSave(null) } }, t('cancel')),
                      h('span', { key: 'hint', style: styles.cardSub }, t('editHint'))]
                   : promptSave === section.name
                     ? [h('span', { key: 'q', style: styles.cardSub }, t('confirmGlobal')),
-                       h('button', { key: 'ok', type: 'button', style: styles.copyBtn, 'data-ctx-prompt-confirm': section.name, onClick: () => postPrompt('', { name: section.name, text: editDraft.text }), disabled: promptBusy }, t('confirm')),
+                       h('button', { key: 'ok', type: 'button', style: styles.copyBtn, 'data-embodiment-prompt-confirm': section.name, onClick: () => postPrompt('', { name: section.name, text: editDraft.text }), disabled: promptBusy }, t('confirm')),
                        h('button', { key: 'no', type: 'button', style: styles.copyBtn, onClick: () => setPromptSave(null) }, t('cancel'))]
-                    : [h('button', { key: 'session', type: 'button', style: styles.copyBtn, 'data-ctx-prompt-save-session': section.name, onClick: () => postSessionPrompt(section.name, editDraft.text), disabled: promptBusy }, t('saveSession')),
-                       h('button', { key: 'save', type: 'button', style: styles.copyBtn, 'data-ctx-prompt-save': section.name, onClick: () => setPromptSave(section.name), disabled: promptBusy }, t('saveGlobal')),
+                    : [h('button', { key: 'session', type: 'button', style: styles.copyBtn, 'data-embodiment-prompt-save-session': section.name, onClick: () => postSessionPrompt(section.name, editDraft.text), disabled: promptBusy }, t('saveSession')),
+                       h('button', { key: 'save', type: 'button', style: styles.copyBtn, 'data-embodiment-prompt-save': section.name, onClick: () => setPromptSave(section.name), disabled: promptBusy }, t('saveGlobal')),
                        h('button', { key: 'cancel', type: 'button', style: styles.copyBtn, onClick: () => { setEditDraft(null); setPromptSave(null) } }, t('cancel')),
                        h('span', { key: 'hint', style: styles.cardSub }, t('editHint'))],
               )
@@ -2033,7 +2034,7 @@ window.__ModuleLoader__.load({
             key: template.id,
             type: 'button',
             style: styles.copyBtn,
-            'data-ctx-extra-template': template.id,
+            'data-embodiment-extra-template': template.id,
             onClick: () => setExtraDraft({
               ...extraDraft,
               name: template.id === 'method' ? t('extraPromptTemplateMethodName') : template.id,
@@ -2053,7 +2054,7 @@ window.__ModuleLoader__.load({
               type: 'text',
               value: extraDraft.name,
               placeholder: t('extraPromptName'),
-              'data-ctx-extra-name': '1',
+              'data-embodiment-extra-name': '1',
               style: { width: '100%', boxSizing: 'border-box', padding: '7px 9px', borderRadius: '8px', border: '1px solid var(--dsw-alias-border-l2)', background: 'var(--dsw-alias-bg-base)', color: 'inherit', font: 'inherit' },
               onChange: (event) => setExtraDraft({ ...extraDraft, name: event.target.value }),
             }),
@@ -2061,7 +2062,7 @@ window.__ModuleLoader__.load({
               rows: 6,
               value: extraDraft.text,
               placeholder: t('extraPromptText'),
-              'data-ctx-extra-text': '1',
+              'data-embodiment-extra-text': '1',
               style: { ...styles.promptEditor, minHeight: '96px' },
               onChange: (event) => setExtraDraft({ ...extraDraft, text: event.target.value }),
             }),
@@ -2069,7 +2070,7 @@ window.__ModuleLoader__.load({
               t('extraPromptPlacement'),
               h('select', {
                 value: extraDraft.placement || 'user',
-                'data-ctx-extra-placement': '1',
+                'data-embodiment-extra-placement': '1',
                 style: { padding: '5px 7px', borderRadius: '7px', border: '1px solid var(--dsw-alias-border-l2)', background: 'var(--dsw-alias-bg-base)', color: 'inherit', font: 'inherit' },
                 onChange: (event) => setExtraDraft({ ...extraDraft, placement: event.target.value }),
               },
@@ -2083,7 +2084,7 @@ window.__ModuleLoader__.load({
               h('button', {
                 type: 'button',
                 style: styles.copyBtn,
-                'data-ctx-extra-save-new': '1',
+                'data-embodiment-extra-save-new': '1',
                 disabled: extraBusy || extraDraft.name.trim().length === 0 || extraDraft.text.trim().length === 0,
                 onClick: () => postExtraPrompt(extraDraft.name.trim(), extraDraft.text, extraDraft.placement || 'user'),
               }, t('extraPromptSave')),
@@ -2094,7 +2095,7 @@ window.__ModuleLoader__.load({
         : h('button', {
             type: 'button',
             style: styles.button,
-            'data-ctx-extra-add': '1',
+            'data-embodiment-extra-add': '1',
             onClick: () => setExtraDraft({ name: '', text: '', placement: 'user' }),
           }, t('extraPromptAdd'))
 
@@ -2108,7 +2109,7 @@ window.__ModuleLoader__.load({
           { title: t('inventoryTitle'), id: 'inventory', t },
           h(
             'div',
-            { style: styles.skeletonStack, 'data-ctx-inventory-loading': '1' },
+            { style: styles.skeletonStack, 'data-embodiment-inventory-loading': '1' },
             h('div', { style: { ...styles.skeleton, width: '46%' } }),
             h('div', { style: { ...styles.skeleton, width: '72%' } }),
             h('div', { style: { ...styles.skeleton, width: '58%' } }),
@@ -2121,7 +2122,7 @@ window.__ModuleLoader__.load({
           { title: t('inventoryTitle'), id: 'inventory', t },
           h(
             'div',
-            { style: styles.emptyState, 'data-ctx-inventory-error': '1' },
+            { style: styles.emptyState, 'data-embodiment-inventory-error': '1' },
             h('p', { style: styles.error }, `${t('inventoryLoadFailed')}: ${loadError}`),
             refreshButton,
           ),
@@ -2133,10 +2134,10 @@ window.__ModuleLoader__.load({
         empty
           ? h(
               'div',
-              { style: styles.emptyState, 'data-ctx-inventory-empty': '1' },
+              { style: styles.emptyState, 'data-embodiment-inventory-empty': '1' },
               h('p', { style: styles.emptyText }, t('inventoryEmpty')),
               h('div', { style: { display: 'flex', justifyContent: 'center', padding: '2px 0' } }, extraForm),
-              notice ? h('p', { style: styles.cardSub, 'data-ctx-prompt-notice': '1' }, notice) : null,
+              notice ? h('p', { style: styles.cardSub, 'data-embodiment-prompt-notice': '1' }, notice) : null,
               refreshButton,
             )
           : null,
@@ -2154,7 +2155,7 @@ window.__ModuleLoader__.load({
                   {
                     type: 'button',
                     style: { ...styles.filterToggle, ...(onlyEnabled ? styles.filterToggleOn : null) },
-                    'data-ctx-only-enabled': String(onlyEnabled),
+                    'data-embodiment-only-enabled': String(onlyEnabled),
                     'aria-pressed': onlyEnabled,
                     onClick: () => setOnlyEnabled(!onlyEnabled),
                   },
@@ -2167,7 +2168,7 @@ window.__ModuleLoader__.load({
                 { style: styles.inventorySection },
                 h(
                   'button',
-                  { type: 'button', style: styles.sectionHead, 'data-ctx-section': 'tools', onClick: () => setOpen({ ...open, tools: !open.tools }) },
+                  { type: 'button', style: styles.sectionHead, 'data-embodiment-section': 'tools', onClick: () => setOpen({ ...open, tools: !open.tools }) },
                   chevron(open.tools), t('inventoryTools'), h('span', { style: styles.cardSub }, onlyEnabled ? `${visibleTools.length}/${tools.length}` : String(tools.length)),
                 ),
                 open.tools ? (visibleTools.length === 0 ? h('p', { style: styles.emptyText }, t('noneEnabled')) : h('ul', { style: styles.inventoryList }, visibleTools.map(toolRow))) : null,
@@ -2177,11 +2178,11 @@ window.__ModuleLoader__.load({
                 { style: styles.inventorySection },
                 h(
                   'button',
-                  { type: 'button', style: styles.sectionHead, 'data-ctx-section': 'prompts', onClick: () => setOpen({ ...open, prompts: !open.prompts }) },
+                  { type: 'button', style: styles.sectionHead, 'data-embodiment-section': 'prompts', onClick: () => setOpen({ ...open, prompts: !open.prompts }) },
                   chevron(open.prompts), t('inventoryPrompts'), h('span', { style: styles.cardSub }, onlyEnabled ? `${visibleSections.length}/${sections.length}` : String(sections.length)),
                 ),
                 open.prompts ? extraForm : null,
-                open.prompts && notice ? h('p', { style: styles.cardSub, 'data-ctx-prompt-notice': '1' }, notice) : null,
+                open.prompts && notice ? h('p', { style: styles.cardSub, 'data-embodiment-prompt-notice': '1' }, notice) : null,
                 open.prompts ? (visibleSections.length === 0 ? h('p', { style: styles.emptyText }, t('noneEnabled')) : h('ul', { style: styles.inventoryList }, visibleSections.map(promptRow))) : null,
               ),
               h('p', { style: styles.text }, t('inventoryRisk')),
@@ -2190,10 +2191,10 @@ window.__ModuleLoader__.load({
                     'div',
                     { style: { display: 'flex', gap: '6px', alignItems: 'center', flexWrap: 'wrap' } },
                     h('span', { style: styles.cardSub }, t('restoreConfirm')),
-                    h('button', { type: 'button', style: styles.button, 'data-ctx-restore-confirm': '1', onClick: restore }, t('confirm')),
+                    h('button', { type: 'button', style: styles.button, 'data-embodiment-restore-confirm': '1', onClick: restore }, t('confirm')),
                     h('button', { type: 'button', style: styles.button, onClick: () => setRestorePending(false) }, t('cancel')),
                   )
-                : h('button', { type: 'button', style: styles.button, 'data-ctx-restore-all': '1', onClick: () => setRestorePending(true) }, t('restoreAll')),
+                : h('button', { type: 'button', style: styles.button, 'data-embodiment-restore-all': '1', onClick: () => setRestorePending(true) }, t('restoreAll')),
             )
           : null,
       )
@@ -2261,7 +2262,7 @@ window.__ModuleLoader__.load({
             )
           : null,
         control.lastError
-          ? h('p', { style: styles.error, 'data-ctx-lasterror': '1' }, `${t('controlError')}: ${control.lastError}`)
+          ? h('p', { style: styles.error, 'data-embodiment-lasterror': '1' }, `${t('controlError')}: ${control.lastError}`)
           : null,
         control.presetMountable ? h('p', { style: { ...styles.text, color: 'var(--dsw-alias-label-tertiary)', fontSize: '11.5px' } }, t('controlPresetHint')) : null,
         h(
@@ -2279,14 +2280,14 @@ window.__ModuleLoader__.load({
         ),
         h(
           'div',
-          { style: styles.logBox, 'data-ctx-compact-log': '1' },
+          { style: styles.logBox, 'data-embodiment-compact-log': '1' },
           h(
             'button',
             {
               type: 'button',
               style: styles.logToggle,
               'aria-expanded': logOpen,
-              'data-ctx-log-toggle': '1',
+              'data-embodiment-log-toggle': '1',
               onClick: () => setLogOpen(!logOpen),
             },
             h('span', { style: { display: 'inline-block', transform: logOpen ? 'rotate(90deg)' : 'none', transition: 'transform .15s ease' } }, '›'),
@@ -2295,10 +2296,10 @@ window.__ModuleLoader__.load({
           ),
           logOpen
             ? logs.length === 0
-              ? h('p', { style: styles.emptyText, 'data-ctx-log-empty': '1' }, t('compactNoLogs'))
+              ? h('p', { style: styles.emptyText, 'data-embodiment-log-empty': '1' }, t('compactNoLogs'))
               : h(
                   'ul',
-                  { style: styles.logList, 'data-ctx-log-list': '1' },
+                  { style: styles.logList, 'data-embodiment-log-list': '1' },
                   logs
                     .slice()
                     .reverse()
@@ -2310,7 +2311,7 @@ window.__ModuleLoader__.load({
                       if (entry.trigger) meta.push(entry.trigger)
                       return h(
                         'li',
-                        { key: entry.id || `${entry.at}-${entry.outcome}`, style: styles.logItem, 'data-ctx-log-item': entry.id || undefined, 'data-ctx-log-outcome': ok ? 'success' : 'failure' },
+                        { key: entry.id || `${entry.at}-${entry.outcome}`, style: styles.logItem, 'data-embodiment-log-item': entry.id || undefined, 'data-embodiment-log-outcome': ok ? 'success' : 'failure' },
                         h(
                           'div',
                           { style: styles.logLine },
@@ -2326,7 +2327,7 @@ window.__ModuleLoader__.load({
                           ),
                           entry.sessionId ? h('span', { style: styles.logSession, title: entry.sessionId }, shortSessionId(entry.sessionId)) : null,
                         ),
-                        entry.message ? h('p', { style: styles.logMessage, 'data-ctx-log-message': '1' }, entry.message) : null,
+                        entry.message ? h('p', { style: styles.logMessage, 'data-embodiment-log-message': '1' }, entry.message) : null,
                       )
                     }),
                 )
@@ -2352,8 +2353,8 @@ window.__ModuleLoader__.load({
               type: 'button',
               style: { ...styles.filterToggle, ...(enabled ? styles.filterToggleOn : null) },
               'aria-pressed': enabled,
-              'data-ctx-balance-toggle': '1',
-              'data-ctx-balance-enabled': enabled ? '1' : '0',
+              'data-embodiment-balance-toggle': '1',
+              'data-embodiment-balance-enabled': enabled ? '1' : '0',
               onClick: () => setBalanceEnabled(!enabled),
             },
             enabled ? t('balanceDisable') : t('balanceEnable'),
@@ -2506,7 +2507,7 @@ window.__ModuleLoader__.load({
           editable
             ? h('button', { type: 'button', style: { ...styles.button, ...styles.buttonPrimary }, onClick: save, disabled }, result.kind === 'saving' ? t('saving') : t('save'))
             : null,
-          result.kind === 'saved' ? h('p', { style: styles.successText, 'data-ctx-config-saved': '1' }, t('saved')) : null,
+          result.kind === 'saved' ? h('p', { style: styles.successText, 'data-embodiment-config-saved': '1' }, t('saved')) : null,
           result.kind === 'error' ? h('p', { style: styles.error }, result.message) : null,
         ),
       )
@@ -2527,7 +2528,7 @@ window.__ModuleLoader__.load({
         { key: 'active', label: t('kpiActive'), value: formatDurationMs(kpi.activeMs), sub: '' },
         { key: 'compactions', label: t('kpiCompactions'), value: formatTokens(kpi.compactions), sub: kpi.injections ? `${formatTokens(kpi.injections)} inject` : '' },
       ]
-      return h('div', { style: styles.kpiBand, 'data-ctx-kpis': '1' }, items.map((item, index) => h('div', { key: item.key, style: index > 0 ? { ...styles.kpiCard, ...styles.kpiCardDivider } : styles.kpiCard, 'data-ctx-kpi': item.key },
+      return h('div', { style: styles.kpiBand, 'data-embodiment-kpis': '1' }, items.map((item, index) => h('div', { key: item.key, style: index > 0 ? { ...styles.kpiCard, ...styles.kpiCardDivider } : styles.kpiCard, 'data-embodiment-kpi': item.key },
         h('span', { style: styles.kpiCardLabel }, item.label),
         h('strong', { style: styles.kpiCardValue }, item.value),
         item.sub ? h('span', { style: styles.kpiCardSub }, item.sub) : null,
@@ -2538,7 +2539,7 @@ window.__ModuleLoader__.load({
       const t = props.t
       const daily = Array.isArray(props.daily) ? props.daily : []
       const max = Math.max(1, ...daily.map((day) => Number(day.tokens) || 0))
-      return h('div', { style: styles.chartWrap, 'data-ctx-daily': '1' },
+      return h('div', { style: styles.chartWrap, 'data-embodiment-daily': '1' },
         h('div', { style: styles.cardHead }, h('h3', { style: styles.cardTitle }, t('dailyTitle')), h('span', { style: styles.cardSub }, `${compactTokens(daily.reduce((sum, day) => sum + (Number(day.tokens) || 0), 0))} tok`)),
         h('div', { style: styles.chartBars }, daily.map((day) => {
           const value = Number(day.tokens) || 0
@@ -2555,7 +2556,7 @@ window.__ModuleLoader__.load({
       const t = props.t
       const daily = Array.isArray(props.daily) ? props.daily : []
       const max = Math.max(1, ...daily.map((day) => Number(day.tokens) || 0))
-      return h('div', { style: styles.chartWrap, 'data-ctx-heatmap': '1' },
+      return h('div', { style: styles.chartWrap, 'data-embodiment-heatmap': '1' },
         h('div', { style: styles.cardHead }, h('h3', { style: styles.cardTitle }, t('heatmapTitle')), h('span', { style: styles.cardSub }, `${daily.length}d`)),
         h('div', { style: styles.heatGrid }, daily.map((day) => {
           const ratio = (Number(day.tokens) || 0) / max
@@ -2612,15 +2613,15 @@ window.__ModuleLoader__.load({
         .sort((a, b) => (sort === 'tokens' ? (b.tokens || 0) - (a.tokens || 0) : (b.lastActivityAt || 0) - (a.lastActivityAt || 0)))
       const visible = expanded ? filtered : filtered.slice(0, 12)
       const base = (item) => (String(item || '').split(/[\\/]/).filter(Boolean).pop() || '—')
-      return h('div', { style: styles.card, 'data-ctx-sessions': '1' },
+      return h('div', { style: styles.card, 'data-embodiment-sessions': '1' },
         h('div', { style: styles.cardHead }, h('h3', { style: styles.cardTitle }, t('sessionsTitle')), h('span', { style: styles.cardSub }, `${filtered.length}/${sessions.length}`)),
         h('div', { style: styles.filterBar },
-          h('input', { style: styles.searchInput, value: query, placeholder: t('searchSessions'), onChange: (event) => setQuery(event.target.value), 'data-ctx-session-search': '1' }),
+          h('input', { style: styles.searchInput, value: query, placeholder: t('searchSessions'), onChange: (event) => setQuery(event.target.value), 'data-embodiment-session-search': '1' }),
           h('button', { type: 'button', style: { ...styles.filterToggle, ...(sort === 'recent' ? styles.filterToggleOn : null) }, onClick: () => setSort('recent') }, t('sortRecent')),
           h('button', { type: 'button', style: { ...styles.filterToggle, ...(sort === 'tokens' ? styles.filterToggleOn : null) }, onClick: () => setSort('tokens') }, t('sortTokens')),
         ),
         filtered.length === 0 ? h('p', { style: styles.emptyText }, t('noSessions')) : h('div', { style: styles.sessionList }, visible.map((item) =>
-          h('button', { key: item.id, type: 'button', style: { ...styles.sessionCard, ...(props.selected === item.id ? styles.sessionCardOn : null) }, onClick: () => props.onSelect(item.id), title: item.id, 'data-ctx-session-card': item.id },
+          h('button', { key: item.id, type: 'button', style: { ...styles.sessionCard, ...(props.selected === item.id ? styles.sessionCardOn : null) }, onClick: () => props.onSelect(item.id), title: item.id, 'data-embodiment-session-card': item.id },
             h('p', { style: styles.sessionTitle }, item.title || shortSessionId(item.id)),
             h('span', { style: styles.sessionMeta }, `${base(item.cwd)} · ${item.lastActivityAt ? new Date(item.lastActivityAt).toLocaleString() : '—'}`),
             h('div', { style: styles.sessionStats },
@@ -2635,11 +2636,11 @@ window.__ModuleLoader__.load({
               style: styles.linkAction,
               onClick: (event) => { event.preventDefault(); event.stopPropagation(); if (props.onOpen) props.onOpen(item) },
               onKeyDown: (event) => { if (event.key === 'Enter' || event.key === ' ') { event.preventDefault(); event.stopPropagation(); if (props.onOpen) props.onOpen(item) } },
-              'data-ctx-session-open': item.id,
+              'data-embodiment-session-open': item.id,
             }, `${t('openSession')} ↗`),
           ),
         )),
-        filtered.length > 12 ? h('button', { type: 'button', style: styles.button, onClick: () => setExpanded((value) => !value), 'data-ctx-session-more': '1' }, expanded ? t('showLess') : t('showMore')) : null,
+        filtered.length > 12 ? h('button', { type: 'button', style: styles.button, onClick: () => setExpanded((value) => !value), 'data-embodiment-session-more': '1' }, expanded ? t('showLess') : t('showMore')) : null,
       )
     }
 
@@ -2653,7 +2654,7 @@ window.__ModuleLoader__.load({
       const compactions = Array.isArray(detail.compactions) ? detail.compactions : []
       if (requests.length === 0) return h('div', { style: styles.card }, h('h3', { style: styles.cardTitle }, t('trendTitle')), h('p', { style: styles.emptyText }, t('trendNoData')))
       const max = Math.max(1, ...requests.map((item) => (Number(item.prompt) || 0) + (Number(item.output) || 0)))
-      return h('div', { style: { ...styles.card, ...styles.cardFill }, 'data-ctx-trend': '1' },
+      return h('div', { style: { ...styles.card, ...styles.cardFill }, 'data-embodiment-trend': '1' },
         h('div', { style: styles.cardHead }, h('h3', { style: styles.cardTitle }, t('trendTitle')), h('span', { style: styles.cardSub }, `${requests.length} req`)),
         h('div', { style: styles.legendInline },
           h('span', null, `■ ${t('trendPrompt')}`), h('span', null, `■ ${t('trendOutput')}`), h('span', null, `━ ${t('trendCompaction')}`), h('span', null, `${t('budgetLine')} ${formatTokens(props.budget)}`),
@@ -2670,7 +2671,7 @@ window.__ModuleLoader__.load({
             h('span', { style: styles.chartLabel }, item.turn !== null ? `T${item.turn}` : ''),
           )
         }))),
-        h('div', { style: styles.banner, 'data-ctx-detail-session': detail.session ? detail.session.id : '' }, `${detail.session && detail.session.title ? detail.session.title : '—'} · ${t('requestsLabel')} ${detail.requests.length} · ${detail.session && detail.session.lastActivityAt ? new Date(detail.session.lastActivityAt).toLocaleString() : '—'}`),
+        h('div', { style: styles.banner, 'data-embodiment-detail-session': detail.session ? detail.session.id : '' }, `${detail.session && detail.session.title ? detail.session.title : '—'} · ${t('requestsLabel')} ${detail.requests.length} · ${detail.session && detail.session.lastActivityAt ? new Date(detail.session.lastActivityAt).toLocaleString() : '—'}`),
         compactions.length > 0 ? h('div', { style: styles.logBox }, h('div', { style: styles.logToggle }, `${t('eventCompaction')} · ${compactions.length}`), h('ul', { style: styles.logList }, compactions.slice(-8).reverse().map((item) =>
           h('li', { key: `${item.at}-${item.turn}`, style: styles.logItem },
             h('div', { style: styles.logLine },
@@ -2691,7 +2692,7 @@ window.__ModuleLoader__.load({
       const rawTimeline = props.detail && Array.isArray(props.detail.timeline) ? props.detail.timeline.slice().reverse() : []
       const timeline = rawTimeline.filter((item) => item.kind === 'compaction').slice(0, 30)
       const injectionCount = rawTimeline.filter((item) => item.kind === 'inject').length
-      return h('div', { style: styles.card, 'data-ctx-events': '1' },
+      return h('div', { style: styles.card, 'data-embodiment-events': '1' },
         h('div', { style: styles.cardHead }, h('h3', { style: styles.cardTitle }, t('eventsTitle')), h('span', { style: styles.cardSub }, `${filtered.length}/${logs.length}${injectionCount > 0 ? ` · ${injectionCount} ${t('eventInject')}` : ''}`)),
         h('div', { style: styles.filterBar },
           [['all', t('eventAll')], ['success', t('eventSuccess')], ['failure', t('eventFailure')]].map(([key, label]) =>
@@ -2700,7 +2701,7 @@ window.__ModuleLoader__.load({
         ),
         filtered.length === 0 ? h('p', { style: styles.emptyText }, t('noEvents')) : h('ul', { style: styles.eventList }, filtered.map((entry) => {
           const success = entry.outcome === 'success'
-          return h('li', { key: entry.id, style: styles.eventItem, 'data-ctx-event': entry.outcome },
+          return h('li', { key: entry.id, style: styles.eventItem, 'data-embodiment-event': entry.outcome },
             h('span', { style: { ...styles.eventKind, color: success ? 'var(--dsw-alias-state-success-primary)' : 'var(--dsw-alias-state-error-primary)' } }, success ? t('eventSuccess') : t('eventFailure')),
             h('div', { style: styles.eventMain },
               h('div', null, entry.before || entry.after ? `${t('beforeAfter')}: ${formatTokens(entry.before)} → ${formatTokens(entry.after)}${entry.target ? ` · ${t('targetLine')} ${formatTokens(entry.target)}` : ''}` : `${t('targetLine')} ${formatTokens(entry.target)}`),
@@ -2817,23 +2818,23 @@ window.__ModuleLoader__.load({
       const warnings = plan && Array.isArray(plan.warnings) ? plan.warnings : []
       const selectedTemplate = templates.find((item) => item.id === templateId)
 
-      return h('div', { style: styles.card, 'data-ctx-scaffold': '1' },
+      return h('div', { style: styles.card, 'data-embodiment-scaffold': '1' },
         h('h3', { style: styles.cardTitle }, t('scaffoldTitle')),
         h('p', { style: sub }, t('scaffoldIntro')),
         h('div', { style: { display: 'grid', gridTemplateColumns: 'minmax(0, 1fr) minmax(0, 1fr)', gap: '10px', marginTop: '10px' } },
           h('label', { style: styles.field }, h('span', { style: styles.label }, t('scaffoldTemplate')),
-            h('select', { style: styles.input, value: templateId, onChange: (event) => setTemplateId(event.target.value), 'data-ctx-scaffold-template': '1' },
+            h('select', { style: styles.input, value: templateId, onChange: (event) => setTemplateId(event.target.value), 'data-embodiment-scaffold-template': '1' },
               templates.map((item) => h('option', { key: item.id, value: item.id }, `${item.name} (${item.id})`)),
             ),
           ),
           h('label', { style: styles.field }, h('span', { style: styles.label }, t('scaffoldSlug')),
-            h('input', { style: styles.input, value: slug, placeholder: 'my-agent', onChange: (event) => setSlug(event.target.value), 'data-ctx-scaffold-slug': '1' }),
+            h('input', { style: styles.input, value: slug, placeholder: 'my-agent', onChange: (event) => setSlug(event.target.value), 'data-embodiment-scaffold-slug': '1' }),
           ),
           h('label', { style: styles.field }, h('span', { style: styles.label }, t('scaffoldName')),
             h('input', { style: styles.input, value: name, placeholder: selectedTemplate ? selectedTemplate.name : '', onChange: (event) => setName(event.target.value) }),
           ),
           h('label', { style: styles.field }, h('span', { style: styles.label, title: t('scaffoldTargetHint') }, t('scaffoldTarget')),
-            h('input', { style: styles.input, value: targetDir, placeholder: '/absolute/path/to/workspace', onChange: (event) => setTargetDir(event.target.value), 'data-ctx-scaffold-target': '1' }),
+            h('input', { style: styles.input, value: targetDir, placeholder: '/absolute/path/to/workspace', onChange: (event) => setTargetDir(event.target.value), 'data-embodiment-scaffold-target': '1' }),
           ),
         ),
         h('p', { style: sub }, t('scaffoldTargetHint')),
@@ -2844,7 +2845,7 @@ window.__ModuleLoader__.load({
             value: mcpJson,
             placeholder: '[{"serverName":"github","transport":"stdio","command":"npx","args":["-y","@modelcontextprotocol/server-github"],"env":{"GITHUB_TOKEN":"${GITHUB_TOKEN}"}}]',
             onChange: (event) => setMcpJson(event.target.value),
-            'data-ctx-scaffold-mcp': '1',
+            'data-embodiment-scaffold-mcp': '1',
           }),
         ),
         h('p', { style: sub }, t('scaffoldMcpHint')),
@@ -2857,11 +2858,11 @@ window.__ModuleLoader__.load({
           h('span', null, t('scaffoldAgents')),
         ),
         h('div', { style: { display: 'flex', gap: '8px', marginTop: '10px', flexWrap: 'wrap' } },
-          h('button', { type: 'button', style: styles.button, disabled: busy || !templateId, onClick: preview, 'data-ctx-scaffold-preview': '1' }, t('scaffoldPreview')),
-          h('button', { type: 'button', style: styles.button, disabled: busy || !templateId, onClick: generate, 'data-ctx-scaffold-generate': '1' }, busy ? t('scaffoldGenerating') : t('scaffoldGenerate')),
+          h('button', { type: 'button', style: styles.button, disabled: busy || !templateId, onClick: preview, 'data-embodiment-scaffold-preview': '1' }, t('scaffoldPreview')),
+          h('button', { type: 'button', style: styles.button, disabled: busy || !templateId, onClick: generate, 'data-embodiment-scaffold-generate': '1' }, busy ? t('scaffoldGenerating') : t('scaffoldGenerate')),
         ),
-        error ? h('p', { style: { ...styles.error, margin: '8px 0 0' }, 'data-ctx-scaffold-error': '1' }, `${t('scaffoldError')}: ${error}`) : null,
-        generated ? h('p', { style: sub, 'data-ctx-scaffold-generated': '1' }, t('scaffoldGenerated')) : null,
+        error ? h('p', { style: { ...styles.error, margin: '8px 0 0' }, 'data-embodiment-scaffold-error': '1' }, `${t('scaffoldError')}: ${error}`) : null,
+        generated ? h('p', { style: sub, 'data-embodiment-scaffold-generated': '1' }, t('scaffoldGenerated')) : null,
         plan ? h('div', { style: { marginTop: '10px' } },
           h('div', { style: sub }, `${t('scaffoldFiles')} · ${plan.presetId || ''} · ${plan.bundleDir || ''}`),
           plan.agentsPath ? h('div', { style: sub }, `AGENTS.md · ${plan.agentsPath}`) : null,
@@ -2874,7 +2875,7 @@ window.__ModuleLoader__.load({
           plan.installCommand ? h('div', { style: { marginTop: '8px' } },
             h('div', { style: styles.label }, t('scaffoldInstall')),
             h('pre', { style: { margin: '4px 0 0', whiteSpace: 'pre-wrap', wordBreak: 'break-all', fontSize: '11.5px' } }, plan.installCommand),
-            h('button', { type: 'button', style: { ...styles.button, marginTop: '6px' }, onClick: () => copy(plan.installCommand), 'data-ctx-scaffold-copy': '1' }, copied ? t('scaffoldCopied') : t('scaffoldCopy')),
+            h('button', { type: 'button', style: { ...styles.button, marginTop: '6px' }, onClick: () => copy(plan.installCommand), 'data-embodiment-scaffold-copy': '1' }, copied ? t('scaffoldCopied') : t('scaffoldCopy')),
           ) : null,
         ) : h('p', { style: sub }, t('scaffoldEmpty')),
       )
@@ -2925,18 +2926,18 @@ window.__ModuleLoader__.load({
         h('div', { key: 'header', style: styles.headerCard },
           h('div', { style: styles.headerRow },
             h('h2', { style: styles.title }, props.title || t('title')),
-            data && data.version ? h('span', { style: styles.versionChip, title: `${t('versionLabel')}: ${data.version}`, 'data-ctx-version': String(data.version) }, `v${data.version}`) : null,
+            data && data.version ? h('span', { style: styles.versionChip, title: `${t('versionLabel')}: ${data.version}`, 'data-embodiment-version': String(data.version) }, `v${data.version}`) : null,
             h('span', { style: styles.headerSpacer }),
             control.active ? h(StatusBadge, { t, state: control.compacting ? 'warn' : 'ok', label: control.compacting ? t('compacting') : undefined }) : null,
-            h('button', { type: 'button', style: styles.button, onClick: reloadAll, 'data-ctx-refresh': '1' }, t('refresh')),
+            h('button', { type: 'button', style: styles.button, onClick: reloadAll, 'data-embodiment-refresh': '1' }, t('refresh')),
           ),
           h('p', { style: styles.subtitle }, t('description')),
           h('div', { style: styles.tabs, role: 'tablist' }, tabs.map(([key, label]) =>
-            h('button', { key, type: 'button', role: 'tab', 'aria-selected': tab === key ? 'true' : 'false', style: { ...styles.tab, ...(tab === key ? styles.tabActive : null) }, onClick: () => setTab(key), 'data-ctx-tab': key }, label),
+            h('button', { key, type: 'button', role: 'tab', 'aria-selected': tab === key ? 'true' : 'false', style: { ...styles.tab, ...(tab === key ? styles.tabActive : null) }, onClick: () => setTab(key), 'data-embodiment-tab': key }, label),
           )),
           tab === 'overview' ? h('div', { style: styles.rangeRow },
             [['7d', t('range7')], ['30d', t('range30')], ['all', t('rangeAll')]].map(([key, label]) =>
-              h('button', { key, type: 'button', style: { ...styles.rangeBtn, ...(range === key ? styles.rangeBtnOn : null) }, onClick: () => setRange(key), 'data-ctx-range': key }, label),
+              h('button', { key, type: 'button', style: { ...styles.rangeBtn, ...(range === key ? styles.rangeBtnOn : null) }, onClick: () => setRange(key), 'data-embodiment-range': key }, label),
             ),
           ) : null,
         ),
@@ -2948,14 +2949,14 @@ window.__ModuleLoader__.load({
         children.push(h('div', {
           key: 'versionMismatch',
           style: styles.banner,
-          'data-ctx-version-mismatch': '1',
+          'data-embodiment-version-mismatch': '1',
           title: `${CLIENT_VERSION} → ${data.version}`,
         },
           h('span', null, t('reloadHint')),
           h('button', {
             type: 'button',
             style: styles.button,
-            'data-ctx-reload': '1',
+            'data-embodiment-reload': '1',
             onClick: () => {
               try {
                 globalThis.location.reload()
@@ -2971,14 +2972,14 @@ window.__ModuleLoader__.load({
           h('div', { style: { ...styles.skeleton, width: '100%', height: '84px' } }),
           h('div', { style: { ...styles.skeleton, width: '64%' } }),
         )))
-        return h('div', { style: styles.root, 'data-ctx-panel': '1' }, children)
+        return h('div', { style: styles.root, 'data-embodiment-panel': '1' }, children)
       }
       if (state.phase === 'error') {
         children.push(h('div', { key: 'error', style: styles.emptyState },
           h('p', { style: styles.error }, `${t('error')}: ${state.message}`),
           h('button', { type: 'button', style: styles.button, onClick: reloadAll }, t('retry')),
         ))
-        return h('div', { style: styles.root, 'data-ctx-panel': '1' }, children)
+        return h('div', { style: styles.root, 'data-embodiment-panel': '1' }, children)
       }
 
       if (tab === 'overview') {
@@ -3018,7 +3019,7 @@ window.__ModuleLoader__.load({
         ))
         children.push(h(InventoryCard, { key: 'inventory', t, data: invState.data, loading: invState.data === null && invState.error === null, error: invState.data === null ? invState.error : null, reload: reloadInv, sessionId: activeSession }))
       }
-      return h('div', { style: styles.root, 'data-ctx-panel': '1' }, children)
+      return h('div', { style: styles.root, 'data-embodiment-panel': '1' }, children)
     }
     function CtxPage(props) {
       return h(
@@ -3056,7 +3057,7 @@ window.__ModuleLoader__.load({
      * DSH 的槽位表不会按同 id 去重，重复 apply 会出现两个 ctx 导航/设置/ dock，
      * 所以用 window 级标记做幂等；插件卸载时由 effect 清除，允许后续重新挂载。
      */
-    const MOUNT_FLAG = '__ctxMonAndConMounted'
+    const MOUNT_FLAG = '__agentEmbodimentMounted'
     let mounted = false
 
     /** @param {unknown} ctx - 浏览器 cordis 上下文（slots / locale） */
@@ -3073,28 +3074,28 @@ window.__ModuleLoader__.load({
             try {
               delete scope[MOUNT_FLAG]
             } catch {}
-          }, 'ctx-mon-and-con: mount guard')
+          }, 'agent-embodiment: mount guard')
         }
       }
 
-      ctx.effect(() => ctx.locale.register(NS, { en, zh }), 'ctx-mon-and-con: dictionaries')
+      ctx.effect(() => ctx.locale.register(NS, { en, zh }), 'agent-embodiment: dictionaries')
 
       // prefers-reduced-motion：关闭本插件面板 / dock 的过渡与动画（不改宿主样式）。
       ctx.effect(() => {
         if (typeof document === 'undefined' || !document.head) return () => {}
-        const styleId = 'ctx-mon-and-con-reduced-motion'
+        const styleId = 'agent-embodiment-reduced-motion'
         if (document.getElementById(styleId)) return () => {}
         const style = document.createElement('style')
         style.id = styleId
         style.textContent =
-          '@media (prefers-reduced-motion: reduce){[data-ctx-panel],[data-ctx-panel] *,[data-ctx-dock],[data-ctx-dock] *{transition-duration:0.01ms !important;animation-duration:0.01ms !important;animation-iteration-count:1 !important;scroll-behavior:auto !important}}'
+          '@media (prefers-reduced-motion: reduce){[data-embodiment-panel],[data-embodiment-panel] *,[data-embodiment-dock],[data-embodiment-dock] *{transition-duration:0.01ms !important;animation-duration:0.01ms !important;animation-iteration-count:1 !important;scroll-behavior:auto !important}}'
         document.head.appendChild(style)
         return () => {
           try {
             style.remove()
           } catch {}
         }
-      }, 'ctx-mon-and-con: reduced motion')
+      }, 'agent-embodiment: reduced motion')
 
       // 事件驱动刷新：监听会话区域的 DOM 变化（流式输出、消息更新、切换会话），2s 节流。
       // 忽略本插件自己的 UI（dock/面板），避免自触发循环。
@@ -3103,22 +3104,22 @@ window.__ModuleLoader__.load({
         const observer = new MutationObserver((records) => {
           for (const record of records) {
             const target = record.target.nodeType === 1 ? record.target : record.target.parentElement
-            if (target && typeof target.closest === 'function' && (target.closest('[data-ctx-dock]') || target.closest('[data-ctx-panel]'))) continue
+            if (target && typeof target.closest === 'function' && (target.closest('[data-embodiment-dock]') || target.closest('[data-embodiment-panel]'))) continue
             notifyUsageActivity()
             return
           }
         })
         observer.observe(document.body, { subtree: true, childList: true, characterData: true })
         return () => observer.disconnect()
-      }, 'ctx-mon-and-con: usage activity observer')
+      }, 'agent-embodiment: usage activity observer')
       if (typeof ctx.inject === 'function') ctx.inject(['sessions'], (sub) => {
         sessionService = sub?.sessions ?? null
-        if (typeof sub.effect === 'function') sub.effect(() => () => { sessionService = null }, 'ctx-mon-and-con: sessions presence')
+        if (typeof sub.effect === 'function') sub.effect(() => () => { sessionService = null }, 'agent-embodiment: sessions presence')
       })
       // 账号余额来自 DSH 官方 remote.account；没有账号扩展时自动隐藏胶囊。
       if (typeof ctx.inject === 'function') ctx.inject(['remote', 'remote.account'], (sub) => {
         publishAccountRemote(sub?.remote?.account ?? null)
-        if (typeof sub.effect === 'function') sub.effect(() => () => { publishAccountRemote(null) }, 'ctx-mon-and-con: account presence')
+        if (typeof sub.effect === 'function') sub.effect(() => () => { publishAccountRemote(null) }, 'agent-embodiment: account presence')
       })
       const t = ctx.locale.bind(NS)
       const face = () => ({ t })
@@ -3128,7 +3129,7 @@ window.__ModuleLoader__.load({
         timezoneOffsetSeconds: -new Date().getTimezoneOffset() * 60,
       })
 
-      // 1) 设置 → 上下文长度
+      // 1) 设置 → 智能体具身
       ctx.slots.inject('settings.section', () =>
         ctx.slots.register(
           { name: 'settings.section', id: CONFIG_NAMESPACE, order: 40, locale: NS, label: () => t('nav'), inject: face },
@@ -3144,7 +3145,7 @@ window.__ModuleLoader__.load({
 
       // 3) 输入框下方指示器（与内置 ContextMeter 同排版，可点开小明细）
       ctx.slots.inject('conversation.composer.dock', () =>
-        ctx.slots.register({ name: 'conversation.composer.dock', id: 'ctx-usage', order: 10, locale: NS, inject: face }, (props) => {
+        ctx.slots.register({ name: 'conversation.composer.dock', id: 'embody-usage', order: 10, locale: NS, inject: face }, (props) => {
           const [active, setActive] = react.useState(false)
           react.useEffect(() => {
             let cancelled = false
@@ -3165,7 +3166,7 @@ window.__ModuleLoader__.load({
       // 4) 同一个底部状态行里的 DSH 余额胶囊，排在 ctx 指示器之后。
       ctx.slots.inject('conversation.composer.dock', () =>
         ctx.slots.register(
-          { name: 'conversation.composer.dock', id: 'ctx-balance', order: 20, locale: NS, inject: face },
+          { name: 'conversation.composer.dock', id: 'embody-balance', order: 20, locale: NS, inject: face },
           (props) => h(BalanceDock, { ...props, t, meta: accountMeta }),
         ),
       )

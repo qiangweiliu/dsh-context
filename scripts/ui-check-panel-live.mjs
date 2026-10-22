@@ -1,5 +1,5 @@
 /**
- * 验证：不执行 /ctx 时，侧栏 ctx 整页也显示实时用量与四色构成（与 dock 同源）。
+ * 验证：不执行 /embody 时，侧栏 embody 整页也显示实时用量与四色构成（与 dock 同源）。
  * 用法：node scripts/ui-check-panel-live.mjs <url>
  */
 import { openPage, sleep } from './lib/cdp.mjs'
@@ -29,7 +29,7 @@ await sleep(12000)
 
 const snapshot = await evaluate(`(async () => {
   const norm = (s) => (s || '').replace(/\\s+/g, ' ').trim()
-  const readSegs = () => Array.from(document.querySelectorAll('[data-ctx-seg]')).map((el) => ({ key: el.getAttribute('data-ctx-seg'), bg: getComputedStyle(el).backgroundColor, inline: el.style.width, computed: Math.round(parseFloat(getComputedStyle(el).width) * 100) / 100 }))
+  const readSegs = () => Array.from(document.querySelectorAll('[data-embodiment-seg]')).map((el) => ({ key: el.getAttribute('data-embodiment-seg'), bg: getComputedStyle(el).backgroundColor, inline: el.style.width, computed: Math.round(parseFloat(getComputedStyle(el).width) * 100) / 100 }))
   const btn = Array.from(document.querySelectorAll('button')).find((b) => norm(b.getAttribute('aria-label')) === 'ctx')
   if (!btn) return { ok: false, why: 'sidebar ctx not found' }
   btn.click()
@@ -37,7 +37,7 @@ const snapshot = await evaluate(`(async () => {
   const early = readSegs()
   await new Promise((r) => setTimeout(r, 1100))
   const segs = readSegs()
-  const legend = Array.from(document.querySelectorAll('[data-ctx-legend]')).map((el) => norm(el.textContent))
+  const legend = Array.from(document.querySelectorAll('[data-embodiment-legend]')).map((el) => norm(el.textContent))
   return { ok: true, early, segs, legend, body: (document.body.innerText || '').slice(0, 1000) }
 })()`)
 

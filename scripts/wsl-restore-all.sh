@@ -19,7 +19,7 @@ PROFILE="${PROFILE:-web}"
 
 P="$HOME/.dsh/profiles/$PROFILE"
 PATCH="$P/cordis.patch.yml"
-DATA_DIR="$HOME/.dsh/ctx-mon-and-con"
+DATA_DIR="$HOME/.dsh/agent-embodiment"
 SESSION_FILE="$DATA_DIR/session-toggles.json"
 BACKUP_DIR="$DATA_DIR/backups"
 STAMP=$(date -u +%Y%m%dT%H%M%SZ)
@@ -31,10 +31,10 @@ say() { printf '%s\n' "$*"; }
 # ---------- 预览 ----------
 say "== 还原预览（profile: $PROFILE）=="
 INSTALLED=no
-grep -q '"ctx-mon-and-con"' "$P/package.json" 2>/dev/null && INSTALLED=yes
-CTX_REFS=$(grep -c "ctx-mon-and-con" "$PATCH" 2>/dev/null || true)
+grep -q '"agent-embodiment"' "$P/package.json" 2>/dev/null && INSTALLED=yes
+CTX_REFS=$(grep -c "agent-embodiment" "$PATCH" 2>/dev/null || true)
 CTX_REFS=${CTX_REFS:-0}
-CONTROL_ROWS=$(grep -c "id: ctx-mon-and-con-control" "$PATCH" 2>/dev/null || true)
+CONTROL_ROWS=$(grep -c "id: agent-embodiment-control" "$PATCH" 2>/dev/null || true)
 CONTROL_ROWS=${CONTROL_ROWS:-0}
 SESSION_DESC="不存在"
 if [ -f "$SESSION_FILE" ]; then SESSION_DESC="存在（$(wc -c < "$SESSION_FILE") bytes）"; fi
@@ -48,7 +48,7 @@ say "  自动备份目录:      $BACKUP_DESC"
 say
 say "将要执行的操作："
 say "  1) 备份当前 patch 与会话文件到 $BACKUP_DIR"
-say "  2) dsh plugin --profile $PROFILE remove ctx-mon-and-con"
+say "  2) dsh plugin --profile $PROFILE remove agent-embodiment"
 say "  3) 从 patch 删除 ctx 配置行与控制行（预计删 $CTX_REFS 处引用）"
 say "  4) 删除 $SESSION_FILE"
 say "  5) 删除备份目录与数据目录（$DATA_DIR）——还原后不再占用空间"
@@ -78,7 +78,7 @@ fi
 # ---------- 执行 ----------
 say "== 1. 卸载插件 =="
 if [ "$INSTALLED" = yes ]; then
-  dsh plugin --profile "$PROFILE" remove ctx-mon-and-con >/tmp/restore-remove.log 2>&1
+  dsh plugin --profile "$PROFILE" remove agent-embodiment >/tmp/restore-remove.log 2>&1
   say "remove exit=$?"
 else
   say "插件未安装，跳过"
@@ -95,13 +95,13 @@ let i = 0
 let changed = false
 while (i < lines.length) {
   const line = lines[i]
-  if (/^- id: ctx-mon-and-con\s*$/.test(line)) {
+  if (/^- id: agent-embodiment\s*$/.test(line)) {
     changed = true
     i += 1
     while (i < lines.length && !/^- /.test(lines[i])) i += 1
     continue
   }
-  const m = /^(\s+)- id: ctx-mon-and-con-control\s*$/.exec(line)
+  const m = /^(\s+)- id: agent-embodiment-control\s*$/.exec(line)
   if (m) {
     changed = true
     const indent = m[1].length
@@ -127,7 +127,7 @@ rm -rf "$DATA_DIR"
 say "removed $DATA_DIR（含备份）"
 
 say "== 4. 核对 =="
-LEFT=$(grep -c "ctx-mon-and-con" "$PATCH" 2>/dev/null || true)
-say "patch 中 ctx-mon-and-con 引用：${LEFT:-0}"
-grep -n "ctx-mon-and-con" "$P/package.json" 2>/dev/null || say "profile package.json 无引用"
+LEFT=$(grep -c "agent-embodiment" "$PATCH" 2>/dev/null || true)
+say "patch 中 agent-embodiment 引用：${LEFT:-0}"
+grep -n "agent-embodiment" "$P/package.json" 2>/dev/null || say "profile package.json 无引用"
 say "还原完成。备份已随数据目录一起删除（按你的要求不再占用空间）。"

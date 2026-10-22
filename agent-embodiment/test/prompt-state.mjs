@@ -72,7 +72,7 @@ class MockSessions extends Service {
 class MockConfigEditor extends Service {
   constructor(ctx) {
     super(ctx, 'configEditor')
-    this.entry = { options: { id: 'ctx-mon-and-con', config: { promptOverrides: {}, extraPrompts: {}, extraPromptPlacements: {} } } }
+    this.entry = { options: { id: 'agent-embodiment', config: { promptOverrides: {}, extraPrompts: {}, extraPromptPlacements: {} } } }
     this.writes = 0
   }
   entries() {
@@ -125,7 +125,7 @@ state.recordInventory('prompt-test', {
   tools: [],
 })
 state.setSessionPromptText('prompt-test', 'harness:identity', 'SESSION-TEXT')
-const inventory = await call('/api/ctx-mon-and-con/status/inventory?sessionId=prompt-test', 'GET')
+const inventory = await call('/api/agent-embodiment/status/inventory?sessionId=prompt-test', 'GET')
 const section = inventory.payload?.inventory?.sections?.[0]
 check('inventory 叠上会话覆盖', section?.sessionOverridden === true && section?.text === 'SESSION-TEXT', JSON.stringify(section))
 check('inventory 来源是稳定包名', inventory.payload?.inventory?.sources?.sections?.['harness:identity'] === '@deepseek-ai/dsh-system-prompt', JSON.stringify(inventory.payload?.inventory?.sources))
@@ -133,12 +133,12 @@ const templates = inventory.payload?.promptTemplates
 check('inventory 暴露内置提示词模板', Array.isArray(templates) && templates.length > 0 && typeof templates[0].id === 'string' && typeof templates[0].text === 'string' && templates[0].text.length > 200, JSON.stringify(templates && templates[0] && templates[0].id))
 check('模板文本不含动态量（缓存稳定）', typeof templates?.[0]?.text === 'string' && !/\d{4}-\d{2}-\d{2}|\{\{|session-/i.test(templates[0].text), 'template text looks dynamic')
 
-const sessionReset = await call('/api/ctx-mon-and-con/status/inventory/prompt/session/reset', 'POST', { name: 'harness:identity', sessionId: 'prompt-test' })
-const afterSessionReset = await call('/api/ctx-mon-and-con/status/inventory?sessionId=prompt-test', 'GET')
+const sessionReset = await call('/api/agent-embodiment/status/inventory/prompt/session/reset', 'POST', { name: 'harness:identity', sessionId: 'prompt-test' })
+const afterSessionReset = await call('/api/agent-embodiment/status/inventory?sessionId=prompt-test', 'GET')
 const resetSection = afterSessionReset.payload?.inventory?.sections?.[0]
 check('会话复位只清会话覆盖', sessionReset.status === 202 && resetSection?.sessionOverridden === false && resetSection?.text === 'BASE', JSON.stringify(resetSection))
 
-const promptPath = '/api/ctx-mon-and-con/status/inventory/prompt'
+const promptPath = '/api/agent-embodiment/status/inventory/prompt'
 const [first, second] = await Promise.all([
   call(promptPath, 'POST', { name: 'deployment:persona-suffix', text: 'ONE' }),
   call(promptPath, 'POST', { name: 'tool:bash', text: 'TWO' }),
@@ -149,14 +149,14 @@ const saved = editor.entry.options.config.promptOverrides
 check('连续写入不丢前一次', saved['deployment:persona-suffix'] === 'ONE' && saved['tool:bash'] === 'TWO', JSON.stringify(saved))
 check('配置写队列串行落盘', editor.writes === 2, editor.writes)
 
-const after = await call('/api/ctx-mon-and-con/status/inventory?sessionId=prompt-test', 'GET')
+const after = await call('/api/agent-embodiment/status/inventory?sessionId=prompt-test', 'GET')
 const afterSection = after.payload?.inventory?.sections?.[0]
 check('inventory 读当前运行时覆盖', after.payload?.promptOverrides?.['tool:bash'] === 'TWO', JSON.stringify(after.payload?.promptOverrides))
 
-const reset = await call('/api/ctx-mon-and-con/status/inventory/reset', 'POST', { layer: 'global' })
+const reset = await call('/api/agent-embodiment/status/inventory/reset', 'POST', { layer: 'global' })
 await sleep(80)
 check('全局恢复清空运行时覆盖', reset.status === 202 && Object.keys(editor.entry.options.config.promptOverrides || {}).length === 0, JSON.stringify(editor.entry.options.config.promptOverrides))
-const cleared = await call('/api/ctx-mon-and-con/status/inventory?sessionId=prompt-test', 'GET')
+const cleared = await call('/api/agent-embodiment/status/inventory?sessionId=prompt-test', 'GET')
 check('恢复后 promptOverrides 为空', Object.keys(cleared.payload?.promptOverrides || {}).length === 0, JSON.stringify(cleared.payload?.promptOverrides))
 
 await fiber.dispose()

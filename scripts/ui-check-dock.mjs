@@ -32,7 +32,7 @@ if (focus) {
   })()`)
   await sleep(12000)
   afterMessage = await evaluate(`(() => {
-    const dock = document.querySelector('[data-ctx-dock]')
+    const dock = document.querySelector('[data-embodiment-dock]')
     return { dockPresent: Boolean(dock), dockText: dock ? (dock.textContent || '').trim() : null, heroVisible: (document.body.innerText || '').includes('探索未至之境'), body: (document.body.innerText || '').slice(0, 900) }
   })()`)
 
@@ -56,7 +56,7 @@ if (focus) {
 }
 
 const snapshot = await evaluate(`(() => {
-  const dock = document.querySelector('[data-ctx-dock]')
+  const dock = document.querySelector('[data-embodiment-dock]')
   const style = dock ? getComputedStyle(dock) : null
   return {
     newSession: ${JSON.stringify(newSession)},
@@ -79,7 +79,7 @@ const snapshot = await evaluate(`(() => {
 
 // 点开 dock 的弹出明细
 const popover = await evaluate(`(async () => {
-  const dock = document.querySelector('[data-ctx-dock]')
+  const dock = document.querySelector('[data-embodiment-dock]')
   if (!dock) return { ok: false, why: 'no dock' }
   dock.click()
   await new Promise((r) => setTimeout(r, 500))
@@ -97,8 +97,8 @@ const panel = await evaluate(`(async () => {
   if (!btn) return { ok: false, why: 'sidebar ctx button not found' }
   btn.click()
   await new Promise((r) => setTimeout(r, 1200))
-  const segs = Array.from(document.querySelectorAll('[data-ctx-seg]')).map((el) => ({ key: el.getAttribute('data-ctx-seg'), bg: getComputedStyle(el).backgroundColor, width: el.style.width }))
-  const legend = Array.from(document.querySelectorAll('[data-ctx-legend]')).map((el) => ({ key: el.getAttribute('data-ctx-legend'), text: norm(el.textContent) }))
+  const segs = Array.from(document.querySelectorAll('[data-embodiment-seg]')).map((el) => ({ key: el.getAttribute('data-embodiment-seg'), bg: getComputedStyle(el).backgroundColor, width: el.style.width }))
+  const legend = Array.from(document.querySelectorAll('[data-embodiment-legend]')).map((el) => ({ key: el.getAttribute('data-embodiment-legend'), text: norm(el.textContent) }))
   return { ok: true, segs, legend, body: (document.body.innerText || '').slice(0, 1200) }
 })()`)
 console.log(JSON.stringify({ ...snapshot, popover, panel, errors }, null, 2))

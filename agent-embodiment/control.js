@@ -1,5 +1,5 @@
 /**
- * ctx-mon-and-con-control — 本插件的「控制」半侧（preset 平面）。
+ * agent-embodiment-control — 本插件的「控制」半侧（preset 平面）。
  *
  * 与宿主平面的 index.js 不同，这个插件必须在 **agent preset 内部** 挂载：
  * Web 形态下 `dsh-web-app` 把宿主平面的 compaction 行全部置为 disabled，
@@ -8,12 +8,12 @@
  * `ctx.get('compaction')` 是拿不到的，只有挂在同一 realm 里才看得到。
  *
  * 挂载方式（设置 → Agent preset，往 compaction 组里加一行）：
- *   - id: ctx-mon-and-con-control
- *     name: 'ctx-mon-and-con/control'
+ *   - id: agent-embodiment-control
+ *     name: 'agent-embodiment/control'
  *     config: { mode: idle }
  *
  * 上下文从哪来（三级）：
- *   1. 会话级临时覆盖：宿主半侧 `/ctx <tokens>` 写入（同包 ./state.js 共享）
+ *   1. 会话级临时覆盖：宿主半侧 `/embody <tokens>` 写入（兼容 `/ctx`）（同包 ./state.js 共享）
  *   2. 全局默认：宿主半侧 Config.contextWindowTokens
  *   3. 本行 Config.maxContextTokens（0 = 跟随前两级；宿主没装时才用它）
  *
@@ -27,7 +27,7 @@
  *                      （适合把 `compaction-basic.auto` 关掉后接管）。
  *   - mode: 'notify'   只在 `agent/status === 'idle'` 时测量并写日志，不动作。
  *   - mode: 'off'      完全禁用。
- * 另注册 `/ctx-compact` 手动强制压缩一次（不受 triggerAt 限制，仍要求 agent 空闲；
+ * 另注册 `/embody-compact` 手动强制压缩一次（不受 triggerAt 限制，仍要求 agent 空闲；
  * 用 compactNow，按 maxAttempts 重试）。
  *
  * 压缩目标按「降到上下文以下即可」实现：复用引擎自己的选区逻辑，不自己算范围、
@@ -55,7 +55,7 @@ import {
   setControlActive,
 } from './state.js'
 
-export const name = 'ctx-mon-and-con-control'
+export const name = 'agent-embodiment-control'
 
 /** 硬依赖：没有测量服务就没有控制依据。 */
 export const inject = ['tokenMeter']
@@ -126,7 +126,7 @@ function validateConfig(input) {
 export const Config = Object.freeze({
   '~standard': Object.freeze({
     version: 1,
-    vendor: 'ctx-mon-and-con-control',
+    vendor: 'agent-embodiment-control',
     validate: validateConfig,
   }),
 })
@@ -154,7 +154,7 @@ export function apply(ctx, config) {
   const log = (level, message) => {
     const logger = ctx.logger
     const write = typeof logger?.[level] === 'function' ? logger[level].bind(logger) : undefined
-    if (write) write(`ctx-mon-and-con-control: ${message}`)
+    if (write) write(`agent-embodiment-control: ${message}`)
   }
 
   /** 每个 agent 上次自动压缩的时间（WeakMap：agent 释放即回收）。 */
@@ -219,8 +219,8 @@ export function apply(ctx, config) {
           const extraPrompts = getGlobalExtraPrompts()
           const extraPlacements = getGlobalExtraPromptPlacements()
           for (const [name, text] of Object.entries(extraPrompts)) {
-            const sectionName = name.startsWith('ctx-mon-and-con:extra:') ? name : `ctx-mon-and-con:extra:${name}`
-            if (disabled.has(sectionName)) continue
+            const sectionName = name.startsWith('agent-embodiment:extra:') || name.startsWith('ctx-mon-and-con:extra:') ? name : `agent-embodiment:extra:${name}`
+            if (disabled.has(sectionName) || disabled.has(sectionName.replace('agent-embodiment:extra:', 'ctx-mon-and-con:extra:'))) continue
             const value = typeof text === 'string' ? text : ''
             if (value.trim().length === 0) continue
             if (mapped.some((section) => section.name === sectionName)) continue
@@ -297,8 +297,8 @@ export function apply(ctx, config) {
       const pieces = []
       for (const [name, text] of Object.entries(extras)) {
         if (placements[name] !== 'user') continue
-        const sectionName = name.startsWith('ctx-mon-and-con:extra:') ? name : `ctx-mon-and-con:extra:${name}`
-        if (disabled.has(sectionName)) continue
+        const sectionName = name.startsWith('agent-embodiment:extra:') || name.startsWith('ctx-mon-and-con:extra:') ? name : `agent-embodiment:extra:${name}`
+        if (disabled.has(sectionName) || disabled.has(sectionName.replace('agent-embodiment:extra:', 'ctx-mon-and-con:extra:'))) continue
         const value = typeof text === 'string' ? text : ''
         if (value.trim().length === 0) continue
         pieces.push(value)
@@ -451,7 +451,7 @@ export function apply(ctx, config) {
     setControlActive(config.mode !== 'off', config.mode)
     sub.effect(
       () => () => setControlActive(false),
-      'ctx-mon-and-con-control: activation state',
+      'agent-embodiment-control: activation state',
     )
 
     /**
@@ -574,7 +574,7 @@ export function apply(ctx, config) {
             }
             return next()
           }),
-        'ctx-mon-and-con-control: budget enforcement before request (idle mode)',
+        'agent-embodiment-control: budget enforcement before request (idle mode)',
       )
     }
 
@@ -588,7 +588,7 @@ export function apply(ctx, config) {
             if (!measurement || measurement.totalTokens <= triggerTokensOf(budget)) return
             log('warn', `over trigger (notify only): ${formatTokens(measurement.totalTokens)} > ${formatTokens(triggerTokensOf(budget))} (budget ${formatTokens(budget)})`)
           }),
-        'ctx-mon-and-con-control: notify-only measurement',
+        'agent-embodiment-control: notify-only measurement',
       )
     }
 
@@ -624,43 +624,47 @@ export function apply(ctx, config) {
             }
             return next()
           }),
-        'ctx-mon-and-con-control: step-boundary enforcement',
+        'agent-embodiment-control: step-boundary enforcement',
       )
     }
 
-    // 手动入口：/ctx-compact —— 立刻对该会话做一次 idle 压缩（mode: off 时不注册）。
+    // 手动入口：/embody-compact —— 立刻对该会话做一次 idle 压缩（mode: off 时不注册）。
+    // /ctx-compact 保留为兼容别名。
     if (config.mode !== 'off') ctx.inject(['commands'], (commandSub) => {
       const commands = commandSub?.commands
       if (!commands?.register) return
+      const compactHandler = async (invocation) => {
+        const { agent, signal } = invocation ?? {}
+        if (!agent?.session) return { kind: 'error', text: '当前没有可用会话，无法压缩。' }
+        if (signal?.aborted) return { kind: 'error', text: '已取消。' }
+        try {
+          const { before, after, result, rounds } = await enforce(agent, 'manual')
+          if (rounds === 0) {
+            return { kind: 'success', text: `未超过上下文（${formatTokens(before)} ≤ ${formatTokens(budgetOf(agent))}），无需压缩。` }
+          }
+          return {
+            kind: 'success',
+            text: [
+              `压缩完成：${formatTokens(before)} → ${typeof after === 'number' ? formatTokens(after) : '?'} tokens（${rounds} 轮，上下文 ${formatTokens(budgetOf(agent))}）`,
+              `- ${describeResult(result)}`,
+            ].join('\n'),
+          }
+        } catch (error) {
+          const message = error instanceof Error ? error.message : String(error)
+          logCompactionFailure('manual', message, { sessionId: sessionIdOf(agent) })
+          return { kind: 'error', text: `压缩失败：${message}（需要 agent 空闲，且会话里有可安全压缩的范围）` }
+        }
+      }
       commandSub.effect(
-        () =>
-          commands.register({
-            name: 'ctx-compact',
-            description: 'Compact the current session now (idle only)',
-            handler: async (invocation) => {
-              const { agent, signal } = invocation ?? {}
-              if (!agent?.session) return { kind: 'error', text: '当前没有可用会话，无法压缩。' }
-              if (signal?.aborted) return { kind: 'error', text: '已取消。' }
-              try {
-                const { before, after, result, rounds } = await enforce(agent, 'manual')
-                if (rounds === 0) {
-                  return { kind: 'success', text: `未超过上下文（${formatTokens(before)} ≤ ${formatTokens(budgetOf(agent))}），无需压缩。` }
-                }
-                return {
-                  kind: 'success',
-                  text: [
-                    `压缩完成：${formatTokens(before)} → ${typeof after === 'number' ? formatTokens(after) : '?'} tokens（${rounds} 轮，上下文 ${formatTokens(budgetOf(agent))}）`,
-                    `- ${describeResult(result)}`,
-                  ].join('\n'),
-                }
-              } catch (error) {
-                const message = error instanceof Error ? error.message : String(error)
-                logCompactionFailure('manual', message, { sessionId: sessionIdOf(agent) })
-                return { kind: 'error', text: `压缩失败：${message}（需要 agent 空闲，且会话里有可安全压缩的范围）` }
-              }
-            },
-          }),
-        'ctx-mon-and-con-control: /ctx-compact command',
+        () => {
+          const disposers = ['embody-compact', 'ctx-compact'].map((name) => commands.register({
+            name,
+            description: name === 'embody-compact' ? 'Compact the current session now (idle only)' : 'Legacy alias for /embody-compact',
+            handler: compactHandler,
+          }))
+          return () => disposers.forEach((dispose) => dispose())
+        },
+        'agent-embodiment-control: compaction commands',
       )
     })
   })

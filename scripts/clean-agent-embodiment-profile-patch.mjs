@@ -1,17 +1,17 @@
 #!/usr/bin/env node
-// 卸载 ctx-mon-and-con 后清理 profile 里由插件写入的 patch 行：
-//   - 顶层 `- id: ctx-mon-and-con`
-//   - `- id: ctx-mon-and-con-control`（任何时候）
-//   - `- id: preset-standard` 整段，仅当该段里包含 ctx-mon-and-con-control
+// 卸载 agent-embodiment 后清理 profile 里由插件写入的 patch 行：
+//   - 顶层 `- id: agent-embodiment`
+//   - `- id: agent-embodiment-control`（任何时候）
+//   - `- id: preset-standard` 整段，仅当该段里包含 agent-embodiment-control
 //     （这是插件自动挂载时用 configEditor 写出的整段 preset 覆盖）
-// 先备份为 cordis.patch.yml.ctx-backup-<时间戳>，再原地改写。
-// 用法：node clean-ctx-profile-patch.mjs <profile 目录或 cordis.patch.yml 路径>
+// 先备份为 cordis.patch.yml.embody-backup-<时间戳>，再原地改写。
+// 用法：node clean-agent-embodiment-profile-patch.mjs <profile 目录或 cordis.patch.yml 路径>
 import fs from 'node:fs'
 import path from 'node:path'
 
 const input = process.argv[2]
 if (!input) {
-  console.error('usage: node clean-ctx-profile-patch.mjs <profile dir | cordis.patch.yml>')
+  console.error('usage: node clean-agent-embodiment-profile-patch.mjs <profile dir | cordis.patch.yml>')
   process.exit(2)
 }
 const stat = fs.statSync(input)
@@ -44,10 +44,10 @@ for (let k = 0; k < starts.length; k++) {
 }
 
 for (const block of blocks) {
-  if (block.id === 'ctx-mon-and-con' || block.id === 'ctx-mon-and-con-control') {
+  if (block.id === 'agent-embodiment' || block.id === 'agent-embodiment-control') {
     remove.add(block.id)
     for (let i = block.from; i < block.to; i++) lines[i] = null
-  } else if (block.id === 'preset-standard' && block.body.includes('ctx-mon-and-con-control')) {
+  } else if (block.id === 'preset-standard' && block.body.includes('agent-embodiment-control')) {
     remove.add('preset-standard(auto-mount)')
     for (let i = block.from; i < block.to; i++) lines[i] = null
   }
@@ -59,7 +59,7 @@ if (remove.size === 0) {
 }
 
 const next = lines.filter((line) => line !== null).join('\n').replace(/\n{3,}/g, '\n\n')
-const backup = `${file}.ctx-backup-${new Date().toISOString().replace(/[:.]/g, '-')}`
+const backup = `${file}.embody-backup-${new Date().toISOString().replace(/[:.]/g, '-')}`
 fs.writeFileSync(backup, original, 'utf8')
 fs.writeFileSync(file, next, 'utf8')
 console.log('cleaned:', [...remove].join(', '))

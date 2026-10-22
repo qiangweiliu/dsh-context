@@ -54,7 +54,7 @@
 
 ## 宿主复核（WSL，2026-10-19）
 
-在 WSL 的 `web` profile（`~/dsh-plugins/ctx-mon-and-con`，3080 端口实例）上同步源码后实测：
+在 WSL 的 `web` profile（`~/dsh-plugins/agent-embodiment`，3080 端口实例）上同步源码后实测：
 
 | 检查 | 结果 |
 | --- | --- |

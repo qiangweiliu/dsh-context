@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# 在 WSL 的 DSH profile 里卸载 ctx-mon-and-con，并核对是否有残留。
+# 在 WSL 的 DSH profile 里卸载 agent-embodiment，并核对是否有残留。
 # 用法：wsl.exe -d Ubuntu-24.04 -e bash <仓库>/scripts/wsl-uninstall.sh [profile]
 set -uo pipefail
 export PATH="$HOME/.local/bin:$PATH"
@@ -7,7 +7,7 @@ export PATH="$HOME/.local/bin:$PATH"
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 PROFILE="${1:-web}"
 P="$HOME/.dsh/profiles/$PROFILE"
-PKG="ctx-mon-and-con"
+PKG="agent-embodiment"
 FAILED=0
 say() { printf '%s\n' "$*"; }
 ok() { printf 'ok   - %s\n' "$*"; }
@@ -23,16 +23,16 @@ ls -1 "$P/node_modules" 2>/dev/null | sort > "$SNAP/nm.before"
 ls -1 "$P/.plugin-manager/logs" 2>/dev/null | sort > "$SNAP/logs.before"
 
 say "== 卸载 $PKG（profile=$PROFILE）"
-if dsh plugin --profile "$PROFILE" remove "$PKG" > /tmp/ctx-remove.log 2>&1; then
-  ok "dsh plugin remove 成功：$(grep -E '^-\s' /tmp/ctx-remove.log | tail -1 | xargs)"
+if dsh plugin --profile "$PROFILE" remove "$PKG" > /tmp/embody-remove.log 2>&1; then
+  ok "dsh plugin remove 成功：$(grep -E '^-\s' /tmp/embody-remove.log | tail -1 | xargs)"
 else
-  fail "dsh plugin remove 失败"; tail -5 /tmp/ctx-remove.log; exit 1
+  fail "dsh plugin remove 失败"; tail -5 /tmp/embody-remove.log; exit 1
 fi
 
 # 插件在 profile patch 里可能留下自动挂载行（顶层插件行、control 行、preset-standard 整段覆盖）。
 # 依赖移除后这些行会引用不存在的包，必须一并清理；脚本自带备份。
 say "== 清理 profile patch 里的插件残留行"
-CLEAN="${CTX_CLEAN:-$SCRIPT_DIR/clean-ctx-profile-patch.mjs}"
+CLEAN="${CTX_CLEAN:-$SCRIPT_DIR/clean-agent-embodiment-profile-patch.mjs}"
 if [ -f "$CLEAN" ] && node "$CLEAN" "$P"; then
   ok "profile patch 清理完成"
 else
@@ -61,7 +61,7 @@ LINK="$P/node_modules/$PKG"
 if [ -L "$LINK" ]; then
   TARGET=$(readlink -f "$LINK")
   case "$TARGET" in
-    */dsh-plugins/ctx-mon-and-con)
+    */dsh-plugins/agent-embodiment)
       rm -f "$LINK"
       ok "移除残留 symlink（-> $TARGET）"
       ;;
@@ -75,7 +75,7 @@ else
   ok "node_modules 无该包"
 fi
 
-ROWS=$(dsh --profile "$PROFILE" --dump-config 2>/dev/null | grep -c 'ctx-mon-and-con' || true)
+ROWS=$(dsh --profile "$PROFILE" --dump-config 2>/dev/null | grep -c 'agent-embodiment' || true)
 [ "$ROWS" -eq 0 ] && ok "--dump-config 不再出现该行" || fail "--dump-config 仍有 $ROWS 处"
 
 # 残留：装前 vs 卸后
@@ -102,7 +102,7 @@ fi
 say ""
 if [ "$FAILED" -eq 0 ]; then
   say "结论：$PKG 已从 profile $PROFILE 卸载，依赖/bundles/node_modules/组合树均无该插件。"
-  say "注意：HMR 会即时卸载 /ctx 与设置面板；若页面仍显示旧界面，刷新页面即可。只有替换已安装包/宿主模块才需要重启 dsh 进程。"
+  say "注意：HMR 会即时卸载 /embody 与设置面板；若页面仍显示旧界面，刷新页面即可。只有替换已安装包/宿主模块才需要重启 dsh 进程。"
   exit 0
 else
   say "结论：存在未通过项，见上面 FAIL。"; exit 1

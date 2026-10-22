@@ -9,7 +9,7 @@
  *
  * 约定：
  *   - defaultBudget       全局默认预算（来自宿主半侧的 Config.contextWindowTokens）
- *   - overrides           按 session id 的临时覆盖（/ctx <tokens> 写入，重启失效）
+ *   - overrides           按 session id 的临时覆盖（/embody <tokens> 写入，重启失效）
  *   - control             控制半侧的运行状态（面板只读）
  * 所有导出都是小函数，不依赖 Cordis，方便测试直接 import。
  */
@@ -144,7 +144,7 @@ export function recordCompaction(sessionId, before, after, shadowed) {
 // ── 压缩记录（成功 / 失败）：内存环形缓冲 + 宿主半侧落盘 ──────────────────
 //
 // 控制半侧在压缩发生时调用 recordCompactionEvent；宿主半侧（index.js）订阅
-// 同一份状态并追加到 ~/.dsh/ctx-mon-and-con/compaction-log.jsonl，面板从
+// 同一份状态并追加到 ~/.dsh/agent-embodiment/compaction-log.jsonl，面板从
 // status 接口读取最近 50 条。持久化放在宿主半侧，测试 import state.js 时不会写盘。
 
 /** 内存里最多保留多少条压缩记录（面板只展示最近 50 条）。 */
@@ -338,6 +338,11 @@ export function getGlobalDisabledTools() {
   return globalDisabledTools
 }
 
+/** 0.21.0 改名：把旧 extra section 名迁到新前缀，保留已有开关/覆盖。 */
+const normalizeSectionName = (name) => typeof name === 'string' && name.startsWith('ctx-mon-and-con:extra:')
+  ? name.replace('ctx-mon-and-con:extra:', 'agent-embodiment:extra:')
+  : name
+
 /** 会话级提示词文本的落盘形态：sessionId -> { section name -> 文本 }。 */
 function snapshotSessionPromptText() {
   const out = {}
@@ -355,7 +360,7 @@ function hydrateSessionPromptText(value) {
     if (!texts || typeof texts !== 'object' || Array.isArray(texts)) continue
     const map = new Map()
     for (const [name, text] of Object.entries(texts)) {
-      if (typeof name === 'string' && typeof text === 'string') map.set(name, text)
+      if (typeof name === 'string' && typeof text === 'string') map.set(normalizeSectionName(name), text)
     }
     if (map.size > 0) sessionPromptText.set(sessionId, map)
   }
@@ -378,7 +383,7 @@ export function hydrateSessionToggles(data) {
   const tools = data && data.tools && typeof data.tools === 'object' ? data.tools : {}
   const prompts = data && data.prompts && typeof data.prompts === 'object' ? data.prompts : {}
   for (const [sessionId, names] of Object.entries(tools)) if (Array.isArray(names) && names.length > 0) sessionTools.set(sessionId, new Set(names))
-  for (const [sessionId, names] of Object.entries(prompts)) if (Array.isArray(names) && names.length > 0) sessionPrompts.set(sessionId, new Set(names))
+  for (const [sessionId, names] of Object.entries(prompts)) if (Array.isArray(names) && names.length > 0) sessionPrompts.set(sessionId, new Set(names.map(normalizeSectionName)))
   trimSessionStates(sessionTools)
   trimSessionStates(sessionPrompts)
   hydrateSessionPromptText(data && data.promptText)

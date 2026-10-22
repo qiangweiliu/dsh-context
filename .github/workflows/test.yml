@@ -13,7 +13,7 @@ jobs:
         node-version: ['20', '22', '24']
     defaults:
       run:
-        working-directory: ctx-mon-and-con
+        working-directory: agent-embodiment
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4

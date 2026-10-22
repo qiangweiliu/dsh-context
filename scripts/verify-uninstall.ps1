@@ -1,6 +1,6 @@
 ﻿<#
 .SYNOPSIS
-  实测 ctx-mon-and-con 的「安装 → 生效 → 卸载 → 无残留」。
+  实测 agent-embodiment 的「安装 → 生效 → 卸载 → 无残留」。
 
 .DESCRIPTION
   对指定 profile 执行：快照 → 安装 → 校验生效 → 卸载 → 与快照对比 → 分类报告残留。
@@ -8,7 +8,7 @@
 
   判定为「通过」的条件（对应 docs 里的四条验收标准）：
     1. package.json 的 dependencies 与 dsh.profile.bundles 回到装前状态
-    2. --dump-config 组合树里出现/消失 `ctx-mon-and-con` 行
+    2. --dump-config 组合树里出现/消失 `agent-embodiment` 行
     3. 没有插件私有数据残留（本插件不写 storage / 不改 cordis.patch.yml）
   已知的通用残留（pnpm 与插件管理器产生，任何插件都一样）会单独列出，不算失败：
     - pnpm-lock.yaml（内容只剩 `importers: {.: {}}`）
@@ -19,7 +19,7 @@
   profile 名，默认 desktop。
 
 .PARAMETER PluginDir
-  插件目录，默认仓库里的 ctx-mon-and-con。
+  插件目录，默认仓库里的 agent-embodiment。
 
 .PARAMETER DshPath
   dsh 启动器路径，默认本机 DeepSeek Harness 的安装位置。
@@ -41,9 +41,9 @@ param(
 )
 
 $ErrorActionPreference = 'Stop'
-if (-not $PluginDir) { $PluginDir = (Resolve-Path (Join-Path $PSScriptRoot '..\ctx-mon-and-con')).Path }
+if (-not $PluginDir) { $PluginDir = (Resolve-Path (Join-Path $PSScriptRoot '..\agent-embodiment')).Path }
 $utf8 = New-Object System.Text.UTF8Encoding($false)
-$packageName = 'ctx-mon-and-con'
+$packageName = 'agent-embodiment'
 $profileDir = Join-Path $env:DSH_HOME "profiles/$Profile"
 
 if (-not (Test-Path $DshPath)) { throw "找不到 dsh 启动器：$DshPath" }
@@ -100,7 +100,7 @@ function Get-DumpRows {
     return @()
   }
   $script:dumpAvailable = $true
-  return @(($output -split "`r?`n") | Where-Object { $_ -match "ctx-mon-and-con" })
+  return @(($output -split "`r?`n") | Where-Object { $_ -match "agent-embodiment" })
 }
 
 function Get-Detail([string]$output) {
@@ -140,7 +140,7 @@ if ($script:dumpAvailable -eq $false) {
 Step 'cordis.patch.yml 未被改写' ($before.Files['cordis.patch.yml'] -eq $installed.Files['cordis.patch.yml'])
 
 if ($ProbeUrl) {
-  # 插件在宿主半侧注册了 GET /api/ctx-mon-and-con/status；能拉到 JSON 就说明运行中的应用已加载本插件。
+  # 插件在宿主半侧注册了 GET /api/agent-embodiment/status；能拉到 JSON 就说明运行中的应用已加载本插件。
   try {
     $probe = Invoke-WebRequest -Uri $ProbeUrl -UseBasicParsing -TimeoutSec 8
     $payload = $null
@@ -252,4 +252,4 @@ if ($failed.Count -gt 0) {
   exit 1
 }
 Write-Host '结论：安装 → 生效 → 卸载 → 组合树/依赖/链接均回到装前，未发现插件私有残留。' -ForegroundColor Green
-Write-Host '注意：重启 Desktop 后 /ctx 与设置面板才会真正消失（运行中的进程会保留已加载的模块）。' -ForegroundColor Yellow
+Write-Host '注意：重启 Desktop 后 /embody（/ctx 别名）与设置面板才会真正消失（运行中的进程会保留已加载的模块）。' -ForegroundColor Yellow

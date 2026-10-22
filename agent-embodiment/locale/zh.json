@@ -1,0 +1,6 @@
+{
+  "meta": {
+    "title": "智能体具身",
+    "description": "为 DSH agent 提供上下文预算与压缩、环境感知、工具/提示词控制和 Agent 脚手架。"
+  }
+}

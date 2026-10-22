@@ -18,7 +18,7 @@ export const name = 'ctx-mon-and-con'
 /** 与 control.js 共享的进程内状态（同一包内相对 import，不涉及 npm 依赖）。 */
 import { appendFileSync, copyFileSync, existsSync, mkdirSync, readFileSync, readdirSync, statSync, unlinkSync, writeFileSync } from 'node:fs'
 import { homedir } from 'node:os'
-import { dirname, join } from 'node:path'
+import { dirname, isAbsolute, join, resolve, sep } from 'node:path'
 
 import {
   budgetFor,
@@ -55,6 +55,7 @@ import {
 } from './state.js'
 
 import { foldSession, sessionDetail, summarizeFolds } from './metrics.js'
+import { SCAFFOLD_TEMPLATES, planScaffold } from './scaffold.js'
 
 /** 依赖的真实服务名（见 @deepseek-ai/dsh-commands / @deepseek-ai/dsh-token-meter）。 */
 export const inject = ['commands', 'tokenMeter']
@@ -1334,6 +1335,95 @@ export function apply(ctx, config) {
     })
   }
 
+  // ── Agent Embodiment Scaffold：预览/生成（纯生成器在 scaffold.js）──────────
+  const scaffoldTemplateList = (request, response) => {
+    const send = jsonSender(response)
+    if (!requireMethod(request, response, 'GET')) return
+    return send(200, {
+      ok: true,
+      templates: SCAFFOLD_TEMPLATES.map((template) => ({
+        id: template.id,
+        name: template.name,
+        description: template.description,
+        pattern: template.pattern,
+        senses: template.senses,
+        hands: template.hands,
+      })),
+    })
+  }
+
+  const scaffoldPreviewHandler = (request, response) => {
+    const send = jsonSender(response)
+    if (!requireMethod(request, response, 'POST')) return
+    readJson(request, response, (input) => {
+      try {
+        const plan = planScaffold(input)
+        return send(200, {
+          ok: true,
+          template: plan.template,
+          presetId: plan.presetId,
+          bundleDir: plan.bundleDir,
+          spec: plan.spec,
+          files: plan.files,
+          warnings: plan.warnings,
+          installCommand: plan.installCommand,
+        })
+      } catch (error) {
+        return send(400, { ok: false, error: error instanceof Error ? error.message : String(error) })
+      }
+    }, 64 * 1024, 'invalid scaffold spec')
+  }
+
+  const scaffoldGenerateHandler = (request, response) => {
+    const send = jsonSender(response)
+    if (!requireMethod(request, response, 'POST')) return
+    readJson(request, response, (input) => {
+      if (typeof input?.targetDir !== 'string' || !isAbsolute(input.targetDir.trim())) {
+        return send(400, { ok: false, error: 'targetDir must be an absolute path' })
+      }
+      const root = resolve(input.targetDir.trim())
+      if (root === resolve('/') || root === resolve(homedir())) {
+        return send(400, { ok: false, error: 'targetDir is too broad; choose a workspace directory' })
+      }
+      let plan
+      try {
+        plan = planScaffold(input)
+      } catch (error) {
+        return send(400, { ok: false, error: error instanceof Error ? error.message : String(error) })
+      }
+      const overwrite = input.overwrite === true
+      const destinations = plan.files.map((file) => ({ ...file, destination: resolve(root, file.path) }))
+      for (const file of destinations) {
+        if (!file.destination.startsWith(root + sep)) {
+          return send(400, { ok: false, error: `path escapes targetDir: ${file.path}` })
+        }
+      }
+      const existing = destinations.filter((file) => existsSync(file.destination)).map((file) => file.path)
+      if (existing.length > 0 && !overwrite) {
+        return send(409, { ok: false, error: 'files already exist; pass overwrite:true to replace them', existing })
+      }
+      try {
+        mkdirSync(root, { recursive: true })
+        for (const file of destinations) {
+          mkdirSync(dirname(file.destination), { recursive: true })
+          writeFileSync(file.destination, file.content, 'utf8')
+        }
+      } catch (error) {
+        return send(500, { ok: false, error: error instanceof Error ? error.message : String(error) })
+      }
+      return send(202, {
+        ok: true,
+        targetDir: root,
+        template: plan.template,
+        presetId: plan.presetId,
+        bundleDir: plan.bundleDir,
+        files: plan.files.map((file) => file.path),
+        warnings: plan.warnings,
+        installCommand: `dsh plugin --profile <profile> add ${join(root, plan.bundleDir)}`,
+      })
+    }, 64 * 1024, 'invalid scaffold spec')
+  }
+
   ctx.inject(['webServer'], (sub) => {
     const server = sub?.webServer
     if (!server || typeof server.register !== 'function') return
@@ -1354,6 +1444,9 @@ export function apply(ctx, config) {
         server.register({ kind: 'exact', path: `${STATUS_PATH}/inventory/prompt/session/reset`, handler: sessionPromptResetHandler }),
         server.register({ kind: 'exact', path: `${STATUS_PATH}/inventory/extra-prompt`, handler: extraPromptHandler }),
         server.register({ kind: 'exact', path: `${STATUS_PATH}/inventory/extra-prompt/reset`, handler: extraPromptResetHandler }),
+        server.register({ kind: 'exact', path: `${STATUS_PATH}/scaffold/templates`, handler: scaffoldTemplateList }),
+        server.register({ kind: 'exact', path: `${STATUS_PATH}/scaffold/preview`, handler: scaffoldPreviewHandler }),
+        server.register({ kind: 'exact', path: `${STATUS_PATH}/scaffold/generate`, handler: scaffoldGenerateHandler }),
       ]
       return () => offs.forEach((off) => off())
     }

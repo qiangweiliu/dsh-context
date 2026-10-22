@@ -1,7 +1,7 @@
 # 验收证据（ctx-mon-and-con）
 
 - 仓库：<https://github.com/qiangweiliu/dsh-context>（插件目录 `ctx-mon-and-con/`）
-- 版本：`0.19.1`（本文件随 manifest 兼容性声明一起提交）
+- 版本：`0.20.0`（本文件随 manifest 兼容性声明一起提交）
 - 采集日期：2026-10-18
 - 证据层级说明：`verified` = 本次固定源码上实际执行并记录结果；`partial` = 只在明确边界内验证；`unknown` = 未取得证据。**这些证据不构成独立安全审计，也不替代商城的专项审阅。**
 
@@ -244,6 +244,17 @@ npm 运行依赖：无；生命周期脚本：无
   - `__DSH_TRANSPORT__` 只有 `{ ownsHost, streamBaseUrl }`、没有 `fetch`，说明 Desktop 端走的是 `EventSource('/plugins/events')` 路径；`dsh-app` 注册了 streaming/fetch schemes，实际可工作。
 - 结论：Desktop 0.2.1-rc.2 的首次安装、启用/停用同样由 HMR 热生效，**不需要重启 DSH**。此前“Desktop 可能仍需重启”的保留意见已排除。
 - 边界：**替换已安装包（升级版本）**仍是 DSH 的例外；验证实例使用隔离 `DSH_HOME`/`user-data-dir`，未触碰真实桌面 profile。
+
+## E18. v0.20.0 Agent Embodiment Scaffold 验证（2026-10-22）
+
+- 环境：WSL Ubuntu 24.04，`dsh 0.2.0-rc.2`，隔离 `DSH_HOME=/tmp/dsh-scaffold-live`；Linux Chromium + CDP。
+- 生成：`node scripts/agent-scaffold.mjs --template repo-coder --out /tmp/embodiment-live --slug demo-coder`，生成 16 个文件（bundle、patch、SENSES/HANDS/LOOP、3 个 SKILL.md、evals）。
+- 安装：先装本插件，再 `dsh plugin --profile scaffoldlive add /tmp/embodiment-live/.dsh/scaffolds/demo-coder`；`--dump-config` 出现 `preset-demo-coder` 行。
+- Preset 激活：Settings → Agent presets 的 CUSTOM 组出现 `Demo Coder`，无 Failed to load，控制台 0 error。
+  - 首次激活失败：generated preset 重复挂载了全局已有的 `dsh-subagent` service 与 `spawn` provider（`service "subagents" has been registered`）。修正为 preset 只挂 `dsh-tool-subagent` 后重新生成并复测通过；这条是本次 live 验证发现并修掉的真实问题。
+- HTTP 路由（真实宿主）：`/scaffold/templates` 返回 3 个模板；`/scaffold/preview` 返回 16 个文件；`/scaffold/generate` 写入目标目录；重复生成返回 409，`overwrite:true` 可覆盖。
+- UI：面板 Agent tab 加载 3 个模板；选择 repo-coder、填写 targetDir 后 Preview/Generate 均成功，文件落盘，0 error / 0 exception。
+- 边界：桌面实例未在本轮重复脚手架安装测试；MCP 未自动生成；preset 默认选择仍需用户在 Settings 里手动完成。
 
 ## 已知限制（unknown）
 

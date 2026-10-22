@@ -19,6 +19,7 @@
  * 前提：test/deps/dsh/node_modules/@deepseek-ai/{cordis,cosmokit} 存在。
  */
 import { existsSync, mkdtempSync, readFileSync, rmSync } from 'node:fs'
+import { EventEmitter } from 'node:events'
 import { createRequire } from 'node:module'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
@@ -185,6 +186,60 @@ check('status 返回刚写入的压缩记录', Array.isArray(logPayload.control?
 const methodResponse = makeResponse()
 statusRoute?.handler({ method: 'POST' }, methodResponse)
 check('状态路由非 GET 返回 405', methodResponse.statusCode === 405, methodResponse.statusCode)
+
+// ── 3c. Agent Embodiment Scaffold 路由 ────────────────────────────────────
+const scaffoldTemplates = webServer.routes.get('/api/ctx-mon-and-con/status/scaffold/templates')
+const scaffoldPreview = webServer.routes.get('/api/ctx-mon-and-con/status/scaffold/preview')
+const scaffoldGenerate = webServer.routes.get('/api/ctx-mon-and-con/status/scaffold/generate')
+check('注册 scaffold/templates 路由', scaffoldTemplates?.kind === 'exact', scaffoldTemplates?.path)
+check('注册 scaffold/preview 路由', scaffoldPreview?.kind === 'exact', scaffoldPreview?.path)
+check('注册 scaffold/generate 路由', scaffoldGenerate?.kind === 'exact', scaffoldGenerate?.path)
+
+const makeJsonRequest = (method, payload) => {
+  const request = new EventEmitter()
+  request.method = method
+  request.url = '/'
+  request.destroy = () => {}
+  setImmediate(() => {
+    request.emit('data', Buffer.from(JSON.stringify(payload)))
+    request.emit('end')
+  })
+  return request
+}
+const callJson = (route, method, payload) => new Promise((resolve) => {
+  const response = makeResponse()
+  const originalEnd = response.end.bind(response)
+  response.end = (body) => {
+    originalEnd(body)
+    resolve(response)
+  }
+  route.handler(makeJsonRequest(method, payload), response)
+})
+
+const listResponse = makeResponse()
+scaffoldTemplates?.handler({ method: 'GET' }, listResponse)
+const listPayload = listResponse.body ? JSON.parse(listResponse.body) : {}
+check('scaffold/templates 返回 3 个模板', listResponse.statusCode === 200 && listPayload.templates?.length === 3, JSON.stringify(listPayload.templates?.map((item) => item.id)))
+
+const previewResponse = await callJson(scaffoldPreview, 'POST', { template: 'repo-coder', slug: 'smoke-coder' })
+const previewPayload = previewResponse.body ? JSON.parse(previewResponse.body) : {}
+check('scaffold/preview 返回文件与 preset', previewResponse.statusCode === 200 && previewPayload.presetId === 'smoke-coder' && previewPayload.files?.length >= 10, JSON.stringify({ status: previewResponse.statusCode, preset: previewPayload.presetId, files: previewPayload.files?.length }))
+check('scaffold/preview 含 sense/verify skill', previewPayload.files?.some((file) => file.path.endsWith('/sense-environment/SKILL.md')) && previewPayload.files?.some((file) => file.path.endsWith('/verify-change/SKILL.md')), previewPayload.files?.map((file) => file.path))
+const previewPatch = previewPayload.files?.find((file) => file.path.endsWith('dsh.bundle.patch.yml'))?.content ?? ''
+check('scaffold/preview patch 含 preset 行', previewPatch.includes('id: "preset-smoke-coder"') && previewPatch.includes('@deepseek-ai/dsh-agent-preset'), previewPatch.slice(0, 120))
+
+const scaffoldRoot = mkdtempSync(join(tmpdir(), 'ctx-scaffold-'))
+const generateResponse = await callJson(scaffoldGenerate, 'POST', { template: 'repo-coder', slug: 'smoke-coder', targetDir: scaffoldRoot })
+const generatePayload = generateResponse.body ? JSON.parse(generateResponse.body) : {}
+check('scaffold/generate 写入文件', generateResponse.statusCode === 202 && existsSync(join(scaffoldRoot, '.dsh/scaffolds/smoke-coder/dsh.bundle.patch.yml')), JSON.stringify({ status: generateResponse.statusCode, error: generatePayload.error }))
+check('scaffold/generate 写入工作区 skill', existsSync(join(scaffoldRoot, '.agents/skills/smoke-coder-sense-environment/SKILL.md')))
+const duplicateResponse = await callJson(scaffoldGenerate, 'POST', { template: 'repo-coder', slug: 'smoke-coder', targetDir: scaffoldRoot })
+check('scaffold/generate 默认拒绝覆盖', duplicateResponse.statusCode === 409, duplicateResponse.statusCode)
+const overwriteResponse = await callJson(scaffoldGenerate, 'POST', { template: 'repo-coder', slug: 'smoke-coder', targetDir: scaffoldRoot, overwrite: true })
+check('scaffold/generate overwrite:true 可覆盖', overwriteResponse.statusCode === 202, overwriteResponse.statusCode)
+const traversalResponse = await callJson(scaffoldGenerate, 'POST', { template: 'repo-coder', slug: '../escape', targetDir: scaffoldRoot })
+check('scaffold/generate 拒绝非法 slug', traversalResponse.statusCode === 400, traversalResponse.statusCode)
+rmSync(scaffoldRoot, { recursive: true, force: true })
 
 // ── 4. 配置校验 ───────────────────────────────────────────────────────────
 let validationError

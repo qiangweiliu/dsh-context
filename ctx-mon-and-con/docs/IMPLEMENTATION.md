@@ -2,7 +2,7 @@
 
 本文描述 `ctx-mon-and-con` 的内部结构、集成点和验证方式。面向用户的功能说明见 [README.md](../README.md)；约束与已知限制见 [LIMITATIONS.md](LIMITATIONS.md)。
 
-当前版本：`0.19.1`
+当前版本：`0.20.0`
 
 ## 1. 两个半侧
 
@@ -213,11 +213,12 @@ node --check client.js
 当前结果：
 
 ```text
-static       73/73
+static       76/76
 metrics      23/23
 state        16/16
+scaffold     58/58
 control      54/54
-smoke        48/48
+smoke        60/60
 prompt-state 11/11
 ```
 
@@ -232,3 +233,22 @@ manifest 声明：
 - profiles：`web`、`desktop`
 
 已实测 WSL `dsh 0.2.0-rc.2` 和 Windows Desktop `0.2.1-rc.2`。其他版本保持 `unknown`。
+
+## 11. Agent 脚手架（0.20.0）
+
+`scaffold.js` 是纯函数生成器（不读写磁盘、不 import npm 包），把 `EmbodimentSpec` 变成一份可安装的 Embodiment Pack：
+
+- `.dsh/scaffolds/<slug>/package.json` + `dsh.bundle.patch.yml`：insert 一个 `@deepseek-ai/dsh-agent-preset` 行；
+- `.dsh/scaffolds/<slug>/SENSES.md` / `HANDS.md` / `LOOP.md` / `AGENTS.snippet.md`；
+- `.dsh/scaffolds/<slug>/skills/<skill>/SKILL.md`，同时复制到 `.agents/skills/<slug>-<skill>/SKILL.md`（`dsh-skill-filesystem` 扫描）；
+- `evals/sense-act.jsonl`。
+
+宿主路由：
+
+- `GET /api/ctx-mon-and-con/status/scaffold/templates`
+- `POST .../scaffold/preview`（只返回文件计划，不写盘）
+- `POST .../scaffold/generate`（要求绝对 `targetDir`；默认拒绝覆盖，`overwrite:true` 才覆盖；路径逃逸校验）
+
+命令行：`node scripts/agent-scaffold.mjs --template <id> --out <absolute-workspace>`。
+
+模板只挂 preset 内需要的 row；`dsh-subagent` service 与 `spawn` provider 已由基础组合全局提供，preset 只挂 `dsh-tool-subagent`，避免重复注册导致 preset 激活失败。生成的 preset 复用 `ctx-mon-and-con/control` 做上下文压缩，因此同一 profile 需要安装本插件。

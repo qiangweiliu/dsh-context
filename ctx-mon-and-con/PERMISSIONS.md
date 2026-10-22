@@ -7,7 +7,7 @@
 | 能力 | 是否使用 | 范围 | 权限档位（商城口径） |
 | --- | --- | --- | --- |
 | 文件读取 | 是 | 插件自己的状态文件与 profile patch（只读读取 current 值）；不扫描宿主包源码 | 有界只读 |
-| 文件写入 | 是 | `~/.dsh/ctx-mon-and-con/` 下自己的状态与备份；profile 的 `cordis.patch.yml` 仅经官方 `configEditor` | 插件私有状态 + Profile |
+| 文件写入 | 是 | `~/.dsh/ctx-mon-and-con/` 下自己的状态与备份；profile 的 `cordis.patch.yml` 仅经官方 `configEditor`；Agent 脚手架写入用户指定的工作区目录 | 插件私有状态 + Profile + 工作区 |
 | 网络 | 仅本机同源 | 宿主已有 Web 服务器上注册 `/api/ctx-mon-and-con/*` 路由；浏览器端只 `fetch` 同源 API | 无外发 |
 | 命令执行 | 否 | 无 `child_process`、无 Shell、无动态执行外部代码 | 无 |
 | 凭据 | 否 | 不读取 API Key、Cookie、Token、环境变量（源码中无 `process.env` 引用） | 无 |
@@ -35,6 +35,13 @@
 - 写入内容：profile `cordis.patch.yml` 中的插件 config 行 / `preset-standard` 整段覆盖 / compaction 组内 `ctx-mon-and-con/control` 一行。
 - 保护：写前自动备份 `cordis.patch.yml`；桌面版不允许时自动挂载失败不阻塞启动，面板显示原因与手动重试。
 - 卸载残留：`dsh plugin remove` 不会清理这些行，仓库提供 `scripts/clean-ctx-profile-patch.mjs` 清理并备份。
+
+### 1.4 经宿主路由写工作区（Agent 脚手架）
+
+- 触发：用户在面板 Agent tab 点击「生成」，或直接 POST `/api/ctx-mon-and-con/status/scaffold/generate`。
+- 位置：用户提交的**绝对** `targetDir` 下的 `.dsh/scaffolds/<slug>/` 与 `.agents/skills/<slug>-*/`。
+- 边界：拒绝文件系统根目录和用户 home；默认拒绝覆盖已有文件（`overwrite: true` 才覆盖）；每个目标路径都必须落在 `targetDir` 内（路径穿越校验）。
+- 内容：只生成 preset patch、Markdown、SKILL.md、eval JSONL；不生成真实 secret，不执行 MCP 命令；生成的 preset 安装仍需用户手动执行 `dsh plugin add` 或使用官方插件管理器。
 
 ## 2. 网络
 

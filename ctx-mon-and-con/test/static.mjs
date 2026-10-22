@@ -37,7 +37,7 @@ check(
 )
 check(
   'manifest files 分发全部运行文件',
-  ['index.js', 'control.js', 'state.js', 'metrics.js', 'client.js', 'dsh.bundle.patch.yml'].every((file) => Array.isArray(manifest.files) && manifest.files.includes(file)),
+  ['index.js', 'control.js', 'state.js', 'metrics.js', 'scaffold.js', 'client.js', 'dsh.bundle.patch.yml'].every((file) => Array.isArray(manifest.files) && manifest.files.includes(file)),
   JSON.stringify(manifest.files),
 )
 check('manifest 无 npm 运行依赖（只依赖宿主服务与 Node 内置模块）', !manifest.dependencies || Object.keys(manifest.dependencies).length === 0, JSON.stringify(manifest.dependencies ?? {}))
@@ -198,6 +198,9 @@ check('client API 路径相对 document.baseURI 解析（兼容反代前缀）',
 const clientVersion = clientSource.match(/CLIENT_VERSION\s*=\s*'([^']+)'/)?.[1]
 check('client CLIENT_VERSION 与 package.json 一致', clientVersion === manifest.version, `${clientVersion} vs ${manifest.version}`)
 check('client 宿主/客户端版本不一致时提示刷新页面', clientSource.includes('data-ctx-version-mismatch') && clientSource.includes('data-ctx-reload') && clientSource.includes('CLIENT_VERSION'))
+check('client 注册 Agent 脚手架 tab 与面板', clientSource.includes("tabsScaffold") && clientSource.includes('data-ctx-scaffold') && clientSource.includes('ScaffoldPanel'))
+check('client 脚手架面板调用宿主路由', clientSource.includes('/scaffold/templates') && clientSource.includes("post('preview'") && clientSource.includes("post('generate'"))
+check('scaffold 中英文词典齐全', Boolean(client.dictionaries.ctxMonAndCon?.en?.scaffoldTitle) && Boolean(client.dictionaries.ctxMonAndCon?.zh?.scaffoldTitle))
 
 // 同一个 window 下加载两次：第二次 apply 必须被挂载守卫挡住，不能重复注册槽位。
 const sharedScope = {}

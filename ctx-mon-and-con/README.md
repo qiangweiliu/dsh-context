@@ -2,7 +2,7 @@
 
 DSH（DeepSeek Harness）的上下文管理插件。
 
-当前版本：`0.19.1`
+当前版本：`0.20.0`
 
 ## 安装后何时生效
 
@@ -11,6 +11,23 @@ DSH（DeepSeek Harness）的上下文管理插件。
 - 如果页面仍显示旧界面，Web 刷新一次页面即可。
 - 安装时确认 `--profile` 与运行实例一致（Desktop 是 `desktop`，WSL web 通常是 `web`）；DSH `0.2.1-rc.1` 不在支持矩阵内。
 - 只有**替换已安装包（升级到新版本）**时，DSH 才要求重启进程；面板检测到宿主/客户端版本不一致时也会提示“刷新页面”。
+
+## Agent 脚手架（0.20.0）
+
+把 AI 当思维核心、脚手架当“感官 + 手 + 反馈”的具身能力包：
+
+- 面板新增 **Agent** tab；也可以命令行生成：
+  ```bash
+  node scripts/agent-scaffold.mjs --template repo-coder --out /path/to/workspace --slug my-agent
+  ```
+- 首批模板：`repo-coder`、`web-researcher`、`ops-runbook`。
+- 生成物：
+  - `.dsh/scaffolds/<slug>/`：可安装的 DSH bundle，insert 一个 agent preset；
+  - `.agents/skills/<slug>-*/SKILL.md`：`sense-environment`、`verify-change` 和角色 skill；
+  - `SENSES.md` / `HANDS.md` / `LOOP.md` / `AGENTS.snippet.md` / `evals/`。
+- 预览与生成走宿主路由：`/api/ctx-mon-and-con/status/scaffold/{templates,preview,generate}`。
+- 生成的 preset 复用 `ctx-mon-and-con/control` 做上下文压缩；需要在同一 profile 安装本插件。
+- 当前版本不自动生成 MCP server，也不会替用户切换默认 preset；安装后在 Settings → Agent presets 选择。
 
 ## 功能
 

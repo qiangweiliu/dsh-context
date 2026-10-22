@@ -21,7 +21,7 @@ window.__ModuleLoader__.load({
 
     const NS = 'ctxMonAndCon'
     /** 与 package.json 版本保持一致；宿主版本不同时提示刷新页面而不是重启 DSH。 */
-    const CLIENT_VERSION = '0.19.1'
+    const CLIENT_VERSION = '0.20.0'
     /**
      * API 路径必须相对页面 base 解析，而不是写死根路径：
      * 反向代理部署在 /app/dsh/ 这类前缀下时，根路径 /api/... 会打到网关根并 404。
@@ -189,6 +189,27 @@ window.__ModuleLoader__.load({
       tabsTrend: 'Trend',
       tabsEvents: 'Events',
       tabsSettings: 'Settings',
+      tabsScaffold: 'Agent',
+      scaffoldTitle: 'Agent embodiment scaffold',
+      scaffoldIntro: 'Generate a DSH agent preset with senses, hands, skills, and a verification loop.',
+      scaffoldTemplate: 'Template',
+      scaffoldTarget: 'Workspace directory',
+      scaffoldTargetHint: 'Absolute path on the DSH host. Files go under .dsh/scaffolds and .agents/skills.',
+      scaffoldName: 'Display name',
+      scaffoldSlug: 'Preset id',
+      scaffoldPreview: 'Preview',
+      scaffoldGenerate: 'Generate pack',
+      scaffoldGenerating: 'Generating…',
+      scaffoldFiles: 'Files',
+      scaffoldWarnings: 'Warnings',
+      scaffoldInstall: 'Install command',
+      scaffoldGenerated: 'Generated. Install it in the running profile, then choose the preset for a new session.',
+      scaffoldError: 'Scaffold failed',
+      scaffoldTargetRequired: 'Enter an absolute workspace path.',
+      scaffoldOverwrite: 'Overwrite existing files',
+      scaffoldCopy: 'Copy',
+      scaffoldCopied: 'Copied',
+      scaffoldEmpty: 'Preview to see the files this preset will create.',
       range7: '7 days',
       range30: '30 days',
       rangeAll: 'All',
@@ -384,6 +405,27 @@ window.__ModuleLoader__.load({
       tabsTrend: '趋势',
       tabsEvents: '事件',
       tabsSettings: '设置',
+      tabsScaffold: 'Agent',
+      scaffoldTitle: 'Agent 脚手架',
+      scaffoldIntro: '生成一个带感官、手、技能和验证闭环的 DSH agent preset。',
+      scaffoldTemplate: '模板',
+      scaffoldTarget: '工作区目录',
+      scaffoldTargetHint: 'DSH 宿主上的绝对路径；文件写入 .dsh/scaffolds 与 .agents/skills。',
+      scaffoldName: '显示名称',
+      scaffoldSlug: 'Preset id',
+      scaffoldPreview: '预览',
+      scaffoldGenerate: '生成',
+      scaffoldGenerating: '生成中…',
+      scaffoldFiles: '文件',
+      scaffoldWarnings: '警告',
+      scaffoldInstall: '安装命令',
+      scaffoldGenerated: '已生成。安装到当前 profile，然后在新会话里选择这个 preset。',
+      scaffoldError: '脚手架生成失败',
+      scaffoldTargetRequired: '请输入工作区的绝对路径。',
+      scaffoldOverwrite: '覆盖已有文件',
+      scaffoldCopy: '复制',
+      scaffoldCopied: '已复制',
+      scaffoldEmpty: '先预览，看看这个 preset 会生成哪些文件。',
       range7: '近 7 天',
       range30: '近 30 天',
       rangeAll: '全部',
@@ -2673,6 +2715,133 @@ window.__ModuleLoader__.load({
       )
     }
 
+    /** Agent Embodiment Scaffold：模板 → 预览 → 生成（写盘由宿主路由完成）。 */
+    function ScaffoldPanel(props) {
+      const t = props.t
+      const sub = { margin: '6px 0 0', fontSize: '11.5px', lineHeight: 1.6, color: 'var(--dsw-alias-label-tertiary)' }
+      const [templateState] = useStatus(`${STATUS_PATH}/scaffold/templates`)
+      const templates = templateState.phase === 'ready' && Array.isArray(templateState.data?.templates) ? templateState.data.templates : []
+      const [templateId, setTemplateId] = react.useState('')
+      const [targetDir, setTargetDir] = react.useState('')
+      const [name, setName] = react.useState('')
+      const [slug, setSlug] = react.useState('')
+      const [overwrite, setOverwrite] = react.useState(false)
+      const [plan, setPlan] = react.useState(null)
+      const [busy, setBusy] = react.useState(false)
+      const [error, setError] = react.useState('')
+      const [generated, setGenerated] = react.useState(false)
+      const [copied, setCopied] = react.useState(false)
+
+      react.useEffect(() => {
+        if (!templateId && templates.length > 0) setTemplateId(templates[0].id)
+      }, [templates, templateId])
+
+      const payload = () => ({
+        template: templateId,
+        ...(name.trim() ? { name: name.trim() } : {}),
+        ...(slug.trim() ? { slug: slug.trim() } : {}),
+        targetDir,
+        ...(overwrite ? { overwrite: true } : {}),
+      })
+      const post = async (path, body) => {
+        const response = await fetch(`${STATUS_PATH}/scaffold/${path}`, {
+          method: 'POST',
+          headers: { 'content-type': 'application/json' },
+          body: JSON.stringify(body),
+        })
+        const data = await response.json().catch(() => ({}))
+        if (!response.ok) throw new Error(data.error || `HTTP ${response.status}`)
+        return data
+      }
+      const preview = async () => {
+        setBusy(true)
+        setError('')
+        setGenerated(false)
+        try {
+          setPlan(await post('preview', payload()))
+        } catch (failure) {
+          setError(String(failure?.message || failure))
+        } finally {
+          setBusy(false)
+        }
+      }
+      const generate = async () => {
+        if (!targetDir.trim()) {
+          setError(t('scaffoldTargetRequired'))
+          return
+        }
+        setBusy(true)
+        setError('')
+        setGenerated(false)
+        try {
+          const data = await post('generate', payload())
+          setPlan({ ...data, files: (data.files || []).map((path) => ({ path })) })
+          setGenerated(true)
+        } catch (failure) {
+          setError(String(failure?.message || failure))
+        } finally {
+          setBusy(false)
+        }
+      }
+      const copy = async (text) => {
+        try {
+          await navigator.clipboard.writeText(text)
+          setCopied(true)
+          setTimeout(() => setCopied(false), 1200)
+        } catch {}
+      }
+
+      const files = plan && Array.isArray(plan.files) ? plan.files : []
+      const warnings = plan && Array.isArray(plan.warnings) ? plan.warnings : []
+      const selectedTemplate = templates.find((item) => item.id === templateId)
+
+      return h('div', { style: styles.card, 'data-ctx-scaffold': '1' },
+        h('h3', { style: styles.cardTitle }, t('scaffoldTitle')),
+        h('p', { style: sub }, t('scaffoldIntro')),
+        h('div', { style: { display: 'grid', gridTemplateColumns: 'minmax(0, 1fr) minmax(0, 1fr)', gap: '10px', marginTop: '10px' } },
+          h('label', { style: styles.field }, h('span', { style: styles.label }, t('scaffoldTemplate')),
+            h('select', { style: styles.input, value: templateId, onChange: (event) => setTemplateId(event.target.value), 'data-ctx-scaffold-template': '1' },
+              templates.map((item) => h('option', { key: item.id, value: item.id }, `${item.name} (${item.id})`)),
+            ),
+          ),
+          h('label', { style: styles.field }, h('span', { style: styles.label }, t('scaffoldSlug')),
+            h('input', { style: styles.input, value: slug, placeholder: 'my-agent', onChange: (event) => setSlug(event.target.value), 'data-ctx-scaffold-slug': '1' }),
+          ),
+          h('label', { style: styles.field }, h('span', { style: styles.label }, t('scaffoldName')),
+            h('input', { style: styles.input, value: name, placeholder: selectedTemplate ? selectedTemplate.name : '', onChange: (event) => setName(event.target.value) }),
+          ),
+          h('label', { style: styles.field }, h('span', { style: styles.label, title: t('scaffoldTargetHint') }, t('scaffoldTarget')),
+            h('input', { style: styles.input, value: targetDir, placeholder: '/absolute/path/to/workspace', onChange: (event) => setTargetDir(event.target.value), 'data-ctx-scaffold-target': '1' }),
+          ),
+        ),
+        h('p', { style: sub }, t('scaffoldTargetHint')),
+        h('label', { style: { display: 'flex', alignItems: 'center', gap: '6px', marginTop: '8px', fontSize: '12px' } },
+          h('input', { type: 'checkbox', checked: overwrite, onChange: (event) => setOverwrite(event.target.checked) }),
+          h('span', null, t('scaffoldOverwrite')),
+        ),
+        h('div', { style: { display: 'flex', gap: '8px', marginTop: '10px', flexWrap: 'wrap' } },
+          h('button', { type: 'button', style: styles.button, disabled: busy || !templateId, onClick: preview, 'data-ctx-scaffold-preview': '1' }, t('scaffoldPreview')),
+          h('button', { type: 'button', style: styles.button, disabled: busy || !templateId, onClick: generate, 'data-ctx-scaffold-generate': '1' }, busy ? t('scaffoldGenerating') : t('scaffoldGenerate')),
+        ),
+        error ? h('p', { style: { ...styles.error, margin: '8px 0 0' }, 'data-ctx-scaffold-error': '1' }, `${t('scaffoldError')}: ${error}`) : null,
+        generated ? h('p', { style: sub, 'data-ctx-scaffold-generated': '1' }, t('scaffoldGenerated')) : null,
+        plan ? h('div', { style: { marginTop: '10px' } },
+          h('div', { style: sub }, `${t('scaffoldFiles')} · ${plan.presetId || ''} · ${plan.bundleDir || ''}`),
+          h('ul', { style: { margin: '6px 0 0', paddingLeft: '18px', fontSize: '11.5px', maxHeight: '240px', overflow: 'auto' } },
+            files.map((file) => h('li', { key: file.path }, file.path)),
+          ),
+          warnings.length > 0 ? h('div', { style: styles.banner, title: warnings.join(' | ') },
+            h('strong', null, `${t('scaffoldWarnings')}: `), warnings.join(' · '),
+          ) : null,
+          plan.installCommand ? h('div', { style: { marginTop: '8px' } },
+            h('div', { style: styles.label }, t('scaffoldInstall')),
+            h('pre', { style: { margin: '4px 0 0', whiteSpace: 'pre-wrap', wordBreak: 'break-all', fontSize: '11.5px' } }, plan.installCommand),
+            h('button', { type: 'button', style: { ...styles.button, marginTop: '6px' }, onClick: () => copy(plan.installCommand), 'data-ctx-scaffold-copy': '1' }, copied ? t('scaffoldCopied') : t('scaffoldCopy')),
+          ) : null,
+        ) : h('p', { style: sub }, t('scaffoldEmpty')),
+      )
+    }
+
     function CtxPanel(props) {
       const t = props.t
       const [state, load] = useStatus(STATUS_PATH)
@@ -2710,6 +2879,7 @@ window.__ModuleLoader__.load({
         ['overview', t('tabsOverview')],
         ['trend', t('tabsTrend')],
         ['events', t('tabsEvents')],
+        ['scaffold', t('tabsScaffold')],
         ['settings', t('tabsSettings')],
       ]
 
@@ -2800,6 +2970,8 @@ window.__ModuleLoader__.load({
         if (selected) children.push(h('button', { key: 'back', type: 'button', style: styles.button, onClick: () => setSelected(null) }, t('tabsOverview')))
       } else if (tab === 'events') {
         children.push(h(EventsCard, { key: 'events', t, logs: control.log || [], detail }))
+      } else if (tab === 'scaffold') {
+        children.push(h(ScaffoldPanel, { key: 'scaffold', t }))
       } else {
         children.push(h('div', { key: 'settings', style: styles.cols },
           h(ControlSection, { t, control, onToggled: load }),

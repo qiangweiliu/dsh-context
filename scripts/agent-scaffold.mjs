@@ -8,9 +8,9 @@
  *
  * 默认不覆盖已有文件；--overwrite 才覆盖。写盘前做绝对路径与路径穿越校验。
  */
-import { existsSync, mkdirSync, writeFileSync } from 'node:fs'
+import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs'
 import { dirname, isAbsolute, join, resolve, sep } from 'node:path'
-import { SCAFFOLD_TEMPLATES, planScaffold } from '../ctx-mon-and-con/scaffold.js'
+import { SCAFFOLD_TEMPLATES, mergeAgentsContent, planScaffold } from '../ctx-mon-and-con/scaffold.js'
 
 const args = process.argv.slice(2)
 const flag = (name, fallback) => {
@@ -24,7 +24,7 @@ if (has('list') || args.length === 0) {
   for (const template of SCAFFOLD_TEMPLATES) {
     console.log(`  ${template.id.padEnd(16)} ${template.name} — ${template.description}`)
   }
-  console.log('\nUsage: node scripts/agent-scaffold.mjs --template <id> --out <workspace> [--slug ...] [--name ...] [--overwrite]')
+  console.log('\nUsage: node scripts/agent-scaffold.mjs --template <id> --out <workspace> [--slug ...] [--name ...] [--overwrite] [--agents] [--mcp <json> | --mcp-file <path>]')
   process.exit(0)
 }
 
@@ -39,6 +39,25 @@ if (!isAbsolute(out)) {
   process.exit(2)
 }
 
+let mcp
+const mcpFile = flag('mcp-file')
+const mcpJson = flag('mcp')
+if (mcpFile) {
+  try {
+    mcp = JSON.parse(readFileSync(mcpFile, 'utf8'))
+  } catch (error) {
+    console.error(`agent-scaffold: could not read --mcp-file: ${error instanceof Error ? error.message : String(error)}`)
+    process.exit(2)
+  }
+} else if (mcpJson) {
+  try {
+    mcp = JSON.parse(mcpJson)
+  } catch (error) {
+    console.error(`agent-scaffold: --mcp must be JSON: ${error instanceof Error ? error.message : String(error)}`)
+    process.exit(2)
+  }
+}
+
 let plan
 try {
   plan = planScaffold({
@@ -46,6 +65,7 @@ try {
     slug: flag('slug'),
     name: flag('name'),
     description: flag('description'),
+    ...(mcp === undefined ? {} : { mcp }),
   })
 } catch (error) {
   console.error(`agent-scaffold: ${error instanceof Error ? error.message : String(error)}`)
@@ -80,8 +100,16 @@ for (const file of destinations) {
   writeFileSync(file.destination, file.content, 'utf8')
 }
 
+let agentsPath = null
+if (has('agents')) {
+  agentsPath = join(root, plan.agents.path)
+  const existing = existsSync(agentsPath) ? readFileSync(agentsPath, 'utf8') : ''
+  writeFileSync(agentsPath, mergeAgentsContent(existing, plan.agents), 'utf8')
+}
+
 console.log(`Generated ${plan.template} embodiment in ${root}`)
 for (const file of plan.files) console.log(`  ${file.path}`)
+if (agentsPath) console.log(`  ${agentsPath} (merged section)`)
 console.log('\nWarnings:')
 for (const warning of plan.warnings) console.log(`  - ${warning}`)
 console.log('\nInstall (same profile as the running DSH):')

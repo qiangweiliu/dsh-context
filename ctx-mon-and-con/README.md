@@ -20,14 +20,18 @@ DSH（DeepSeek Harness）的上下文管理插件。
   ```bash
   node scripts/agent-scaffold.mjs --template repo-coder --out /path/to/workspace --slug my-agent
   ```
-- 首批模板：`repo-coder`、`web-researcher`、`ops-runbook`。
+- 模板：`repo-coder`、`web-researcher`、`ops-runbook`、`browser-operator`、`data-analyst`、`support-router`。
 - 生成物：
   - `.dsh/scaffolds/<slug>/`：可安装的 DSH bundle，insert 一个 agent preset；
-  - `.agents/skills/<slug>-*/SKILL.md`：`sense-environment`、`verify-change` 和角色 skill；
-  - `SENSES.md` / `HANDS.md` / `LOOP.md` / `AGENTS.snippet.md` / `evals/`。
+  - `.dsh/scaffolds/<slug>/senses.js`：真实 host tool `sense_environment`（只读 cwd/git/顶层目录/manifest 快照）；
+  - `.agents/skills/<slug>-*/SKILL.md`：`sense-environment`、`verify-change`、`tool-catalog` 和角色 skill；
+  - `SENSES.md` / `HANDS.md` / `LOOP.md` / `AGENTS.snippet.md` / `evals/`；
+  - `evals/run.mjs`：按 case 调用 `dsh headless` 记录 transcript 的 runner（不自动判分）。
 - 预览与生成走宿主路由：`/api/ctx-mon-and-con/status/scaffold/{templates,preview,generate}`。
+- 面板支持可选 MCP JSON（stdio / streamable-http；secret 用 `${ENV_VAR}`）和 AGENTS.md 带标记合并。
 - 生成的 preset 复用 `ctx-mon-and-con/control` 做上下文压缩；需要在同一 profile 安装本插件。
-- 当前版本不自动生成 MCP server，也不会替用户切换默认 preset；安装后在 Settings → Agent presets 选择。
+- 子 agent 只使用跨版本字段（`provider`/`toolName`/`backgroundMode`/`maxDepth`）；角色说明在生成的 `delegate-<role>` skill。DSH 0.2.1 若需子 agent 工具隔离/独立 persona，请另建 Agent Preset。
+- 不会替用户切换默认 preset；安装后在 Settings → Agent presets 选择。
 
 ## 功能
 

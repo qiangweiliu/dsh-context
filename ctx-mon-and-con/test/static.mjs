@@ -200,6 +200,7 @@ check('client CLIENT_VERSION 与 package.json 一致', clientVersion === manifes
 check('client 宿主/客户端版本不一致时提示刷新页面', clientSource.includes('data-ctx-version-mismatch') && clientSource.includes('data-ctx-reload') && clientSource.includes('CLIENT_VERSION'))
 check('client 注册 Agent 脚手架 tab 与面板', clientSource.includes("tabsScaffold") && clientSource.includes('data-ctx-scaffold') && clientSource.includes('ScaffoldPanel'))
 check('client 脚手架面板调用宿主路由', clientSource.includes('/scaffold/templates') && clientSource.includes("post('preview'") && clientSource.includes("post('generate'"))
+check('client 脚手架支持 MCP/AGENTS 选项', clientSource.includes('data-ctx-scaffold-mcp') && clientSource.includes('writeAgents'))
 check('scaffold 中英文词典齐全', Boolean(client.dictionaries.ctxMonAndCon?.en?.scaffoldTitle) && Boolean(client.dictionaries.ctxMonAndCon?.zh?.scaffoldTitle))
 
 // 同一个 window 下加载两次：第二次 apply 必须被挂载守卫挡住，不能重复注册槽位。

@@ -13,7 +13,7 @@
 | 5 | 会话级开关 / 会话提示词文本 / autoMount 标志 | `~/.dsh/ctx-mon-and-con/session-toggles.json` | 面板会话开关、会话保存 | 反向操作 / 恢复全部 / 删文件 | ✅ `session-toggles.<timestamp>.bak` |
 | 6 | `/ctx <tokens>` 会话上下文 | 进程内存 | 命令 | `/ctx reset` / 重启 | —（不落盘） |
 | 7 | 压缩 | 通过官方 `ctx.compaction` seam 写会话历史（shadow/replace） | 控制半侧 idle/pre-step、`/ctx-compact` | **不可逆**（压缩本身是官方语义），但只在该 seam 内进行 | 不适用 |
-| 8 | Agent 脚手架生成 | 用户提交的绝对工作区：`.dsh/scaffolds/<slug>/`、`.agents/skills/<slug>-*/` | 面板 Agent tab / `POST .../scaffold/generate` | 删除生成目录，或用 `overwrite:true` 重新生成 | ✅ 默认拒绝覆盖；写前校验路径不逃逸 |
+| 8 | Agent 脚手架生成 | 用户提交的绝对工作区：`.dsh/scaffolds/<slug>/`、`.agents/skills/<slug>-*/`、可选 `AGENTS.md` 标记 section | 面板 Agent tab / `POST .../scaffold/generate` | 删除生成目录/AGENTS section，或用 `overwrite:true` 重新生成 | ✅ 默认拒绝覆盖；写前校验路径不逃逸；MCP 只写配置不执行 |
 
 ## 2. 不破坏 DSH 核心
 

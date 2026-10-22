@@ -213,12 +213,12 @@ node --check client.js
 当前结果：
 
 ```text
-static       76/76
+static       77/77
 metrics      23/23
 state        16/16
-scaffold     58/58
+scaffold    151/151
 control      54/54
-smoke        60/60
+smoke        62/62
 prompt-state 11/11
 ```
 
@@ -240,8 +240,13 @@ manifest 声明：
 
 - `.dsh/scaffolds/<slug>/package.json` + `dsh.bundle.patch.yml`：insert 一个 `@deepseek-ai/dsh-agent-preset` 行；
 - `.dsh/scaffolds/<slug>/SENSES.md` / `HANDS.md` / `LOOP.md` / `AGENTS.snippet.md`；
-- `.dsh/scaffolds/<slug>/skills/<skill>/SKILL.md`，同时复制到 `.agents/skills/<slug>-<skill>/SKILL.md`（`dsh-skill-filesystem` 扫描）；
-- `evals/sense-act.jsonl`。
+- `.dsh/scaffolds/<slug>/senses.js`：生成一个 preset 内挂载的 host plugin，注册只读 `sense_environment` 工具（cwd、`git status --short`、顶层目录、最近 manifest；有界、可取消）；
+- `.dsh/scaffolds/<slug>/skills/<skill>/SKILL.md`，同时复制到 `.agents/skills/<slug>-<skill>/SKILL.md`（`dsh-skill-filesystem` 扫描）；公共 skill 包括 `sense-environment`、`verify-change`、`tool-catalog`；
+- `evals/sense-act.jsonl` + `evals/run.mjs`（按 case 调 `dsh headless`，记录 transcript，不自动判分）；
+- 可选 `mcp`：生成 `dsh-mcp-client` 行，支持 stdio / streamable-http，`${ENV_VAR}` 转为 `!!js process.env.*`；
+- 可选 `writeAgents`：把带 marker 的 section 幂等合并进 `AGENTS.md`，保留用户内容。
+
+模板：`repo-coder`、`web-researcher`、`ops-runbook`、`browser-operator`、`data-analyst`、`support-router`。
 
 宿主路由：
 
@@ -252,3 +257,5 @@ manifest 声明：
 命令行：`node scripts/agent-scaffold.mjs --template <id> --out <absolute-workspace>`。
 
 模板只挂 preset 内需要的 row；`dsh-subagent` service 与 `spawn` provider 已由基础组合全局提供，preset 只挂 `dsh-tool-subagent`，避免重复注册导致 preset 激活失败。生成的 preset 复用 `ctx-mon-and-con/control` 做上下文压缩，因此同一 profile 需要安装本插件。
+
+**子 agent 跨版本兼容**：DSH 0.2.1-rc.2 已移除 `dsh-tool-subagent` 的 `persona` 与 `toolFilter`（要求改用单独的 Agent Preset + `agentPreset` 选择）。生成器只保留 `provider`/`toolName`/`backgroundMode`/`maxDepth` 等跨版本字段，角色说明改为生成的 `delegate-<role>` skill；0.2.0-rc.2 与 0.2.1-rc.2 均已实测 preset 激活。

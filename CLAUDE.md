@@ -74,8 +74,8 @@ bash scripts/wsl-start-web.sh 3080        # 启动 WSL web profile，输出带 t
 node scripts/ui-probe.mjs "<url>" --section=... 
 node scripts/ui-screenshot.mjs "<url>" <out.png>
 node scripts/wait-for-ctx-plugin.mjs "<url>" 15   # 等待运行中的实例热加载插件
-node scripts/agent-scaffold.mjs --list             # Agent Embodiment 模板
-node scripts/agent-scaffold.mjs --template repo-coder --out /abs/workspace --slug my-agent
+node scripts/agent-scaffold.mjs --list             # Agent Embodiment 模板（6 个）
+node scripts/agent-scaffold.mjs --template repo-coder --out /abs/workspace --slug my-agent [--agents] [--mcp <json>]
 node scripts/clean-ctx-profile-patch.mjs ~/.dsh/profiles/<profile>
 ```
 
@@ -91,7 +91,7 @@ UI 脚本通过 Windows Edge 的 CDP 连接（`scripts/lib/cdp.mjs`，默认 Edg
 - `control.js`（preset 平面，`inject: ['tokenMeter']`）：在 `agent/pre-step` 测量并调用 `compaction.compactIfNeeded` / `compactRegion`，注册 `/ctx-compact`。`mode` 为 `idle`（默认，含范围压缩兜底）/ `pre-step` / `notify` / `off`。
 - `state.js`：两个半侧共享的进程内状态。Cordis realm 隔离使二者互相 `import` 服务不可行，但同一包内 `./state.js` 的 ESM 模块缓存是同一份实例。
 - `client.js`：浏览器半侧，经 `window.__ModuleLoader__.load` 注册 `settings.section`、`main`（`key='ctx'`）、`sidebar.panellist`、`conversation.composer.dock`。只用内联样式和 `--dsw-alias-*` token，不引 CSS/Tailwind。0.20.0 起面板有 Agent tab（Embodiment Scaffold）。
-- `scaffold.js`：Agent Embodiment Scaffold 的纯函数生成器。把模板变成可安装的 DSH preset bundle（`.dsh/scaffolds/<slug>/`）、`.agents/skills/*/SKILL.md`、SENSES/HANDS/LOOP、AGENTS 片段和 eval cases；不读写磁盘、不 import npm 包。
+- `scaffold.js`：Agent Embodiment Scaffold 的纯函数生成器。把模板变成可安装的 DSH preset bundle（`.dsh/scaffolds/<slug>/`）、生成 host tool `sense_environment`（`senses.js`）、`.agents/skills/*/SKILL.md`（含 `tool-catalog`）、SENSES/HANDS/LOOP、AGENTS 片段、MCP rows 和 eval cases/runner；不读写磁盘、不 import npm 包。合并 AGENTS.md 用 `mergeAgentsContent`（marker 幂等）。
 - `dsh.bundle.patch.yml`：只 `insert` 一行宿主插件行，不覆盖任何宿主行。
 
 控制半侧必须挂进 agent preset（设置 → Agent preset → compaction 组），原因：Web 形态下 `dsh-web-app` 把宿主平面的 compaction 行全部 disabled，真正的 `compaction` 服务在 `preset-standard` 的 isolate group 里，宿主上下文拿不到。插件启动时会自动往 `preset-standard` 补挂一行（受 `autoMountControl` 控制）。
@@ -126,7 +126,7 @@ UI 脚本通过 Windows Edge 的 CDP 连接（`scripts/lib/cdp.mjs`，默认 Edg
 - 版本号以 `ctx-mon-and-con/package.json` 为准。根 `README.md`、`docs/IMPLEMENTATION.md`、`docs/EVIDENCE.md` 和 `client.js` 的 `accountMeta().version` 是手工维护的副本；`test/static.mjs` 现在会断言 `client.js` 版本与 `package.json` 一致。改版本时仍要同步文档。
 - 首次安装/启停由 DSH HMR 热生效，不需要重启 DSH；Web 0.2.0-rc.2 与 Desktop 0.2.1-rc.2 均已实测（`EVIDENCE.md` E16/E17）。页面没更新时 Web 刷新一次即可。替换已安装包（升级版本）仍需要重启 DSH 进程；修改 `client.js` 后 HMR 会重载，失败时刷新页面。面板在宿主/客户端版本不一致时会显示“刷新页面”提示。安装后不显示时先确认 `--profile` 与运行实例一致（Desktop=`desktop`，WSL web=`web`）。
 - 第三方插件不能默认 `import '@deepseek-ai/*'`；集成测试才从 app.asar 解出真实 Cordis。
-- Agent 脚手架生成 preset 时，`dsh-subagent` service 与 `spawn` provider 已由基础组合全局提供，preset 只挂 `dsh-tool-subagent`；重复挂载会让 preset 激活失败（E18 实测）。生成的 preset 复用 `ctx-mon-and-con/control`，同一 profile 需安装本插件。
+- Agent 脚手架生成 preset 时，`dsh-subagent` service 与 `spawn` provider 已由基础组合全局提供，preset 只挂 `dsh-tool-subagent`；重复挂载会让 preset 激活失败（E18 实测）。生成的 preset 复用 `ctx-mon-and-con/control`，同一 profile 需安装本插件。DSH 0.2.1-rc.2 已移除 `tool-subagent` 的 `persona`/`toolFilter`；生成器只保留跨版本字段，角色说明放 `delegate-<role>` skill。
 - 测试会临时改 `HOME`/`USERPROFILE` 到临时目录（`smoke.mjs`、`prompt-state.mjs`），避免污染真实 profile；新增落盘逻辑时保持这一习惯。
 - 不要手改 `cordis.yml`（恒为空）；用户 tweak 写 `cordis.patch.yml`，插件自身走 `ctx.configEditor`。
 - 追加到用户消息末尾的提示词不是隐藏指令，会在会话历史里可见；不要把它当作秘密注入机制。

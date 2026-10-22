@@ -55,7 +55,7 @@ import {
 } from './state.js'
 
 import { foldSession, sessionDetail, summarizeFolds } from './metrics.js'
-import { SCAFFOLD_TEMPLATES, planScaffold } from './scaffold.js'
+import { SCAFFOLD_TEMPLATES, mergeAgentsContent, planScaffold } from './scaffold.js'
 
 /** 依赖的真实服务名（见 @deepseek-ai/dsh-commands / @deepseek-ai/dsh-token-meter）。 */
 export const inject = ['commands', 'tokenMeter']
@@ -1411,6 +1411,16 @@ export function apply(ctx, config) {
       } catch (error) {
         return send(500, { ok: false, error: error instanceof Error ? error.message : String(error) })
       }
+      let agentsPath = null
+      if (input.writeAgents === true) {
+        try {
+          agentsPath = join(root, plan.agents.path)
+          const existing = existsSync(agentsPath) ? readFileSync(agentsPath, 'utf8') : ''
+          writeFileSync(agentsPath, mergeAgentsContent(existing, plan.agents), 'utf8')
+        } catch (error) {
+          return send(500, { ok: false, error: error instanceof Error ? error.message : String(error) })
+        }
+      }
       return send(202, {
         ok: true,
         targetDir: root,
@@ -1418,6 +1428,7 @@ export function apply(ctx, config) {
         presetId: plan.presetId,
         bundleDir: plan.bundleDir,
         files: plan.files.map((file) => file.path),
+        agentsPath,
         warnings: plan.warnings,
         installCommand: `dsh plugin --profile <profile> add ${join(root, plan.bundleDir)}`,
       })

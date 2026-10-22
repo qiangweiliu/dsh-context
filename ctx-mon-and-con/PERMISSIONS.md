@@ -41,7 +41,7 @@
 - 触发：用户在面板 Agent tab 点击「生成」，或直接 POST `/api/ctx-mon-and-con/status/scaffold/generate`。
 - 位置：用户提交的**绝对** `targetDir` 下的 `.dsh/scaffolds/<slug>/` 与 `.agents/skills/<slug>-*/`。
 - 边界：拒绝文件系统根目录和用户 home；默认拒绝覆盖已有文件（`overwrite: true` 才覆盖）；每个目标路径都必须落在 `targetDir` 内（路径穿越校验）。
-- 内容：只生成 preset patch、Markdown、SKILL.md、eval JSONL；不生成真实 secret，不执行 MCP 命令；生成的 preset 安装仍需用户手动执行 `dsh plugin add` 或使用官方插件管理器。
+- 内容：生成 preset patch、Markdown、SKILL.md、eval JSONL、可选 MCP 配置、可选 `AGENTS.md` 标记 section；不写入真实 secret（MCP 的 `${ENV_VAR}` 转为 `!!js process.env.*`）；**不在生成阶段执行任何 MCP 命令**。生成的 preset 安装仍需用户手动执行 `dsh plugin add` 或使用官方插件管理器；安装后 DSH 可能按生成的 MCP 行启动本地命令，这属于用户审查/启用后的行为。
 
 ## 2. 网络
 

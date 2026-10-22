@@ -85,9 +85,12 @@ Web 形态下，宿主自带的 `auto` 压缩行被 `dsh-web-app` 置为 disable
 - 只写用户提交的**绝对**工作区目录；拒绝文件系统根目录/用户 home，默认不覆盖已有文件。
 - 生成的是起点模板，不保证直接达到生产质量；必须用真实任务和 eval 继续迭代。
 - 生成的 preset 复用 `ctx-mon-and-con/control`；同一 profile 需要安装本插件，否则 preset 激活会失败。
-- 当前版本不生成 MCP server、不执行外部命令、不写入真实 secret；MCP 需要用户显式添加并审查命令/凭据。
-- 不会自动修改默认 preset，也不会自动合并 `AGENTS.md`；`AGENTS.snippet.md` 需要用户自行合并。
-- 脚手架不是安全沙箱：它只约束写盘路径和默认覆盖行为，不限制生成后的 agent 工具权限。
+- MCP 行可由用户提交的 JSON 生成（stdio / streamable-http）；插件只写配置，不执行 MCP 命令；secret 用 `${ENV_VAR}`，安装/启用前仍需审查 command/args 与凭据。
+- `AGENTS.md` 支持带 marker 的幂等合并（保留用户内容）；不勾选 `writeAgents` 时只生成 `AGENTS.snippet.md`。
+- `evals/run.mjs` 只负责按 case 调 `dsh headless` 并记录 transcript，不自动判断正确性；需要人工按 `expect` 审阅。
+- 不会自动修改默认 preset；安装后在 Settings → Agent presets 手动选择。
+- **子 agent 跨版本差异**：DSH 0.2.1-rc.2 已移除 `dsh-tool-subagent` 的 `persona` / `toolFilter`。生成器只使用跨版本字段，角色说明放在 `delegate-<role>` skill；如果需要子 agent 的工具隔离或独立 persona，应另建 Agent Preset 并用 `agentPreset` 选择。
+- 脚手架不是安全沙箱：它只约束写盘路径、覆盖行为和默认 MCP secret 形式，不限制生成后的 agent 工具权限。
 
 ## 10. 其他
 

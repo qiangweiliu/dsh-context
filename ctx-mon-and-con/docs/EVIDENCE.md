@@ -248,13 +248,17 @@ npm 运行依赖：无；生命周期脚本：无
 ## E18. v0.20.0 Agent Embodiment Scaffold 验证（2026-10-22）
 
 - 环境：WSL Ubuntu 24.04，`dsh 0.2.0-rc.2`，隔离 `DSH_HOME=/tmp/dsh-scaffold-live`；Linux Chromium + CDP。
-- 生成：`node scripts/agent-scaffold.mjs --template repo-coder --out /tmp/embodiment-live --slug demo-coder`，生成 16 个文件（bundle、patch、SENSES/HANDS/LOOP、3 个 SKILL.md、evals）。
+- 生成：`node scripts/agent-scaffold.mjs --template repo-coder --out /tmp/embodiment-live --slug demo-coder`，首轮生成 16 个文件（bundle、patch、SENSES/HANDS/LOOP、3 个 SKILL.md、evals）；最终生成器还包含 `senses.js`、`tool-catalog`、delegation skill、eval runner 等。
 - 安装：先装本插件，再 `dsh plugin --profile scaffoldlive add /tmp/embodiment-live/.dsh/scaffolds/demo-coder`；`--dump-config` 出现 `preset-demo-coder` 行。
 - Preset 激活：Settings → Agent presets 的 CUSTOM 组出现 `Demo Coder`，无 Failed to load，控制台 0 error。
   - 首次激活失败：generated preset 重复挂载了全局已有的 `dsh-subagent` service 与 `spawn` provider（`service "subagents" has been registered`）。修正为 preset 只挂 `dsh-tool-subagent` 后重新生成并复测通过；这条是本次 live 验证发现并修掉的真实问题。
-- HTTP 路由（真实宿主）：`/scaffold/templates` 返回 3 个模板；`/scaffold/preview` 返回 16 个文件；`/scaffold/generate` 写入目标目录；重复生成返回 409，`overwrite:true` 可覆盖。
-- UI：面板 Agent tab 加载 3 个模板；选择 repo-coder、填写 targetDir 后 Preview/Generate 均成功，文件落盘，0 error / 0 exception。
-- 边界：桌面实例未在本轮重复脚手架安装测试；MCP 未自动生成；preset 默认选择仍需用户在 Settings 里手动完成。
+- HTTP 路由（真实宿主，首轮）：`/scaffold/templates` 返回 3 个模板（最终扩展到 6 个）；`/scaffold/preview` 返回 16 个文件；`/scaffold/generate` 写入目标目录；重复生成返回 409，`overwrite:true` 可覆盖。
+- UI：面板 Agent tab 加载模板；首轮 3 个模板，最终 6 个（Desktop Agent tab 实测 6 个）；选择 repo-coder、填写 targetDir 后 Preview/Generate 均成功，文件落盘，0 error / 0 exception。
+- 生成 host tool：`senses.js` 在 preset 内注册 `sense_environment`。在隔离实例中创建 session 后，`GET /status/inventory` 返回 17 个工具，包含 `sense_environment`；会话日志出现生成的 `sense-demo-sense-environment`、`sense-demo-verify-change`、`sense-demo-repo-coder` 三个 skill（skill catalog 生效）。
+- 模板扩展到 6 个：`repo-coder`、`web-researcher`、`ops-runbook`、`browser-operator`、`data-analyst`、`support-router`。
+- 生成器新增：可选 MCP rows（stdio/streamable-http，`${ENV_VAR}` 转 `!!js process.env.*`）、`AGENTS.md` 带 marker 幂等合并、`evals/run.mjs`（调 `dsh headless` 记录 transcript）。
+- Desktop 0.2.1-rc.2（独立 `DSH_HOME` + user-data-dir，未触碰真实 profile）：生成 preset 最初激活失败，0.2.1 已移除 `dsh-tool-subagent` 的 `persona` 和 `toolFilter`；改为只保留跨版本字段、角色说明改用生成的 `delegate-<role>` skill 后，Agent 预设的 CUSTOM 组出现 `Desktop Demo` 且无“加载失败”；Agent 脚手架 tab 显示 6 个模板。
+- 边界：MCP 本轮未连接真实 server（只验证配置生成/校验）；eval runner 不自动判分；preset 默认选择仍需用户在 Settings 里手动完成；Desktop 上 subagent 的角色/工具隔离需要单独的 Agent Preset（0.2.1 不再接受 per-tool persona/toolFilter）。
 
 ## 已知限制（unknown）
 

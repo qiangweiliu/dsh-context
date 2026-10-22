@@ -18,7 +18,7 @@
  * 运行：node test/smoke.mjs
  * 前提：test/deps/dsh/node_modules/@deepseek-ai/{cordis,cosmokit} 存在。
  */
-import { existsSync, mkdtempSync, readFileSync, rmSync } from 'node:fs'
+import { existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
 import { EventEmitter } from 'node:events'
 import { createRequire } from 'node:module'
 import { tmpdir } from 'node:os'
@@ -219,7 +219,7 @@ const callJson = (route, method, payload) => new Promise((resolve) => {
 const listResponse = makeResponse()
 scaffoldTemplates?.handler({ method: 'GET' }, listResponse)
 const listPayload = listResponse.body ? JSON.parse(listResponse.body) : {}
-check('scaffold/templates 返回 3 个模板', listResponse.statusCode === 200 && listPayload.templates?.length === 3, JSON.stringify(listPayload.templates?.map((item) => item.id)))
+check('scaffold/templates 返回 6 个模板', listResponse.statusCode === 200 && listPayload.templates?.length === 6, JSON.stringify(listPayload.templates?.map((item) => item.id)))
 
 const previewResponse = await callJson(scaffoldPreview, 'POST', { template: 'repo-coder', slug: 'smoke-coder' })
 const previewPayload = previewResponse.body ? JSON.parse(previewResponse.body) : {}
@@ -240,6 +240,16 @@ check('scaffold/generate overwrite:true 可覆盖', overwriteResponse.statusCode
 const traversalResponse = await callJson(scaffoldGenerate, 'POST', { template: 'repo-coder', slug: '../escape', targetDir: scaffoldRoot })
 check('scaffold/generate 拒绝非法 slug', traversalResponse.statusCode === 400, traversalResponse.statusCode)
 rmSync(scaffoldRoot, { recursive: true, force: true })
+
+const agentsRoot = mkdtempSync(join(tmpdir(), 'ctx-scaffold-agents-'))
+writeFileSync(join(agentsRoot, 'AGENTS.md'), '# User rules\n\n- keep me\n', 'utf8')
+const agentsResponse = await callJson(scaffoldGenerate, 'POST', { template: 'repo-coder', slug: 'agents-smoke', targetDir: agentsRoot, writeAgents: true })
+const agentsContent = readFileSync(join(agentsRoot, 'AGENTS.md'), 'utf8')
+check('scaffold/generate 合并 AGENTS.md', agentsResponse.statusCode === 202 && agentsContent.includes('- keep me') && agentsContent.includes('<!-- agent-scaffold:agents-smoke:start -->'), agentsContent.slice(0, 300))
+const agentsAgain = await callJson(scaffoldGenerate, 'POST', { template: 'repo-coder', slug: 'agents-smoke', targetDir: agentsRoot, overwrite: true, writeAgents: true })
+const agentsContentAgain = readFileSync(join(agentsRoot, 'AGENTS.md'), 'utf8')
+check('scaffold/generate AGENTS.md 合并幂等', agentsAgain.statusCode === 202 && (agentsContentAgain.match(/<!-- agent-scaffold:agents-smoke:start -->/g) ?? []).length === 1 && agentsContentAgain.includes('- keep me'), agentsContentAgain.slice(0, 300))
+rmSync(agentsRoot, { recursive: true, force: true })
 
 // ── 4. 配置校验 ───────────────────────────────────────────────────────────
 let validationError

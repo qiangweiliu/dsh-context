@@ -207,6 +207,10 @@ window.__ModuleLoader__.load({
       scaffoldError: 'Scaffold failed',
       scaffoldTargetRequired: 'Enter an absolute workspace path.',
       scaffoldOverwrite: 'Overwrite existing files',
+      scaffoldAgents: 'Merge a marked section into AGENTS.md',
+      scaffoldMcp: 'MCP servers (JSON, optional)',
+      scaffoldMcpHint: 'Array of { serverName, transport: "stdio"|"streamable-http", command/args/env or url/headers }. Use ${ENV_VAR} for secrets.',
+      scaffoldMcpInvalid: 'MCP JSON is not valid JSON.',
       scaffoldCopy: 'Copy',
       scaffoldCopied: 'Copied',
       scaffoldEmpty: 'Preview to see the files this preset will create.',
@@ -423,6 +427,10 @@ window.__ModuleLoader__.load({
       scaffoldError: '脚手架生成失败',
       scaffoldTargetRequired: '请输入工作区的绝对路径。',
       scaffoldOverwrite: '覆盖已有文件',
+      scaffoldAgents: '合并带标记的 section 到 AGENTS.md',
+      scaffoldMcp: 'MCP servers（JSON，可选）',
+      scaffoldMcpHint: '{ serverName, transport: "stdio"|"streamable-http", command/args/env 或 url/headers } 数组；secret 用 ${ENV_VAR}。',
+      scaffoldMcpInvalid: 'MCP JSON 格式不正确。',
       scaffoldCopy: '复制',
       scaffoldCopied: '已复制',
       scaffoldEmpty: '先预览，看看这个 preset 会生成哪些文件。',
@@ -2726,6 +2734,8 @@ window.__ModuleLoader__.load({
       const [name, setName] = react.useState('')
       const [slug, setSlug] = react.useState('')
       const [overwrite, setOverwrite] = react.useState(false)
+      const [writeAgents, setWriteAgents] = react.useState(false)
+      const [mcpJson, setMcpJson] = react.useState('')
       const [plan, setPlan] = react.useState(null)
       const [busy, setBusy] = react.useState(false)
       const [error, setError] = react.useState('')
@@ -2736,13 +2746,25 @@ window.__ModuleLoader__.load({
         if (!templateId && templates.length > 0) setTemplateId(templates[0].id)
       }, [templates, templateId])
 
-      const payload = () => ({
-        template: templateId,
-        ...(name.trim() ? { name: name.trim() } : {}),
-        ...(slug.trim() ? { slug: slug.trim() } : {}),
-        targetDir,
-        ...(overwrite ? { overwrite: true } : {}),
-      })
+      const payload = () => {
+        let mcp
+        if (mcpJson.trim()) {
+          try {
+            mcp = JSON.parse(mcpJson)
+          } catch {
+            throw new Error(t('scaffoldMcpInvalid'))
+          }
+        }
+        return {
+          template: templateId,
+          ...(name.trim() ? { name: name.trim() } : {}),
+          ...(slug.trim() ? { slug: slug.trim() } : {}),
+          targetDir,
+          ...(overwrite ? { overwrite: true } : {}),
+          ...(writeAgents ? { writeAgents: true } : {}),
+          ...(mcp === undefined ? {} : { mcp }),
+        }
+      }
       const post = async (path, body) => {
         const response = await fetch(`${STATUS_PATH}/scaffold/${path}`, {
           method: 'POST',
@@ -2815,9 +2837,24 @@ window.__ModuleLoader__.load({
           ),
         ),
         h('p', { style: sub }, t('scaffoldTargetHint')),
+        h('label', { style: { ...styles.field, marginTop: '8px' } },
+          h('span', { style: styles.label }, t('scaffoldMcp')),
+          h('textarea', {
+            style: { ...styles.input, minHeight: '76px', fontFamily: 'monospace', resize: 'vertical' },
+            value: mcpJson,
+            placeholder: '[{"serverName":"github","transport":"stdio","command":"npx","args":["-y","@modelcontextprotocol/server-github"],"env":{"GITHUB_TOKEN":"${GITHUB_TOKEN}"}}]',
+            onChange: (event) => setMcpJson(event.target.value),
+            'data-ctx-scaffold-mcp': '1',
+          }),
+        ),
+        h('p', { style: sub }, t('scaffoldMcpHint')),
         h('label', { style: { display: 'flex', alignItems: 'center', gap: '6px', marginTop: '8px', fontSize: '12px' } },
           h('input', { type: 'checkbox', checked: overwrite, onChange: (event) => setOverwrite(event.target.checked) }),
           h('span', null, t('scaffoldOverwrite')),
+        ),
+        h('label', { style: { display: 'flex', alignItems: 'center', gap: '6px', marginTop: '6px', fontSize: '12px' } },
+          h('input', { type: 'checkbox', checked: writeAgents, onChange: (event) => setWriteAgents(event.target.checked) }),
+          h('span', null, t('scaffoldAgents')),
         ),
         h('div', { style: { display: 'flex', gap: '8px', marginTop: '10px', flexWrap: 'wrap' } },
           h('button', { type: 'button', style: styles.button, disabled: busy || !templateId, onClick: preview, 'data-ctx-scaffold-preview': '1' }, t('scaffoldPreview')),
@@ -2827,6 +2864,7 @@ window.__ModuleLoader__.load({
         generated ? h('p', { style: sub, 'data-ctx-scaffold-generated': '1' }, t('scaffoldGenerated')) : null,
         plan ? h('div', { style: { marginTop: '10px' } },
           h('div', { style: sub }, `${t('scaffoldFiles')} · ${plan.presetId || ''} · ${plan.bundleDir || ''}`),
+          plan.agentsPath ? h('div', { style: sub }, `AGENTS.md · ${plan.agentsPath}`) : null,
           h('ul', { style: { margin: '6px 0 0', paddingLeft: '18px', fontSize: '11.5px', maxHeight: '240px', overflow: 'auto' } },
             files.map((file) => h('li', { key: file.path }, file.path)),
           ),

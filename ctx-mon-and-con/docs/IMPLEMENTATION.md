@@ -177,7 +177,7 @@ profile package.json dependencies
 → Loader 读取 dsh.bundle.patch.yml
 ```
 
-本地目录安装会记录为 `link:` 依赖。首次安装与启停由 DSH HMR 热生效：宿主半侧在数秒内挂载，Web 页面会跟随客户端模块图更新；页面没更新时刷新一次即可，不需要重启 DSH。卸载会从 `dsh.profile.bundles` 移除并热卸载。**替换已安装包（升级版本）仍是例外**：DSH 缓存已挂载包的 manifest 与模块代际，官方要求重启进程。
+本地目录安装会记录为 `link:` 依赖。首次安装与启停由 DSH HMR 热生效：宿主半侧在数秒内挂载，Web 页面会跟随客户端模块图更新；页面没更新时刷新一次即可，不需要重启 DSH。Desktop 0.2.1-rc.2 也已实测：运行中 add/remove 后侧栏与面板即时出现/消失（`EVIDENCE.md` E17）。卸载会从 `dsh.profile.bundles` 移除并热卸载。**替换已安装包（升级版本）仍是例外**：DSH 缓存已挂载包的 manifest 与模块代际，官方要求重启进程。
 
 自动挂载或全局配置写入会在 profile patch 中留下顶层插件行与 preset 行。单纯 `dsh plugin remove` 不会清理这些行；需要时使用仓库脚本：
 

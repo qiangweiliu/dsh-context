@@ -229,7 +229,21 @@ npm 运行依赖：无；生命周期脚本：无
   - `scripts/wait-for-ctx-plugin.mjs <url> 10` 返回 `hot-loaded: ctx-mon-and-con@0.19.1`。
 - 版本不一致提示：临时把客户端 `CLIENT_VERSION` 设为 `0.19.0`、宿主保持 `0.19.1`，真实页面出现 `data-ctx-version-mismatch` 与 “Reload page” 按钮；改回 `0.19.1` 后提示消失，控制台 0 error。
 - 结论：首次安装、启用/停用由 DSH HMR 热生效，**不需要重启 DSH**；`LIMITATIONS.md` 中“必须完整重启”的旧描述已更正。
-- 边界：**替换已安装包（升级版本）**仍是 DSH 的例外，官方要求重启进程；本次未在 Desktop Electron 实例内复测，Desktop 若客户端模块图未更新，刷新页面即可（生产构建没有暴露 Reload Page 菜单时需重启应用）。
+- 边界：**替换已安装包（升级版本）**仍是 DSH 的例外，官方要求重启进程。Desktop 0.2.1-rc.2 已单独复测，见 E17。
+
+## E17. Desktop 0.2.1-rc.2 安装热加载验证（2026-10-22）
+
+- 环境：Windows Desktop `DeepSeek Harness 0.2.1-rc.2`（实际运行 `app.asar` 版本），独立 `DSH_HOME=C:\Temp\dsh-desktop-verify2` + 独立 `--user-data-dir` 启动第二个实例；CDP 端口 9223。用户正在运行的 Desktop 实例未被关闭或修改。
+- 场景：实例进入默认工作区后，导航中没有 `ctx`；保持实例运行，执行
+  `dsh plugin --profile desktop add C:\Temp\ctx-mon-and-con`。
+- 结果：
+  - 安装后无需重启/刷新，侧栏出现 `ctx`；点击后上下文监控面板渲染 `v0.19.1`；
+  - `fetch('/api/ctx-mon-and-con/status')` 经 `dsh-app://` 自定义协议返回 200，`version:"0.19.1"`；
+  - 控制台 0 error / 0 exception；
+  - 运行中 `dsh plugin remove` 后导航与面板消失；重新 add 后再次出现；
+  - `__DSH_TRANSPORT__` 只有 `{ ownsHost, streamBaseUrl }`、没有 `fetch`，说明 Desktop 端走的是 `EventSource('/plugins/events')` 路径；`dsh-app` 注册了 streaming/fetch schemes，实际可工作。
+- 结论：Desktop 0.2.1-rc.2 的首次安装、启用/停用同样由 HMR 热生效，**不需要重启 DSH**。此前“Desktop 可能仍需重启”的保留意见已排除。
+- 边界：**替换已安装包（升级版本）**仍是 DSH 的例外；验证实例使用隔离 `DSH_HOME`/`user-data-dir`，未触碰真实桌面 profile。
 
 ## 已知限制（unknown）
 

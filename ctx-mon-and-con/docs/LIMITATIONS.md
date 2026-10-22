@@ -7,11 +7,20 @@
 DSH 默认启用 HMR（`dsh-hmr` + `dsh-client-hmr`），因此：
 
 - **首次安装**：`dsh plugin add` 成功后，宿主半侧会在数秒内热挂载；Web 页面会跟随客户端模块图自动出现，**不需要重启 DSH**。实测约 4 秒（见 `EVIDENCE.md` E16）。
+- **Desktop**：0.2.1-rc.2 已实测，运行中 add/remove 后侧栏与面板即时出现/消失，不需要重启（`EVIDENCE.md` E17）。
 - **启用/停用插件行**：即时生效。
 - **刷新页面**：如果页面仍显示旧界面，刷新一次即可重新加载客户端 bundle；这比重启 DSH 更轻。
 - **替换已安装包（升级到新版本）**：DSH 会缓存已挂载包的 manifest 与模块代际，官方明确该场景不是热升级路径，**仍需重启 DSH 进程**。
 - **宿主没有 HMR**：如果 profile 的自定义 patch 关闭了 `hmr`，运行中的进程不会重新组合，此时安装/卸载才需要重启。
 - **卸载**：HMR 会即时卸载 `/ctx`、`/ctx-compact` 和面板；只有替换/删除宿主模块或没有 HMR 时才需要重启。profile patch 里的残留行仍建议用清理脚本移除。
+
+如果安装后仍未出现，按顺序检查：
+
+1. **profile 是否一致**：Desktop 运行的是 `desktop`，WSL `dsh web` 通常是 `web`。带 `--profile` 安装到另一个 profile 不会出现在当前实例里。
+2. **DSH 版本**：支持矩阵是 `0.2.0-rc.2` / `0.2.1-rc.2`；`0.2.1-rc.1` 不在矩阵内，旧版本也可能没有 `dsh-client-hmr`。
+3. **HMR 是否被关闭**：自定义 profile patch 若把 `hmr` 行设为 `disabled: true`，运行中的进程不会重新组合。
+4. **是否在替换已安装包**：升级到新版本属于 DSH 的“package replacement”，仍需重启进程；首次安装不受此限制。
+5. **页面是否陈旧**：Web 刷新一次即可；Desktop 0.2.1-rc.2 实测无需刷新，若仍未出现再重启应用。
 
 ## 2. 上下文与预算的边界
 

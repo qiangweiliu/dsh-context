@@ -3095,9 +3095,13 @@ window.__ModuleLoader__.load({
       ]
 
       const headerSessionId = activeSession || (liveForHeader && liveForHeader.sessionId) || null
-      const headerSession = (detail && detail.session && (!headerSessionId || detail.session.id === headerSessionId) ? detail.session : null)
-        || (analytics && Array.isArray(analytics.sessions) ? analytics.sessions.find((session) => session.id === headerSessionId) : null)
-      const headerAggregate = analytics && Array.isArray(analytics.sessions) ? analytics.sessions.find((session) => session.id === headerSessionId) : null
+      const headerSession = headerSessionId
+        ? (detail && detail.session && detail.session.id === headerSessionId ? detail.session : null)
+          || (analytics && Array.isArray(analytics.sessions) ? analytics.sessions.find((session) => session.id === headerSessionId) : null)
+        : null
+      const headerAggregate = headerSessionId && analytics && Array.isArray(analytics.sessions)
+        ? analytics.sessions.find((session) => session.id === headerSessionId)
+        : null
       const headerMeta = headerAggregate || headerSession
       const latestForSession = activeSession && latest && latest.id === activeSession ? latest : null
       const headerUsed = liveForHeader && typeof liveForHeader.used === 'number' ? liveForHeader.used : latestForSession && typeof latestForSession.totalTokens === 'number' ? latestForSession.totalTokens : null
@@ -3105,7 +3109,7 @@ window.__ModuleLoader__.load({
       const headerRatio = headerUsed !== null && headerBudget !== null && headerBudget > 0 ? headerUsed / headerBudget : null
       const headerWarnAt = liveForHeader && typeof liveForHeader.warnAt === 'number' ? liveForHeader.warnAt : typeof budget.warnAt === 'number' ? budget.warnAt : 0.75
       const headerErrorAt = liveForHeader && typeof liveForHeader.errorAt === 'number' ? liveForHeader.errorAt : typeof budget.errorAt === 'number' ? budget.errorAt : 0.9
-      const headerDetailMatches = Boolean(detail && detail.session && (!headerSessionId || detail.session.id === headerSessionId))
+      const headerDetailMatches = Boolean(headerSessionId && detail && detail.session && detail.session.id === headerSessionId)
       const headerRequests = headerDetailMatches && Array.isArray(detail.requests) ? detail.requests.length : headerMeta && typeof headerMeta.requests === 'number' ? headerMeta.requests : null
       let headerCost = headerMeta && typeof headerMeta.cost === 'number' ? headerMeta.cost : null
       if (headerDetailMatches && typeof detail.session.cost === 'number') headerCost = detail.session.cost

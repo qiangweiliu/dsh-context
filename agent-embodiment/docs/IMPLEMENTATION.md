@@ -167,7 +167,7 @@ inventory 属于进程内存，只反映最近一次装配；新会话需要先�
 - `sidebar.panellist`：左侧 `embody` 图标；
 - `main`：整页「上下文监控」；
 - `settings.section`：设置 → 上下文；
-- `conversation.composer.dock`：输入框下方指示器。
+- `conversation.composer.dock`：输入框下方指示器，环形 + 插件预算已用百分比；弹层显示已用/上限/剩余。
 
 客户端只通过状态接口读取数据；新增提示词、全局配置等写入通过宿主路由完成。API 路径相对 `document.baseURI` 解析，兼容反向代理的路径前缀；`apply` 带 window 级幂等守卫，避免同一页面重复挂载出两套导航/设置/dock。
 
@@ -220,7 +220,7 @@ node --check client.js
 当前结果：
 
 ```text
-static       79/79
+static       81/81
 metrics      24/24
 state        16/16
 scaffold    146/146

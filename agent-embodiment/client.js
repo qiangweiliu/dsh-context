@@ -122,7 +122,8 @@ window.__ModuleLoader__.load({
       errorLabel: 'Error ratio',
       meterAria: 'ctx context limit',
       pluginContext: 'Plugin context',
-      pluginContextHint: 'Only the plugin budget configured for this session. Live usage is shown by the built-in context meter.',
+      pluginContextAria: 'Plugin context {percent} used',
+      pluginContextHint: 'The percentage uses the plugin budget for this session; the built-in meter uses the model window.',
       balance: 'Balance',
       balanceTopped: 'Topped up',
       balanceBonus: 'Granted',
@@ -350,7 +351,8 @@ window.__ModuleLoader__.load({
       errorLabel: '超限比例',
       meterAria: 'ctx 上下文',
       pluginContext: '插件上下文',
-      pluginContextHint: '这里只显示插件为本会话配置的上下文上限；实时用量见内置上下文指示器。',
+      pluginContextAria: '插件上下文已用 {percent}',
+      pluginContextHint: '百分比按插件为本会话配置的上下文上限计算；token 构成与模型窗口口径见内置上下文指示器。',
       balance: '余额',
       balanceTopped: '充值',
       balanceBonus: '赠金',
@@ -930,6 +932,36 @@ window.__ModuleLoader__.load({
       )
     }
 
+    /** 小号环形用量：规格与内置 ContextMeter 一致（14px、2px 描边）。 */
+    function ContextRing(props) {
+      const percent = Math.max(0, Math.min(100, Number(props.percent) || 0))
+      const radius = 5.5
+      const circumference = 2 * Math.PI * radius
+      return h(
+        'svg',
+        {
+          viewBox: '0 0 14 14',
+          width: 14,
+          height: 14,
+          'aria-hidden': true,
+          style: { flex: 'none' },
+          'data-embodiment-dock-ring': String(Math.round(percent)),
+        },
+        h('circle', { cx: 7, cy: 7, r: radius, fill: 'none', stroke: 'var(--dsw-alias-border-l3)', strokeWidth: 2 }),
+        h('circle', {
+          cx: 7,
+          cy: 7,
+          r: radius,
+          fill: 'none',
+          stroke: 'var(--dsw-alias-label-tertiary)',
+          strokeWidth: 2,
+          strokeLinecap: 'round',
+          strokeDasharray: `${(circumference * percent) / 100} ${circumference}`,
+          transform: 'rotate(-90 7 7)',
+        }),
+      )
+    }
+
     /** 四色图例：色点 + 名称 + 右对齐的数值/占比。 */
     function LegendGrid(props) {
       const categories = Array.isArray(props.categories) ? props.categories : []
@@ -1463,13 +1495,24 @@ window.__ModuleLoader__.load({
       }, [usageTick, fetchLive])
 
       const budget = data && typeof data.budget === 'number' ? data.budget : null
+      const used = data && typeof data.used === 'number' ? data.used : null
       const compacting = Boolean(data && data.compacting)
       const budgetText = budget === null ? '—' : formatTokens(budget)
-      // 只显示插件配置的上下文上限（含会话级覆盖）；实时 token 用量由官方
-      // ContextMeter 负责，这里不重复百分比/构成。
+      const budgetShort = budget === null ? '—' : compactTokens(budget)
+      const usedShort = used === null ? '—' : compactTokens(used)
+      const remaining = used === null || budget === null ? null : Math.max(0, budget - used)
+      // 与内置 ContextMeter 同一读法：环形 + 百分比。分母是插件为本会话配置的
+      // 上下文上限（含会话级覆盖），不是模型窗口；token 构成仍由官方指示器负责。
+      const percent = used === null || budget === null || budget <= 0 ? null : Math.min(100, Math.round((used / budget) * 100))
+      const percentText = percent === null ? null : `${percent}%`
       const label = compacting
         ? `${t('pluginContext')} · ${t('compacting')}`
-        : `${t('pluginContext')} ${budget === null ? '—' : compactTokens(budget)}`
+        : percent === null
+          ? `${t('pluginContext')} ${budgetShort}`
+          : `${t('pluginContext')} ${percentText}`
+      const aria = percent === null
+        ? `${t('pluginContext')} ${budgetText}`
+        : t('pluginContextAria').replace('{percent}', percentText)
 
       return h(
         'span',
@@ -1478,11 +1521,13 @@ window.__ModuleLoader__.load({
           'button',
           {
             ...triggerProps,
-            'aria-label': `${t('pluginContext')} ${budgetText}`,
-            title: `${t('pluginContext')}: ${budgetText}${props.controlActive ? ` · ${t('controlOn')}` : ` · ${t('controlOff')}`}`,
+            'aria-label': aria,
+            title: `${aria} · ${usedShort} / ${budgetShort}${props.controlActive ? ` · ${t('controlOn')}` : ` · ${t('controlOff')}`}`,
             'data-embodiment-dock': '1',
+            'data-embodiment-dock-percent': percent === null ? '' : String(percent),
           },
-          h('span', { style: { color: 'var(--dsw-alias-label-secondary)' } }, label),
+          h(ContextRing, { percent: percent === null ? 0 : percent }),
+          h('span', null, label),
         ),
         open
           ? h(
@@ -1490,7 +1535,8 @@ window.__ModuleLoader__.load({
               {
                 label: t('pluginContext'),
                 title: t('pluginContext'),
-                figures: budgetText,
+                percent: percentText === null ? undefined : percentText,
+                figures: `${usedShort} / ${budgetShort}`,
                 action: h(
                   'button',
                   { type: 'button', style: styles.copyBtn, 'data-embodiment-open-panel': '1', onClick: () => { setOpen(false); openCtxPanelPage() } },
@@ -1500,7 +1546,9 @@ window.__ModuleLoader__.load({
               h(
                 'dl',
                 { style: meter.rows },
-                h(DockRow, { label: t('budget'), value: budgetText }),
+                h(DockRow, { label: t('used'), value: `${usedShort} ${t('tokens')}`, title: used === null ? '—' : `${formatTokens(used)} ${t('tokens')}` }),
+                h(DockRow, { label: t('budgetLimit'), value: `${budgetShort} ${t('tokens')}`, title: `${budgetText} ${t('tokens')}` }),
+                h(DockRow, { label: t('remaining'), value: remaining === null ? '—' : `${compactTokens(remaining)} ${t('tokens')}`, title: remaining === null ? '—' : `${formatTokens(remaining)} ${t('tokens')}` }),
                 h(DockRow, { label: t('control'), value: props.controlActive ? t('controlOn') : t('controlOff') }),
                 h('p', { style: { margin: '6px 0 0', fontSize: '11px', opacity: 0.7 } }, t('pluginContextHint')),
               ),

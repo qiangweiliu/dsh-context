@@ -326,6 +326,13 @@ npm 运行依赖：无；生命周期脚本：无
 - rc.3：headless + Cordis 测试 + Web 状态/UI 已通过；Desktop 未验收。`engines.dsh` 与 `dshReleases` 已加入 `0.2.1-rc.3`。
 - 结论：compact 的准确率/ token /耗时差异均不显著；单次全量的 −28% 不能作为卖点。Tier B 题库继续作为固定回归基线。
 
+## E25. v0.23.0 底部 dock 改为“已用”读法（2026-10-24）
+
+- 内置 ContextMeter 的读法是环形 + 百分比（`context.aria` = “上下文已用 {percent}”）。本插件 dock 原先只显示 `插件上下文 256K`，现改为同规格的 14px 环形 + `插件上下文 73%`；分母是插件预算（含会话级覆盖），不是模型窗口。
+- 弹层对齐内置面板：标题 / 百分比 / `已用 / 上限`，明细行显示实测用量、预算上限、剩余、控制状态。
+- 实测：Desktop 0.2.1-rc.2 运行中替换 `client.js` 后 HMR 生效；同一时刻内置指示器 19%（模型窗口口径）与插件 73%（256K 预算口径）并存，符合预期。截图：[dock 触发条](ui/0.23-dock-context.png)、[展开面板](ui/0.23-dock-panel.png)。
+- 测试：`static 81/81`（新增 dock 百分比与环形规格断言）、`metrics 24/24`、`state 16/16`、`scaffold 146/146`、`control 54/54`、`smoke 71/71`、`prompt-state 11/11`。
+
 ## 已知限制（unknown）
 
 - 未进行独立安全审计；本文件不声称“安全通过”。

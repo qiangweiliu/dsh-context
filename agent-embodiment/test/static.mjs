@@ -179,6 +179,8 @@ check('sidebar.panellist 标题是 embody', panelEntry.label?.() === 'embody', p
 const dockEntry = bySlot('conversation.composer.dock').definition ?? {}
 check('client 注册 composer dock 指示器', dockEntry.name === 'conversation.composer.dock' && dockEntry.id === 'embody-usage', JSON.stringify(dockEntry))
 check('dock 指示器组件是函数', typeof bySlot('conversation.composer.dock').component === 'function', typeof bySlot('conversation.composer.dock').component)
+check('dock 按内置 ContextMeter 风格显示插件上下文已用比例', clientSource.includes('data-embodiment-dock-percent') && clientSource.includes('data-embodiment-dock-ring') && clientSource.includes('pluginContextAria'))
+check('dock 环形规格与内置 ContextMeter 一致（14px 视框 / 2px 描边）', clientSource.includes("viewBox: '0 0 14 14'") && clientSource.includes('const radius = 5.5'))
 const balanceEntry = client.slotRegistrations.find((entry) => entry.definition.id === 'embody-balance')?.definition ?? {}
 check('client 注册 DSH 余额 dock 胶囊', balanceEntry.name === 'conversation.composer.dock' && balanceEntry.order > dockEntry.order, JSON.stringify(balanceEntry))
 check('余额胶囊使用 data-embodiment-balance 标记', clientSource.includes("'data-embodiment-balance': '1'"))

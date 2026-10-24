@@ -7,11 +7,51 @@
  * DSH runtime and keeps the HTTP layer thin.
  */
 
-/** CNY per 1M tokens, used only for models we can name confidently. */
-export const DEFAULT_MODEL_PRICING = [
-  { match: /deepseek[-_/].*(reasoner|r1)/i, input: 4, cacheRead: 1, output: 8 },
-  { match: /deepseek[-_/].*(chat|v3)/i, input: 2, cacheRead: 0.5, output: 3 },
+/** 官方人民币价（CNY / 1M tokens）。来源：DeepSeek 开放平台「模型 & 价格」。 */
+export const PRICING_SOURCE = 'https://api-docs.deepseek.com/zh-cn/quick_start/pricing'
+export const PRICING_CURRENCY = 'CNY'
+export const PRICING_UPDATED_AT = '2026-10-24'
+
+/**
+ * 2026-10-24 抓取的官方价目：空闲价为高峰价的一半。
+ * 高峰：北京时间周一至周五 09:00-12:00、14:00-18:00（法定节假日按官方规则为空闲，
+ * 这里只按周末/时段判断，节假日差额见 LIMITATIONS）。
+ */
+export const PRICING_META = [
+  {
+    id: 'deepseek-flash',
+    label: 'DeepSeek V4.1 Flash',
+    peak: { input: 2, cacheRead: 0.04, output: 8 },
+    offPeak: { input: 1, cacheRead: 0.02, output: 4 },
+  },
+  {
+    id: 'deepseek-v4-pro',
+    label: 'DeepSeek V4 Pro',
+    peak: { input: 9, cacheRead: 0.3, output: 27 },
+    offPeak: { input: 4.5, cacheRead: 0.15, output: 13.5 },
+  },
 ]
+
+export const DEFAULT_MODEL_PRICING = [
+  { match: /deepseek[\s\-_/].*(flash|v4\.1)/i, peak: PRICING_META[0].peak, offPeak: PRICING_META[0].offPeak },
+  { match: /deepseek[\s\-_/].*pro/i, peak: PRICING_META[1].peak, offPeak: PRICING_META[1].offPeak },
+  // 旧模型名已不在当前官方价目表里；保留旧价只用于历史会话估算，不冒充 V4 价格。
+  { match: /deepseek[\s\-_/].*(chat|v3)/i, input: 2, cacheRead: 0.5, output: 3 },
+  { match: /deepseek[\s\-_/].*(reasoner|r1)/i, input: 4, cacheRead: 1, output: 8 },
+]
+
+const BEIJING_OFFSET_MS = 8 * 60 * 60 * 1000
+
+/** 官方高峰时段：北京时间周一至周五 09:00-12:00、14:00-18:00。 */
+export function isPeakTime(time) {
+  const stamp = Number(time)
+  if (!Number.isFinite(stamp)) return false
+  const local = new Date(stamp + BEIJING_OFFSET_MS)
+  const day = local.getUTCDay()
+  if (day === 0 || day === 6) return false
+  const minutes = local.getUTCHours() * 60 + local.getUTCMinutes()
+  return (minutes >= 9 * 60 && minutes < 12 * 60) || (minutes >= 14 * 60 && minutes < 18 * 60)
+}
 
 const number = (value) => (typeof value === 'number' && Number.isFinite(value) ? value : 0)
 
@@ -39,10 +79,22 @@ const modelOf = (event, previous) => {
   return previous ?? null
 }
 
-const normalizePricing = (pricing) => (Array.isArray(pricing) ? pricing : DEFAULT_MODEL_PRICING).map((row) => ({
-  ...row,
-  match: row.match instanceof RegExp ? row.match : new RegExp(row.match, 'i'),
-}))
+const rateSet = (row) => ({
+  input: number(row?.input),
+  cacheRead: number(row?.cacheRead),
+  cacheWrite: typeof row?.cacheWrite === 'number' ? row.cacheWrite : undefined,
+  output: number(row?.output),
+})
+
+const normalizePricing = (pricing) => (Array.isArray(pricing) ? pricing : DEFAULT_MODEL_PRICING).map((row) => {
+  const flat = rateSet(row)
+  return {
+    ...row,
+    match: row.match instanceof RegExp ? row.match : new RegExp(row.match, 'i'),
+    peak: row.peak ? rateSet(row.peak) : flat,
+    offPeak: row.offPeak ? rateSet(row.offPeak) : flat,
+  }
+})
 
 const priceOf = (model, pricing) => {
   if (typeof model !== 'string') return null
@@ -50,15 +102,24 @@ const priceOf = (model, pricing) => {
   return hit ?? null
 }
 
-const costOf = (model, usage, pricing) => {
+const costBreakdownOf = (model, usage, pricing, time) => {
   const price = priceOf(model, pricing)
   if (!price) return null
-  return (
-    (usage.input / 1e6) * price.input +
-    (usage.cacheRead / 1e6) * price.cacheRead +
-    (usage.cacheWrite / 1e6) * (price.cacheWrite ?? price.input) +
-    (usage.output / 1e6) * price.output
-  )
+  const peak = isPeakTime(time)
+  const rates = peak ? price.peak : price.offPeak
+  const input = (usage.input / 1e6) * rates.input
+  const cacheRead = (usage.cacheRead / 1e6) * rates.cacheRead
+  const cacheWrite = (usage.cacheWrite / 1e6) * (rates.cacheWrite ?? rates.input)
+  const output = (usage.output / 1e6) * rates.output
+  return { input, cacheRead, cacheWrite, output, total: input + cacheRead + cacheWrite + output, peak, model }
+}
+
+const addCostParts = (target, parts) => {
+  if (!parts) return
+  target.input += parts.input
+  target.cacheRead += parts.cacheRead
+  target.cacheWrite += parts.cacheWrite
+  target.output += parts.output
 }
 
 const dateKey = (time) => {
@@ -98,6 +159,7 @@ export function foldSession(header, events, pricingRows = DEFAULT_MODEL_PRICING)
     counts: { turns: 0, steps: 0, requests: 0, toolCalls: 0, compactions: 0, injections: 0 },
     activeMs: 0,
     cost: null,
+    costParts: { input: 0, cacheRead: 0, cacheWrite: 0, output: 0 },
     compactions: [],
     timeline: [],
     events: list.length,
@@ -129,6 +191,7 @@ export function foldSession(header, events, pricingRows = DEFAULT_MODEL_PRICING)
         cacheWrite: 0,
         output: 0,
         cost: null,
+        costParts: { input: 0, cacheRead: 0, cacheWrite: 0, output: 0 },
         requests: 0,
         toolCalls: 0,
         compactions: 0,
@@ -199,10 +262,12 @@ export function foldSession(header, events, pricingRows = DEFAULT_MODEL_PRICING)
       compaction.shadowedTokens = shadowed || null
       const usage = usageOf(event.data?.usage)
       const compactionModel = typeof event.data?.model === 'string' && event.data.model !== '' ? event.data.model : model?.model ?? null
-      const cost = usage ? costOf(compactionModel, usage, pricing) : null
+      const costParts = usage ? costBreakdownOf(compactionModel, usage, pricing, event.time) : null
+      const cost = costParts ? costParts.total : null
       compaction.usage = usage
       compaction.model = compactionModel
       compaction.cost = cost
+      compaction.costParts = costParts
       if (compaction.startedAt !== null) compaction.durationMs = event.time - compaction.startedAt
       lastCompaction = compaction
       base.counts.compactions += 1
@@ -224,6 +289,8 @@ export function foldSession(header, events, pricingRows = DEFAULT_MODEL_PRICING)
         if (cost !== null) {
           base.cost = (base.cost ?? 0) + cost
           bucket.cost = (bucket.cost ?? 0) + cost
+          addCostParts(base.costParts, costParts)
+          addCostParts(bucket.costParts, costParts)
         }
       }
       compactions.push(compaction)
@@ -242,7 +309,8 @@ export function foldSession(header, events, pricingRows = DEFAULT_MODEL_PRICING)
       if (!usage) continue
       const requestModel = modelOf(event, model)
       if (requestModel) model = requestModel
-      const cost = costOf(requestModel?.model, usage, pricing)
+      const costParts = costBreakdownOf(requestModel?.model, usage, pricing, event.time)
+      const cost = costParts ? costParts.total : null
       const request = {
         time: event.time,
         turn: typeof event.data?.turn === 'number' ? event.data.turn : null,
@@ -250,6 +318,7 @@ export function foldSession(header, events, pricingRows = DEFAULT_MODEL_PRICING)
         model: requestModel?.model ?? null,
         usage,
         cost,
+        costParts,
       }
       requests.push(request)
       base.counts.requests += 1
@@ -269,6 +338,8 @@ export function foldSession(header, events, pricingRows = DEFAULT_MODEL_PRICING)
       if (cost !== null) {
         base.cost = (base.cost ?? 0) + cost
         bucket.cost = (bucket.cost ?? 0) + cost
+        addCostParts(base.costParts, costParts)
+        addCostParts(bucket.costParts, costParts)
       }
       continue
     }
@@ -314,12 +385,14 @@ export function summarizeFolds(folds, options = {}) {
     tokens: 0,
     input: 0,
     cacheRead: 0,
+    cacheWrite: 0,
     output: 0,
     toolCalls: 0,
     compactions: 0,
     injections: 0,
     activeMs: 0,
     cost: null,
+    costParts: { input: 0, cacheRead: 0, cacheWrite: 0, output: 0 },
   }
   const daily = new Map()
   const bucketDays = Math.min(days, 90)
@@ -336,12 +409,14 @@ export function summarizeFolds(folds, options = {}) {
       totals.tokens += fold.usage.total
       totals.input += fold.usage.input
       totals.cacheRead += fold.usage.cacheRead
+      totals.cacheWrite += fold.usage.cacheWrite
       totals.output += fold.usage.output
       totals.toolCalls += fold.counts.toolCalls
       totals.compactions += fold.counts.compactions
       totals.injections += fold.counts.injections
       totals.activeMs += fold.activeMs
       if (fold.cost !== null) totals.cost = (totals.cost ?? 0) + fold.cost
+      addCostParts(totals.costParts, fold.costParts)
       continue
     }
     for (const bucket of buckets) {
@@ -349,12 +424,14 @@ export function summarizeFolds(folds, options = {}) {
       totals.tokens += number(bucket.tokens)
       totals.input += number(bucket.input)
       totals.cacheRead += number(bucket.cacheRead)
+      totals.cacheWrite += number(bucket.cacheWrite)
       totals.output += number(bucket.output)
       totals.toolCalls += number(bucket.toolCalls)
       totals.compactions += number(bucket.compactions)
       totals.injections += number(bucket.injections)
       totals.activeMs += number(bucket.activeMs)
       if (typeof bucket.cost === 'number') totals.cost = (totals.cost ?? 0) + bucket.cost
+      addCostParts(totals.costParts, bucket.costParts)
       const chartBucket = daily.get(bucket.date)
       if (chartBucket) {
         chartBucket.tokens += number(bucket.tokens)
@@ -370,14 +447,18 @@ export function summarizeFolds(folds, options = {}) {
     kpi: {
       sessions: totals.sessions,
       tokens: totals.tokens,
-      output: totals.output,
+      input: totals.input,
       cacheRead: totals.cacheRead,
+      cacheWrite: totals.cacheWrite,
+      output: totals.output,
       cacheHit: cacheBase > 0 ? totals.cacheRead / cacheBase : null,
       toolCalls: totals.toolCalls,
       compactions: totals.compactions,
       injections: totals.injections,
       activeMs: totals.activeMs,
       cost: totals.cost,
+      costParts: totals.costParts,
+      currency: PRICING_CURRENCY,
     },
     daily: [...daily.values()],
     sessions: sessions.map((fold) => ({
@@ -398,6 +479,7 @@ export function summarizeFolds(folds, options = {}) {
       compactions: fold.counts.compactions,
       activeMs: fold.activeMs,
       cost: fold.cost,
+      costParts: fold.costParts,
     })),
   }
 }
@@ -425,6 +507,7 @@ export function sessionDetail(fold) {
       total: request.usage.total,
       cacheRead: request.usage.cacheRead,
       cost: request.cost,
+      costParts: request.costParts,
       compaction: latestCompaction,
     }
   })
@@ -437,6 +520,8 @@ export function sessionDetail(fold) {
       provider: fold.provider,
       createdAt: fold.createdAt,
       lastActivityAt: fold.lastActivityAt,
+      cost: fold.cost,
+      costParts: fold.costParts,
     },
     requests,
     compactions: compacted.map((item) => ({
@@ -445,6 +530,8 @@ export function sessionDetail(fold) {
       durationMs: item.durationMs,
       shadowedTokens: item.shadowedTokens,
       turn: item.turn,
+      cost: item.cost,
+      costParts: item.costParts,
     })),
     timeline: fold.timeline,
   }

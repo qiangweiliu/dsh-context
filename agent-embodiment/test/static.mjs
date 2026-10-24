@@ -144,6 +144,8 @@ check('icon.svg 是 SVG 且体积极小', icon.trimStart().startsWith('<svg') &&
 
 // ── 5. 浏览器半侧：mock __ModuleLoader__ + cordis 上下文 ───────────────────
 const clientSource = readFileSync(new URL('../client.js', import.meta.url), 'utf8')
+const metricsSource = readFileSync(new URL('../metrics.js', import.meta.url), 'utf8')
+const indexSource = readFileSync(new URL('../index.js', import.meta.url), 'utf8')
 check('client.js 语法可编译', (() => {
   try {
     new Function(clientSource)
@@ -207,6 +209,9 @@ check('client 暴露压缩策略选择', clientSource.includes('data-embodiment-
 check('client 在 control 未挂载时给出提示', clientSource.includes('data-embodiment-control-required') && clientSource.includes('controlRequired'))
 check('趋势图有纵轴、预算线与压缩标记', clientSource.includes('niceAxisMax') && clientSource.includes('trendBudgetLabel') && clientSource.includes('trendMarkerDot'))
 check('头部摘要与趋势请求数走本地化单位', clientSource.includes('data-embodiment-header-status') && clientSource.includes("t('requestsUnit')"))
+check('内置 DeepSeek 官方人民币峰谷价', metricsSource.includes('DeepSeek V4.1 Flash') && metricsSource.includes('offPeak') && metricsSource.includes('isPeakTime'))
+check('状态接口暴露价目与峰谷时段', indexSource.includes('pricing:') && indexSource.includes('PRICING_META') && indexSource.includes('peakNow'))
+check('面板有计费卡并显示人民币费用', clientSource.includes('data-embodiment-billing') && clientSource.includes('formatCost') && clientSource.includes("t('billingTitle')"))
 check('scaffold 中英文词典齐全', Boolean(client.dictionaries.agentEmbodiment?.en?.scaffoldTitle) && Boolean(client.dictionaries.agentEmbodiment?.zh?.scaffoldTitle))
 
 // 同一个 window 下加载两次：第二次 apply 必须被挂载守卫挡住，不能重复注册槽位。

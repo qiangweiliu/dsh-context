@@ -54,7 +54,7 @@ import {
   clearSessionBudget,
 } from './state.js'
 
-import { DEFAULT_MODEL_PRICING, foldSession, sessionDetail, summarizeFolds } from './metrics.js'
+import { DEFAULT_MODEL_PRICING, PRICING_CURRENCY, PRICING_META, PRICING_SOURCE, PRICING_UPDATED_AT, foldSession, isPeakTime, sessionDetail, summarizeFolds } from './metrics.js'
 import { SCAFFOLD_TEMPLATES, mergeAgentsContent, planScaffold } from './scaffold.js'
 
 /** 依赖的真实服务名（见 @deepseek-ai/dsh-commands / @deepseek-ai/dsh-token-meter）。 */
@@ -1088,6 +1088,15 @@ export function apply(ctx, config) {
       control: controlSnapshot(),
       configEditable: Boolean(configEditor && typeof configEditor.edit === 'function'),
       measurements: [...measurements.values()].reverse(),
+      pricing: {
+        currency: PRICING_CURRENCY,
+        source: PRICING_SOURCE,
+        updatedAt: PRICING_UPDATED_AT,
+        peakNow: isPeakTime(Date.now()),
+        peakHours: '周一至周五 09:00–12:00、14:00–18:00（北京时间）',
+        models: PRICING_META,
+        custom: Array.isArray(config.modelPricing) && config.modelPricing.length > 0,
+      },
     })
     response.statusCode = 200
     response.setHeader('content-type', 'application/json; charset=utf-8')

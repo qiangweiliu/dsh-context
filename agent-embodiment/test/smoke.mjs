@@ -183,6 +183,7 @@ check('状态含宿主 keepTokens', statusPayload.budget?.keepTokens === 0, JSON
 check('状态含最近测量', statusPayload.measurements?.[0]?.id === 'smoke-session', JSON.stringify(statusPayload.measurements))
 check('状态含会话上下文列表（reset 后为空）', Array.isArray(statusPayload.sessionBudgets) && statusPayload.sessionBudgets.length === 0, JSON.stringify(statusPayload.sessionBudgets))
 check('状态含控制状态（未挂控制行 = 未激活）', statusPayload.control?.active === false, JSON.stringify(statusPayload.control))
+check('状态含官方人民币价目与当前峰谷', statusPayload.pricing?.currency === 'CNY' && statusPayload.pricing?.models?.length === 2 && typeof statusPayload.pricing?.peakNow === 'boolean', JSON.stringify(statusPayload.pricing))
 check('状态含压缩记录数组', Array.isArray(statusPayload.control?.log), JSON.stringify(statusPayload.control?.log))
 
 // 压缩记录落盘：state 事件 -> 宿主订阅 -> JSONL 文件（写入临时 HOME）

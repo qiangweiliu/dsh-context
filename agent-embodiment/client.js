@@ -234,7 +234,21 @@ window.__ModuleLoader__.load({
       kpiActive: 'Active time',
       kpiCompactions: 'Compactions',
       costUnknown: 'no price for this model',
-      costEstimated: 'estimated from known model prices',
+      costEstimated: 'estimated from official peak/off-peak rates',
+      billingTitle: 'Billing (est.)',
+      costLabel: 'Cost',
+      costTotal: 'Total',
+      costCacheHit: 'Cache hit input',
+      costCacheMiss: 'Cache miss input',
+      costCacheWrite: 'Cache write input',
+      costOutput: 'Output',
+      costPeak: 'peak',
+      costOffPeak: 'off-peak',
+      costPricingNote: 'Converted with DeepSeek official CNY peak/off-peak rates; Search/Fetch not included',
+      costRateUnit: 'per 1M tokens',
+      costRateExample: 'rate example',
+      costNow: 'now',
+      costCustom: 'custom pricing',
       readFailures: '{count} sessions could not be read',
       coverage: 'Scanned {scanned}/{total} sessions',
       coverageShort: '{scanned}/{total} scanned',
@@ -467,7 +481,21 @@ window.__ModuleLoader__.load({
       kpiActive: '活跃时长',
       kpiCompactions: '压缩次数',
       costUnknown: '该模型暂无价格',
-      costEstimated: '按已知模型价格估算',
+      costEstimated: '按官方峰谷价估算',
+      billingTitle: '计费（估算）',
+      costLabel: '费用',
+      costTotal: '合计',
+      costCacheHit: '输入（缓存命中）',
+      costCacheMiss: '输入（缓存未命中）',
+      costCacheWrite: '输入（缓存写入）',
+      costOutput: '输出',
+      costPeak: '高峰',
+      costOffPeak: '空闲',
+      costPricingNote: '按 DeepSeek 官方人民币峰谷价逐条换算；不含 Search/Fetch',
+      costRateUnit: '每百万 tokens',
+      costRateExample: '价目示例',
+      costNow: '当前',
+      costCustom: '自定义价格',
       readFailures: '{count} 个会话读取失败',
       coverage: '已扫描 {scanned}/{total} 个会话',
       coverageShort: '{scanned}/{total} 已扫描',
@@ -569,6 +597,17 @@ window.__ModuleLoader__.load({
     function formatPercent(value, digits = 1) {
       const number = Number(value)
       return Number.isFinite(number) ? `${(number * 100).toFixed(digits)}%` : '—'
+    }
+
+    /** 人民币计费显示：>=1 分显示两位，小额显示四位，低于 0.0001 元显示上界。 */
+    function formatCost(value) {
+      if (value === null || value === undefined) return '—'
+      const number = Number(value)
+      if (!Number.isFinite(number)) return '—'
+      if (number === 0) return '¥0.00'
+      if (number < 0.0001) return '<¥0.0001'
+      if (number < 0.01) return `¥${number.toFixed(4)}`
+      return `¥${number.toFixed(2)}`
     }
 
     /** 趋势图纵轴：把峰值向上取整到 1/2/5×10^n 的刻度，避免每根柱子都顶满。 */
@@ -885,6 +924,16 @@ window.__ModuleLoader__.load({
       kpiCardLabel: { fontSize: '10.5px', lineHeight: '15px', color: 'var(--dsw-alias-label-tertiary)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' },
       kpiCardValue: { fontSize: '15.5px', lineHeight: '22px', fontWeight: 600, fontVariantNumeric: 'tabular-nums', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' },
       kpiCardSub: { fontSize: '10px', lineHeight: '14px', color: 'var(--dsw-alias-label-tertiary)', fontVariantNumeric: 'tabular-nums' },
+      billingBody: { display: 'flex', gap: '28px', alignItems: 'flex-start', flexWrap: 'wrap' },
+      billingTotal: { display: 'flex', flexDirection: 'column', gap: '3px', minWidth: '128px' },
+      billingTotalLabel: { fontSize: '11px', lineHeight: '16px', color: 'var(--dsw-alias-label-tertiary)' },
+      billingTotalValue: { fontSize: '27px', lineHeight: '34px', fontWeight: 600, color: 'var(--dsw-alias-label-primary)', fontVariantNumeric: 'tabular-nums' },
+      billingRows: { flex: '1 1 360px', minWidth: 0 },
+      billingRow: { display: 'grid', gridTemplateColumns: 'minmax(0, 1.5fr) minmax(0, 1fr) minmax(0, 0.8fr)', gap: '12px', alignItems: 'center', padding: '4px 0', borderTop: '0.5px solid var(--dsw-alias-border-l1)' },
+      billingRowLabel: { fontSize: '11.5px', color: 'var(--dsw-alias-label-secondary)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' },
+      billingRowTokens: { fontSize: '11.5px', color: 'var(--dsw-alias-label-tertiary)', textAlign: 'right', fontVariantNumeric: 'tabular-nums' },
+      billingRowCost: { fontSize: '11.5px', color: 'var(--dsw-alias-label-primary)', textAlign: 'right', fontVariantNumeric: 'tabular-nums' },
+      billingNote: { margin: 0, fontSize: '10.5px', lineHeight: 1.55, color: 'var(--dsw-alias-label-tertiary)' },
       chartWrap: { display: 'flex', flexDirection: 'column', gap: '6px', minWidth: 0 },
       chartBars: { display: 'flex', alignItems: 'flex-end', gap: '6px', height: '96px', paddingTop: '6px', overflowX: 'auto' },
       chartBarCol: { flex: '1 1 0', minWidth: '14px', display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '3px', height: '100%', justifyContent: 'flex-end' },
@@ -2632,12 +2681,13 @@ window.__ModuleLoader__.load({
     function KpiBand(props) {
       const t = props.t
       const kpi = props.kpi || {}
-      const cost = typeof kpi.cost === 'number' ? `¥${kpi.cost >= 0.01 ? kpi.cost.toFixed(2) : kpi.cost.toFixed(4)}` : '—'
+      const cost = formatCost(kpi.cost)
+      const costSub = kpi.cost === null || kpi.cost === undefined ? t('costUnknown') : t('costEstimated')
       const items = [
         { key: 'sessions', label: t('kpiSessions'), value: formatTokens(kpi.sessions), sub: props.coverage ? t('coverageShort').replace('{scanned}', props.coverage.scanned).replace('{total}', props.coverage.total) : '' },
         { key: 'tokens', label: t('kpiTokens'), value: compactTokens(kpi.tokens), sub: `≈ ${formatTokens(kpi.tokens)} tok` },
         { key: 'cache', label: t('kpiCache'), value: formatPercent(kpi.cacheHit, 1), sub: `${compactTokens(kpi.cacheRead || 0)} cache` },
-        { key: 'cost', label: t('kpiCost'), value: cost, sub: kpi.cost === null || kpi.cost === undefined ? t('costUnknown') : t('costEstimated') },
+        { key: 'cost', label: t('kpiCost'), value: cost, sub: costSub },
         { key: 'tools', label: t('kpiTools'), value: formatTokens(kpi.toolCalls), sub: '' },
         { key: 'active', label: t('kpiActive'), value: formatDurationMs(kpi.activeMs), sub: '' },
         { key: 'compactions', label: t('kpiCompactions'), value: formatTokens(kpi.compactions), sub: kpi.injections ? `${formatTokens(kpi.injections)} inject` : '' },
@@ -2647,6 +2697,45 @@ window.__ModuleLoader__.load({
         h('strong', { style: styles.kpiCardValue }, item.value),
         item.sub ? h('span', { style: styles.kpiCardSub }, item.sub) : null,
       )))
+    }
+
+    /** 计费卡：把官方价目按缓存命中/未命中/输出拆开，展示 token → 人民币。 */
+    function BillingCard(props) {
+      const t = props.t
+      const kpi = props.kpi || {}
+      const parts = kpi.costParts || {}
+      const pricing = props.pricing || {}
+      const models = Array.isArray(pricing.models) ? pricing.models : []
+      const flash = models.find((model) => /flash/i.test(model.id)) || models[0] || null
+      const peak = typeof pricing.peakNow === 'boolean' ? pricing.peakNow : null
+      const rate = flash && peak !== null ? (peak ? flash.peak : flash.offPeak) : null
+      const rows = [
+        { key: 'cacheRead', label: t('costCacheHit'), tokens: kpi.cacheRead, cost: parts.cacheRead },
+        { key: 'input', label: t('costCacheMiss'), tokens: kpi.input, cost: parts.input },
+        { key: 'cacheWrite', label: t('costCacheWrite'), tokens: kpi.cacheWrite, cost: parts.cacheWrite },
+        { key: 'output', label: t('costOutput'), tokens: kpi.output, cost: parts.output },
+      ].filter((row) => (Number(row.tokens) || 0) > 0 || (Number(row.cost) || 0) > 0)
+      const note = rate
+        ? `${t('costRateExample')} ${flash.label} · ${t('costNow')}：${peak ? t('costPeak') : t('costOffPeak')} · ${t('costCacheHit')} ¥${rate.cacheRead} · ${t('costCacheMiss')} ¥${rate.input} · ${t('costOutput')} ¥${rate.output} / ${t('costRateUnit')}`
+        : t('costPricingNote')
+      return h('div', { style: styles.card, 'data-embodiment-billing': '1' },
+        h('div', { style: styles.cardHead },
+          h('h3', { style: styles.cardTitle }, t('billingTitle')),
+          h('span', { style: styles.cardSub }, `${pricing.currency || 'CNY'} · ${t('costEstimated')}${pricing.custom ? ` · ${t('costCustom')}` : ''}`),
+        ),
+        h('div', { style: styles.billingBody },
+          h('div', { style: styles.billingTotal },
+            h('span', { style: styles.billingTotalLabel }, t('costTotal')),
+            h('strong', { style: styles.billingTotalValue, 'data-embodiment-billing-total': '1' }, formatCost(kpi.cost)),
+          ),
+          h('div', { style: styles.billingRows }, rows.map((row) => h('div', { key: row.key, style: styles.billingRow, 'data-embodiment-billing-row': row.key },
+            h('span', { style: styles.billingRowLabel }, row.label),
+            h('span', { style: styles.billingRowTokens }, `${compactTokens(row.tokens)} tok`),
+            h('span', { style: styles.billingRowCost }, formatCost(row.cost)),
+          ))),
+        ),
+        h('p', { style: styles.billingNote, title: pricing.source || '' }, note),
+      )
     }
 
     function DailyChart(props) {
@@ -2742,6 +2831,7 @@ window.__ModuleLoader__.load({
               h('span', null, `${compactTokens(item.tokens)} tok`),
               h('span', null, `${formatTokens(item.turns)} ${t('turnsLabel')}`),
               h('span', null, `${formatTokens(item.requests)} ${t('requestsLabel')}`),
+              item.cost !== null && item.cost !== undefined ? h('span', null, formatCost(item.cost)) : null,
               item.compactions > 0 ? h('span', null, `${formatTokens(item.compactions)}×` ) : null,
             ),
             h('span', {
@@ -2786,6 +2876,8 @@ window.__ModuleLoader__.load({
       const sub = allRequests.length > requests.length
         ? `${requests.length} / ${allRequests.length} ${t('requestsUnit')}`
         : `${requests.length} ${t('requestsUnit')}`
+      const costTotal = typeof detail.session.cost === 'number' ? detail.session.cost : series.reduce((sum, entry) => sum + (typeof entry.item.cost === 'number' ? entry.item.cost : 0), 0)
+      const costKnown = typeof detail.session.cost === 'number' || series.some((entry) => typeof entry.item.cost === 'number')
       const legendItem = (color, label, shape) => h('span', { style: styles.trendLegendItem },
         h('i', { style: { width: shape === 'line' ? '10px' : '8px', height: shape === 'line' ? '2px' : '8px', borderRadius: '2px', background: color, display: 'inline-block', flex: 'none' } }),
         label,
@@ -2795,7 +2887,7 @@ window.__ModuleLoader__.load({
         try { return new Date(time).toLocaleTimeString() } catch { return '—' }
       }
       return h('div', { style: { ...styles.card, ...styles.cardFill }, 'data-embodiment-trend': '1' },
-        h('div', { style: styles.cardHead }, h('h3', { style: styles.cardTitle }, t('trendTitle')), h('span', { style: styles.cardSub }, sub)),
+        h('div', { style: styles.cardHead }, h('h3', { style: styles.cardTitle }, t('trendTitle')), h('span', { style: styles.cardSub }, `${sub}${costKnown ? ` · ${formatCost(costTotal)}` : ''}`)),
         h('div', { style: styles.legendInline },
           legendItem('var(--dsw-static-blue-450)', t('trendPrompt')),
           legendItem('var(--dsw-static-green-400)', t('trendOutput')),
@@ -2822,7 +2914,7 @@ window.__ModuleLoader__.load({
               const previousCompaction = index > 0 ? series[index - 1].item.compaction : null
               const marker = index > 0 && entry.item.compaction && (!previousCompaction || previousCompaction.endedAt !== entry.item.compaction.endedAt)
               const turn = entry.item.turn !== null && entry.item.turn !== undefined ? `T${entry.item.turn}` : '—'
-              const title = `#${index + 1} · ${timeText(entry.item.time)} · ${turn} · ${t('trendPrompt')} ${formatTokens(entry.prompt)} · ${t('trendOutput')} ${formatTokens(entry.output)} · ${formatTokens(entry.total)}${marker ? ` · ${t('trendAfterCompaction')}` : ''}`
+              const title = `#${index + 1} · ${timeText(entry.item.time)} · ${turn} · ${t('trendPrompt')} ${formatTokens(entry.prompt)} · ${t('trendOutput')} ${formatTokens(entry.output)} · ${formatTokens(entry.total)}${typeof entry.item.cost === 'number' ? ` · ${formatCost(entry.item.cost)}` : ''}${marker ? ` · ${t('trendAfterCompaction')}` : ''}`
               return h('div', { key: `${entry.item.time}-${index}`, style: styles.trendCol, title },
                 marker ? h('div', { style: styles.trendMarker, title: t('trendAfterCompaction') }, h('span', { style: styles.trendMarkerDot })) : null,
                 h('div', { style: { ...styles.trendOutput, height: `${outputHeight}px` } }),
@@ -3098,6 +3190,8 @@ window.__ModuleLoader__.load({
       const headerWarnAt = live && typeof live.warnAt === 'number' ? live.warnAt : typeof budget.warnAt === 'number' ? budget.warnAt : 0.75
       const headerErrorAt = live && typeof live.errorAt === 'number' ? live.errorAt : typeof budget.errorAt === 'number' ? budget.errorAt : 0.9
       const headerRequests = detail && Array.isArray(detail.requests) ? detail.requests.length : headerSession && typeof headerSession.requests === 'number' ? headerSession.requests : null
+      let headerCost = headerSession && typeof headerSession.cost === 'number' ? headerSession.cost : null
+      if (detail && detail.session && (!headerSessionId || detail.session.id === headerSessionId) && typeof detail.session.cost === 'number') headerCost = detail.session.cost
       const headerParts = []
       if (headerSession && headerSession.title) headerParts.push(`${t('sessionLabel')} ${headerSession.title}`)
       if (headerUsed !== null && headerBudget !== null && headerBudget > 0) {
@@ -3106,6 +3200,7 @@ window.__ModuleLoader__.load({
         headerParts.push(`${t('remaining')} ${compactTokens(Math.max(0, headerBudget - headerUsed))}`)
       }
       if (headerRequests !== null) headerParts.push(`${headerRequests} ${t('requestsUnit')}`)
+      if (headerCost !== null) headerParts.push(`${t('costLabel')} ${formatCost(headerCost)}`)
       const headerLine = headerParts.length > 0 ? headerParts.join(' · ') : t('description')
 
       const children = [
@@ -3175,6 +3270,7 @@ window.__ModuleLoader__.load({
         // 先答"还剩多少"，再给跨会话统计与图表。
         children.push(h(OverviewCard, { key: 'overview', t, budget, latest, live, liveAt: liveState.at }))
         children.push(h(KpiBand, { key: 'kpis', t, kpi: analytics ? analytics.kpi : {}, coverage: analytics ? analytics.coverage : null }))
+        if (analytics) children.push(h(BillingCard, { key: 'billing', t, kpi: analytics.kpi, pricing: data ? data.pricing : null }))
         if (analyticsState.error && !analytics) {
           children.push(h('div', { key: 'analyticsError', style: styles.emptyState },
             h('p', { style: styles.error }, `${t('analyticsError')}: ${analyticsState.error}`),

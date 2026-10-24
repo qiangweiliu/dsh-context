@@ -46,6 +46,18 @@ check('汇总 usage（含压缩摘要调用）', fold.usage.total === 1110 && fo
 check('请求数 / 轮数 / 工具调用', fold.requests.length === 2 && fold.counts.turns === 2 && fold.counts.toolCalls === 1, fold.counts)
 check('缓存命中率', Math.abs(fold.cacheHit - 900 / 1030) < 1e-9, fold.cacheHit)
 check('成本按模型价格估算（含压缩摘要）', fold.cost !== null && Math.abs(fold.cost - 0.00095) < 1e-9, fold.cost)
+check('成本拆分包含缓存命中/未命中/输出', Math.abs(fold.costParts.input - 0.00026) < 1e-9 && Math.abs(fold.costParts.cacheRead - 0.00045) < 1e-9 && Math.abs(fold.costParts.output - 0.00024) < 1e-9, fold.costParts)
+
+// 官方 V4.1 Flash 人民币峰谷价：高峰 2 / 0.04 / 8，空闲 1 / 0.02 / 4（每 1M tokens）。
+const flashUsage = { inputTokens: 1_000_000, cacheReadTokens: 1_000_000, outputTokens: 1_000_000, totalTokens: 3_000_000 }
+const flashEvent = (time) => ({ type: 'assistant/message', seq: 1, time, data: { usage: flashUsage, message: { source: { provider: 'deepseek', model: 'deepseek-v4.1-flash' } } } })
+const peakFold = foldSession({ id: 'flash-peak' }, [flashEvent(Date.UTC(2026, 9, 23, 2, 0))])
+const offPeakFold = foldSession({ id: 'flash-off' }, [flashEvent(Date.UTC(2026, 9, 23, 13, 0))])
+const weekendFold = foldSession({ id: 'flash-weekend' }, [flashEvent(Date.UTC(2026, 9, 24, 2, 0))])
+check('V4.1 Flash 高峰时段按官方价', Math.abs(peakFold.cost - 10.04) < 1e-9, peakFold.cost)
+check('V4.1 Flash 空闲时段按官方价', Math.abs(offPeakFold.cost - 5.02) < 1e-9, offPeakFold.cost)
+check('周末按空闲价', Math.abs(weekendFold.cost - 5.02) < 1e-9, weekendFold.cost)
+check('峰谷标记写入请求明细', peakFold.requests[0].costParts.peak === true && offPeakFold.requests[0].costParts.peak === false, peakFold.requests[0].costParts)
 check('压缩轮数与耗时', fold.counts.compactions === 1 && fold.compactions[0].durationMs === 2000, fold.compactions[0])
 check('压缩 shadowed tokens', fold.compactions[0].shadowedTokens === 1234, fold.compactions[0])
 check('压缩摘要 usage 进入总账', fold.compactions[0].usage?.total === 30 && fold.compactions[0].cost !== null, fold.compactions[0])
@@ -59,6 +71,7 @@ check('聚合 KPI：压缩/注入计数', summary.kpi.compactions === 1 && summa
 check('聚合 KPI 与日图一致', summary.kpi.tokens === summary.daily.reduce((sum, day) => sum + day.tokens, 0), { kpi: summary.kpi.tokens, daily: summary.daily.reduce((sum, day) => sum + day.tokens, 0) })
 check('7 天桶补齐', summary.daily.length === 7, summary.daily.length)
 check('会话卡片字段', summary.sessions[0].id === 'session-test' && summary.sessions[0].title === '测试会话', summary.sessions[0])
+check('聚合 KPI 带成本拆分', summary.kpi.costParts && Math.abs(summary.kpi.costParts.cacheRead - 0.00045) < 1e-9, summary.kpi.costParts)
 
 // 跨区间会话：KPI 只应统计区间内的日桶，而不是整段会话。
 const spanning = foldSession({ id: 'session-span', createdAt: now - 20 * 24 * 3600 * 1000 }, [
@@ -73,6 +86,7 @@ const detail = sessionDetail(fold)
 check('会话详情：请求序列', detail.requests.length === 2 && detail.requests[0].prompt === 1000, detail.requests)
 check('会话详情：压缩标记', detail.compactions.length === 1 && detail.compactions[0].shadowedTokens === 1234, detail.compactions)
 check('会话详情：请求带上最近一次压缩', detail.requests[0].compaction === null && detail.requests[1].compaction?.shadowedTokens === 1234, detail.requests.map((request) => request.compaction))
+check('会话详情请求带成本拆分', detail.requests[0].costParts && Math.abs(detail.requests[0].costParts.input - 0.0002) < 1e-9, detail.requests[0].costParts)
 
 const unknown = foldSession({ id: 's2' }, [
   { type: 'assistant/message', seq: 1, time: now, data: { usage: { inputTokens: 1, outputTokens: 1, totalTokens: 2 }, message: { source: { provider: 'agnes', model: 'agnes-3.0-flash' } } } },

@@ -340,6 +340,15 @@ npm 运行依赖：无；生命周期脚本：无
 - 实测：Desktop 0.2.1-rc.2 HMR；截图 [0.23-trend.png](ui/0.23-trend.png)。
 - 测试：`static 83/83`（新增趋势图/头部摘要断言）、`metrics 24/24`、`state 16/16`、`scaffold 146/146`、`control 54/54`、`smoke 71/71`、`prompt-state 11/11`。
 
+## E27. v0.23.0 DeepSeek 官方人民币峰谷计费（2026-10-24）
+
+- 价目来源：[DeepSeek 开放平台 · 模型 & 价格](https://api-docs.deepseek.com/zh-cn/quick_start/pricing)（2026-10-24 抓取）。V4.1 Flash：缓存命中 ¥0.02/¥0.04、未命中 ¥1/¥2、输出 ¥4/¥8；V4 Pro：¥0.15/¥0.30、¥4.5/¥9、¥13.5/¥27（空闲/高峰，CNY / 1M tokens）。
+- `metrics.js` 新增 `PRICING_META`、`isPeakTime()`（北京时间工作日 09:00–12:00、14:00–18:00），每条 assistant/compaction 事件按事件时间产生 `costParts`（input/cacheRead/cacheWrite/output），汇总到 `fold.cost`、日桶和 `summarizeFolds().kpi.costParts`；自定义 `modelPricing` 仍可覆盖。
+- 状态接口下发 `pricing`（currency、models、peakNow、source、updatedAt）；概览新增计费卡，KPI 费用卡、页头、会话卡、趋势卡副标题/tooltip 都显示人民币费用。
+- 测试：`static 86/86`、`metrics 31/31`（新增高峰 ¥10.04、空闲/周末 ¥5.02、成本拆分断言）、`state 16/16`、`scaffold 146/146`、`control 54/54`、`smoke 72/72`、`prompt-state 11/11`。
+- Desktop 0.2.1-rc.2 实机：HMR 后概览计费卡显示 7 天 340M tokens 的 `¥17.01`（缓存命中 334M `¥6.68` / 未命中 5.1M `¥5.09` / 输出 1.3M `¥5.24`），当前时段为“空闲”，与官方 ¥0.02/¥1/¥4 一致；页头当前会话显示 `费用 ¥4.06`。截图 [0.23-billing.png](ui/0.23-billing.png)。
+- 边界：费用按请求完成时间判定峰谷，法定节假日未单独扣除；Search/Fetch 未计；旧模型名沿用旧价。
+
 ## 已知限制（unknown）
 
 - 未进行独立安全审计；本文件不声称“安全通过”。

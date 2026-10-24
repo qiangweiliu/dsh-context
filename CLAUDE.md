@@ -28,7 +28,7 @@ node test/state.mjs         # 会话开关/提示词文本持久化往返
 node test/scaffold.mjs      # 脚手架生成计划、YAML 与 AGENTS 合并
 ```
 
-当前基线（0.23.0）：static 83/83、metrics 24/24、state 16/16、scaffold 146/146。
+当前基线（0.23.0）：static 86/86、metrics 31/31、state 16/16、scaffold 146/146。
 
 CI 在 `.github/workflows/test.yml`：Node 20/22/24 三档，先 `node --check index.js control.js client.js`，再 `npm test`，最后 `npm pack --dry-run`（提前暴露 `files`/`exports` 缺文件）。
 
@@ -43,7 +43,7 @@ node test/smoke.mjs
 node test/prompt-state.mjs
 ```
 
-`prepare-deps.mjs` 默认找 Windows 桌面版 `app.asar`，可用 `DSH_ASAR=/path/to/app.asar` 覆盖。`test/deps/` 是生成物，已 gitignore。当前基线：control 54/54、smoke 71/71、prompt-state 11/11。
+`prepare-deps.mjs` 默认找 Windows 桌面版 `app.asar`，可用 `DSH_ASAR=/path/to/app.asar` 覆盖。`test/deps/` 是生成物，已 gitignore。当前基线：control 54/54、smoke 72/72、prompt-state 11/11。
 
 ### 语法检查（仓库没有 lint 配置）
 
@@ -124,7 +124,7 @@ UI 脚本通过 Windows Edge 的 CDP 连接（`scripts/lib/cdp.mjs`，默认 Edg
 
 `PROMPT_TEMPLATES`（`index.js`）里的内置方法论模板只作为草稿来源，不默认注入。模板文本必须完全稳定（不能含时间戳、会话 id、随机量），否则每次请求都会 miss 提示词缓存；`test/prompt-state.mjs` 有对应断言。改动模板后应同步更新 `eval/REPORT.md` 的实测结论。
 
-跨会话分析默认扫描 `analyticsLimit` 个会话（默认 40，最大 200），请求里带 `?limit=` 可临时覆盖。费用只对 `MODEL_PRICING` 覆盖的 DeepSeek 模型估算，可用配置 `modelPricing`（`{ match, input, cacheRead, cacheWrite, output }`，CNY / 1M tokens）补充或覆盖；未知模型显示 `—`。
+跨会话分析默认扫描 `analyticsLimit` 个会话（默认 40，最大 200），请求里带 `?limit=` 可临时覆盖。费用按 DeepSeek 官方人民币峰谷价逐条估算（`DEFAULT_MODEL_PRICING` 覆盖 V4.1 Flash / V4 Pro；`isPeakTime()` 判定北京时间工作日 09:00–12:00、14:00–18:00），`kpi.costParts` 拆分缓存命中/未命中/输出；可用配置 `modelPricing`（`{ match, input, cacheRead, cacheWrite, output }`，CNY / 1M tokens）补充或覆盖，自定义行按全天同价；未知模型显示 `—`。
 
 ### HTTP 接口与安全
 
@@ -174,7 +174,7 @@ UI 脚本通过 Windows Edge 的 CDP 连接（`scripts/lib/cdp.mjs`，默认 Edg
 - `agent-embodiment/README.md`：用户功能与入口。
 - `agent-embodiment/docs/IMPLEMENTATION.md`：实现细节、路由清单、测试结果（最接近架构总览）。
 - `agent-embodiment/docs/LIMITATIONS.md`：行为边界与已知限制。
-- `agent-embodiment/docs/EVIDENCE.md`：逐版本 UI/运行证据（E16–E26 覆盖 0.19–0.23）。
+- `agent-embodiment/docs/EVIDENCE.md`：逐版本 UI/运行证据（E16–E27 覆盖 0.19–0.23）。
 - `agent-embodiment/docs/RELEASE-PLAN.md`：0.22.0 → 1.0.0 的版本路线图、发布门禁、兼容矩阵与回滚步骤。
 - `agent-embodiment/docs/UI-PROPOSAL.md`：面板信息架构与视觉提案。
 - `agent-embodiment/CHANGELOG.md`：版本变更记录（Keep a Changelog）。

@@ -129,6 +129,15 @@
 
 inventory 属于进程内存，只反映最近一次装配；新会话需要先发一条消息。
 
+### 计费估算（0.23.0）
+
+`metrics.js` 的 `DEFAULT_MODEL_PRICING` 使用 2026-10-24 抓取的 DeepSeek 官方人民币价（CNY / 1M tokens）：
+
+- V4.1 Flash：缓存命中 ¥0.02/¥0.04、未命中 ¥1/¥2、输出 ¥4/¥8（空闲/高峰）；
+- V4 Pro：缓存命中 ¥0.15/¥0.30、未命中 ¥4.5/¥9、输出 ¥13.5/¥27。
+
+`isPeakTime()` 按北京时间工作日 09:00–12:00、14:00–18:00 判定；每条 `assistant/message` / `compaction/summary` 用事件时间算 `costParts`（input=缓存未命中、cacheRead=命中、cacheWrite 按未命中价、output），再汇总到 `fold.cost`、`fold.costParts`、日桶和 `summarizeFolds().kpi.costParts`。状态接口下发 `pricing` 元数据（models、peakNow、source），面板的计费卡、KPI、页头、会话卡和趋势 tooltip 都读这份数据；`modelPricing` 自定义行仍按全天同价覆盖。
+
 ## 5. 配置写入与备份
 
 全局配置、全局提示词、新增提示词都经 `ctx.configEditor` 写 profile `cordis.patch.yml`。
@@ -169,7 +178,7 @@ inventory 属于进程内存，只反映最近一次装配；新会话需要先�
 - `settings.section`：设置 → 上下文；
 - `conversation.composer.dock`：输入框下方指示器，环形 + 插件预算已用百分比；弹层显示已用/上限/剩余。
 
-面板头部常驻“会话/预算/已用/剩余/请求数”摘要与使用率条；趋势图用纵轴刻度 + 预算线 + 输入/输出色块，X 轴按请求序号 `#n` 标注，压缩点用橙色竖线标记。
+面板头部常驻“会话/预算/已用/剩余/请求数/费用”摘要与使用率条；概览 KPI 下方有计费卡，按缓存命中/未命中/输出拆分 token 与人民币；趋势图用纵轴刻度 + 预算线 + 输入/输出色块，X 轴按请求序号 `#n` 标注，压缩点用橙色竖线标记，tooltip 含单次费用。
 
 客户端只通过状态接口读取数据；新增提示词、全局配置等写入通过宿主路由完成。API 路径相对 `document.baseURI` 解析，兼容反向代理的路径前缀；`apply` 带 window 级幂等守卫，避免同一页面重复挂载出两套导航/设置/dock。
 
@@ -222,12 +231,12 @@ node --check client.js
 当前结果：
 
 ```text
-static       83/83
-metrics      24/24
+static       86/86
+metrics      31/31
 state        16/16
 scaffold    146/146
 control      54/54
-smoke        71/71
+smoke        72/72
 prompt-state 11/11
 ```
 

@@ -2,6 +2,26 @@
 
 格式参考 Keep a Changelog；版本遵循 SemVer。DSH 兼容版本写在每个条目的 Compatibility 下。
 
+## [Unreleased]
+
+### Fixed
+
+- 会话切换时清空上一会话的 `selected` 历史选择，趋势/详情不再停留在旧会话。
+- `useLive` 在 path 变化时立即清空旧 payload，并用请求路径守卫丢弃迟到的旧响应；dock 同样按 sessionId 守卫。
+- 补上 `sessions` 服务晚注入时的订阅；头部请求数只在 detail 属于当前会话时使用。
+- 会话级提示词编辑草稿、展开态和确认态在切换会话时重置，避免把 A 会话的编辑带到 B 会话。
+- “打开会话”优先调用官方 `uiWorkspace.openSession`，并补 `role=treeitem` 侧栏回退。
+
+### Changed
+
+- 概览去掉与页头/dock 重复的上下文大卡、与每日图重复的活跃度热力图，以及重复的费用 KPI；只保留 KPI 带、计费卡、每日图、最近会话。
+- 页头合并为会话标题 + 已用/剩余（或累计）+ 请求 + 费用，并复用分段构成条；空会话不再显示四个 0% 构成。
+- 会话卡从嵌套 button 改为可点击卡片 + 独立“打开会话”按钮。
+
+### Added
+
+- 静态断言：会话切换丢弃旧响应、清空历史选择、概览去重、`uiWorkspace.openSession`。
+
 ## [0.23.0] - 2026-10-24
 
 ### Added

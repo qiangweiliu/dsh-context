@@ -212,6 +212,9 @@ check('头部摘要与趋势请求数走本地化单位', clientSource.includes(
 check('内置 DeepSeek 官方人民币峰谷价', metricsSource.includes('DeepSeek V4.1 Flash') && metricsSource.includes('offPeak') && metricsSource.includes('isPeakTime'))
 check('状态接口暴露价目与峰谷时段', indexSource.includes('pricing:') && indexSource.includes('PRICING_META') && indexSource.includes('peakNow'))
 check('面板有计费卡并显示人民币费用', clientSource.includes('data-embodiment-billing') && clientSource.includes('formatCost') && clientSource.includes("t('billingTitle')"))
+check('会话切换丢弃旧响应并清空历史选择', clientSource.includes('lastPathRef') && clientSource.includes('setSelected(null)') && clientSource.includes('sessionRef.current !== requestedSession') && clientSource.includes('detailSession || activeSession'))
+check('头部合并上下文构成、概览去掉重复图表与费用 KPI', clientSource.includes('headerCategories') && clientSource.includes('h(SegmentedBar') && clientSource.includes('h(LegendGrid') && !clientSource.includes('data-embodiment-heatmap') && !clientSource.includes('kpiCost'))
+check('打开会话优先用 uiWorkspace.openSession', clientSource.includes("ctx.inject(['uiWorkspace']") && clientSource.includes('workspaceService.openSession') && clientSource.includes('role="treeitem"'))
 check('scaffold 中英文词典齐全', Boolean(client.dictionaries.agentEmbodiment?.en?.scaffoldTitle) && Boolean(client.dictionaries.agentEmbodiment?.zh?.scaffoldTitle))
 
 // 同一个 window 下加载两次：第二次 apply 必须被挂载守卫挡住，不能重复注册槽位。

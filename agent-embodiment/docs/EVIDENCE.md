@@ -349,6 +349,15 @@ npm 运行依赖：无；生命周期脚本：无
 - Desktop 0.2.1-rc.2 实机：HMR 后概览计费卡显示 7 天 340M tokens 的 `¥17.01`（缓存命中 334M `¥6.68` / 未命中 5.1M `¥5.09` / 输出 1.3M `¥5.24`），当前时段为“空闲”，与官方 ¥0.02/¥1/¥4 一致；页头当前会话显示 `费用 ¥4.06`。截图 [0.23-billing.png](ui/0.23-billing.png)。
 - 边界：费用按请求完成时间判定峰谷，法定节假日未单独扣除；Search/Fetch 未计；旧模型名沿用旧价。
 
+## E28. 会话切换与概览去重（2026-10-25，Web 隔离 profile）
+
+- 环境：Windows Desktop 资源里的 `dsh` CLI；把 `desktop` profile 复制为 `uitest` 后启动独立 Web 实例（`--profile uitest --port 0 --no-open`），插件仍指向已安装的 `dsh-plugins/agent-embodiment`；Edge headless + CDP 操作真实页面。
+- 会话切换：点击左侧 `role=treeitem` 会话行，头部从新会话的 `已用 0 / 256K（0%）· 0 次请求` 切换为 `会话 Initialize project · 594 次请求 · 费用 ¥5.34`，再切回新会话恢复为 0；没有出现 A 会话标题配 B 会话请求数/费用的混合。
+- 概览：去重后可见 KPI 带（6 项）、计费卡、单张每日 tokens 图和最近会话卡；没有旧的上下文大卡、活跃度热力图和费用 KPI。空会话不显示四个 0% 构成。
+- 保护逻辑：`useLive` path 变化清空 + 请求路径守卫、dock 的 sessionId 守卫、`selected` 清空、inventory 草稿重置、`sessions` 晚注入补订阅；静态断言覆盖这些字符串与 `uiWorkspace.openSession`。
+- 测试：`static 89/89`、`metrics 31/31`、`state 16/16`、`scaffold 146/146`。
+- 边界：隔离 Web 实例对未加载进本进程的历史会话 `/live` 会返回 `unknown session`，此时头部走“累计 tokens”回退；真实 Desktop 的活动会话仍由 `/live` 提供实时用量。该实例是复制 profile，不是 Desktop Electron 窗口的截图验证。
+
 ## 已知限制（unknown）
 
 - 未进行独立安全审计；本文件不声称“安全通过”。

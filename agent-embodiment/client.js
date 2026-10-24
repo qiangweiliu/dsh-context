@@ -229,7 +229,6 @@ window.__ModuleLoader__.load({
       kpiSessions: 'Sessions',
       kpiTokens: 'Tokens',
       kpiCache: 'Cache hit',
-      kpiCost: 'Cost (est.)',
       kpiTools: 'Tool calls',
       kpiActive: 'Active time',
       kpiCompactions: 'Compactions',
@@ -253,9 +252,6 @@ window.__ModuleLoader__.load({
       coverage: 'Scanned {scanned}/{total} sessions',
       coverageShort: '{scanned}/{total} scanned',
       dailyTitle: 'Tokens per day',
-      heatmapTitle: 'Activity',
-      heatLow: 'Less',
-      heatHigh: 'More',
       sessionsTitle: 'Recent sessions',
       searchSessions: 'Search title / workspace / id',
       noSessions: 'No sessions in this range',
@@ -476,7 +472,6 @@ window.__ModuleLoader__.load({
       kpiSessions: '会话数',
       kpiTokens: '累计 tokens',
       kpiCache: '缓存命中',
-      kpiCost: '费用（估算）',
       kpiTools: '工具调用',
       kpiActive: '活跃时长',
       kpiCompactions: '压缩次数',
@@ -500,9 +495,6 @@ window.__ModuleLoader__.load({
       coverage: '已扫描 {scanned}/{total} 个会话',
       coverageShort: '{scanned}/{total} 已扫描',
       dailyTitle: '每日 tokens',
-      heatmapTitle: '活跃度',
-      heatLow: '少',
-      heatHigh: '多',
       sessionsTitle: '最近会话',
       searchSessions: '搜索标题 / 工作区 / id',
       noSessions: '该范围内没有会话',
@@ -539,6 +531,13 @@ window.__ModuleLoader__.load({
     }
 
     let sessionService = null
+    let workspaceService = null
+    const sessionServiceSubscribers = new Set()
+
+    function publishSessionService(service) {
+      sessionService = service
+      for (const notify of sessionServiceSubscribers) notify()
+    }
 
     /** 当前 mainView 保留的会话 id；拿不到时返回 null。 */
     function currentSessionId() {
@@ -558,12 +557,20 @@ window.__ModuleLoader__.load({
 
     /** 订阅会话列表，返回当前选中会话 id（变化时重渲染）。 */
     function useCurrentSession() {
+      // sessions 服务可能比组件晚注入；用 service 状态 + 订阅两层，避免只拿一次快照。
+      const [service, setService] = react.useState(sessionService)
       const [id, setId] = react.useState(() => currentSessionId())
       react.useEffect(() => {
-        if (!sessionService) return undefined
-        const stop = sessionService.list.subscribe(() => setId(currentSessionId()))
-        return () => stop()
+        const notify = () => setService(sessionService)
+        sessionServiceSubscribers.add(notify)
+        notify()
+        return () => sessionServiceSubscribers.delete(notify)
       }, [])
+      react.useEffect(() => {
+        if (!service) return undefined
+        setId(currentSessionId())
+        return service.list.subscribe(() => setId(currentSessionId()))
+      }, [service])
       return id
     }
 
@@ -672,13 +679,6 @@ window.__ModuleLoader__.load({
     }
 
     /** ok / warn / error —— 与 ratioColor 的阈值一致，用于状态 badge 与文字。 */
-    function ratioState(ratio, warnAt = 0.75, errorAt = 0.9) {
-      if (ratio === null || ratio === undefined) return 'ok'
-      if (ratio >= errorAt) return 'error'
-      if (ratio >= warnAt) return 'warn'
-      return 'ok'
-    }
-
     function StatusBadge(props) {
       const t = props.t
       const state = props.state || 'ok'
@@ -809,8 +809,6 @@ window.__ModuleLoader__.load({
       versionChip: { display: 'inline-flex', alignItems: 'center', borderRadius: '999px', border: '0.5px solid var(--dsw-alias-border-l2)', background: 'var(--dsw-alias-bg-layer-2)', padding: '1px 8px', fontSize: '11.5px', lineHeight: '18px', color: 'var(--dsw-alias-label-secondary)', fontVariantNumeric: 'tabular-nums' },
       subtitle: { margin: 0, fontSize: '12px', lineHeight: 1.6, color: 'var(--dsw-alias-label-tertiary)' },
       cols: { display: 'flex', flexWrap: 'wrap', gap: '12px', alignItems: 'flex-start' },
-      chartWide: { flex: '2 1 380px', minWidth: 'min(320px, 100%)' },
-      chartNarrow: { flex: '1 1 240px', minWidth: 'min(240px, 100%)' },
       card: {
         minWidth: 'min(260px, 100%)',
         boxSizing: 'border-box',
@@ -862,16 +860,7 @@ window.__ModuleLoader__.load({
       configGrid: { display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(150px, 1fr))', gap: '10px 12px' },
       label: { color: 'var(--dsw-alias-label-secondary)' },
       input: { width: '100%', boxSizing: 'border-box', border: '0.5px solid var(--dsw-alias-border-l2)', borderRadius: '8px', background: 'var(--dsw-alias-bg-base)', color: 'inherit', padding: '5px 9px', fontSize: '12.5px' },
-      // ── 概览 hero / 环形图 / KPI / 图例 ───────────────────────────────────
-      heroBody: { display: 'flex', alignItems: 'center', gap: '20px', flexWrap: 'wrap' },
-      ringWrap: { position: 'relative', width: '84px', height: '84px', flex: 'none' },
-      ringSvg: { width: '84px', height: '84px', transform: 'rotate(-90deg)' },
-      ringCenter: { position: 'absolute', inset: 0, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: '1px' },
-      ringPercent: { fontSize: '19px', fontWeight: 600, lineHeight: '24px', fontVariantNumeric: 'tabular-nums' },
-      ringLabel: { fontSize: '10px', color: 'var(--dsw-alias-label-tertiary)' },
-      // hero 用无框统计格；控制卡沿用带底色的 kpi 块。
-      statRow: { display: 'grid', gridTemplateColumns: 'repeat(4, minmax(0, 1fr))', gap: '2px 18px', flex: '1 1 420px', minWidth: '240px', margin: 0 },
-      stat: { display: 'flex', flexDirection: 'column', gap: '1px', minWidth: 0 },
+      // ── KPI / 图例 ────────────────────────────────────────────────────────
       kpi: { display: 'flex', flexDirection: 'column', gap: '2px', padding: '8px 10px', borderRadius: '8px', background: 'var(--dsw-alias-bg-layer-2)', minWidth: 0 },
       kpiLabel: { fontSize: '10.5px', lineHeight: '15px', color: 'var(--dsw-alias-label-tertiary)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' },
       kpiValue: { fontSize: '17px', lineHeight: '23px', fontWeight: 600, fontVariantNumeric: 'tabular-nums', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' },
@@ -880,14 +869,11 @@ window.__ModuleLoader__.load({
       legendItem: { display: 'flex', alignItems: 'center', gap: '7px', minWidth: 0, fontSize: '12px', color: 'var(--dsw-alias-label-secondary)' },
       legendName: { whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' },
       legendValue: { marginLeft: 'auto', fontVariantNumeric: 'tabular-nums', fontWeight: 500, color: 'var(--dsw-alias-label-primary)', whiteSpace: 'nowrap' },
-      // ── 状态 badge / 阈值 chip ───────────────────────────────────────────
+      // ── 状态 badge ──────────────────────────────────────────────────────
       badge: { display: 'inline-flex', alignItems: 'center', gap: '5px', borderRadius: '999px', padding: '1px 8px', fontSize: '11px', fontWeight: 600, lineHeight: '18px', border: '0.5px solid transparent', whiteSpace: 'nowrap' },
       badgeOk: { color: 'var(--dsw-alias-state-success-primary)', borderColor: 'var(--dsw-alias-state-success-primary)' },
       badgeWarn: { color: 'var(--dsw-alias-state-warn-primary)', borderColor: 'var(--dsw-alias-state-warn-primary)' },
       badgeError: { color: 'var(--dsw-alias-state-error-primary)', borderColor: 'var(--dsw-alias-state-error-primary)' },
-      thresholds: { display: 'flex', alignItems: 'center', gap: '12px', flexWrap: 'wrap' },
-      thresholdChip: { display: 'inline-flex', alignItems: 'center', gap: '4px', fontSize: '11px', lineHeight: '18px', color: 'var(--dsw-alias-label-tertiary)', fontVariantNumeric: 'tabular-nums' },
-      thresholdValue: { fontWeight: 600, color: 'var(--dsw-alias-label-secondary)', fontVariantNumeric: 'tabular-nums' },
       barWrap: { position: 'relative' },
       barTick: { position: 'absolute', top: '-2px', bottom: '-2px', width: '1px', background: 'var(--dsw-alias-label-tertiary)', opacity: 0.55, pointerEvents: 'none' },
       // ── 加载 / 空态 / 错误态 ─────────────────────────────────────────────
@@ -910,8 +896,6 @@ window.__ModuleLoader__.load({
       headerCard: { position: 'sticky', top: 0, zIndex: 3, background: 'var(--dsw-alias-bg-base)', padding: '4px 0 8px', display: 'flex', flexDirection: 'column', gap: '8px', borderBottom: '0.5px solid var(--dsw-alias-border-l1)' },
       headerRow: { display: 'flex', alignItems: 'center', gap: '10px', flexWrap: 'wrap' },
       headerSpacer: { flex: '1 1 auto' },
-      headerBar: { height: '4px', borderRadius: '999px', background: 'var(--dsw-alias-interactive-bg-hover)', overflow: 'hidden', marginTop: '2px' },
-      headerBarFill: { height: '100%', borderRadius: '999px', transition: 'width .4s ease' },
       tabs: { display: 'flex', gap: '2px', flexWrap: 'wrap', background: 'var(--dsw-alias-interactive-bg-hover)', padding: '2px', borderRadius: '9px', alignSelf: 'flex-start' },
       tab: { border: 'none', background: 'transparent', color: 'var(--dsw-alias-label-secondary)', borderRadius: '7px', padding: '4px 12px', fontSize: '12.5px', lineHeight: '18px', cursor: 'pointer' },
       tabActive: { background: 'var(--dsw-alias-bg-layer-1)', color: 'var(--dsw-alias-label-primary)', fontWeight: 600, boxShadow: '0 0.5px 2px rgba(0,0,0,.08)' },
@@ -940,10 +924,6 @@ window.__ModuleLoader__.load({
       chartBar: { width: '100%', maxWidth: '26px', borderRadius: '4px 4px 1px 1px', background: 'var(--dsw-alias-brand-primary)', minHeight: '2px', opacity: 0.88 },
       chartBarZero: { background: 'var(--dsw-alias-interactive-bg-hover)' },
       chartLabel: { fontSize: '9.5px', color: 'var(--dsw-alias-label-tertiary)', whiteSpace: 'nowrap', fontVariantNumeric: 'tabular-nums' },
-      heatGrid: { display: 'flex', flexWrap: 'wrap', gap: '4px', alignContent: 'flex-start' },
-      heatCell: { width: '20px', height: '20px', flex: 'none', borderRadius: '3px', background: 'var(--dsw-alias-interactive-bg-hover)' },
-      heatScale: { display: 'flex', alignItems: 'center', gap: '4px', marginTop: 'auto', fontSize: '10px', color: 'var(--dsw-alias-label-tertiary)' },
-      heatScaleCell: { width: '12px', height: '12px', borderRadius: '2px', flex: 'none' },
       sessionList: { display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(240px, 1fr))', gap: '8px' },
       sessionCard: { textAlign: 'left', border: '0.5px solid var(--dsw-alias-border-l1)', background: 'transparent', borderRadius: '10px', padding: '10px 12px', display: 'flex', flexDirection: 'column', gap: '5px', cursor: 'pointer', color: 'inherit', minWidth: 0 },
       sessionCardOn: { borderColor: 'var(--dsw-alias-brand-primary)' },
@@ -976,38 +956,6 @@ window.__ModuleLoader__.load({
     })
 
     // ── 基础视觉组件 ────────────────────────────────────────────────────────
-    /** 大号环形图：外圈背景 + 进度弧，中心显示百分比/已用。 */
-    function BigRing(props) {
-      const percent = Math.max(0, Math.min(100, Number(props.percent) || 0))
-      const radius = 46
-      const circumference = 2 * Math.PI * radius
-      return h(
-        'div',
-        { style: styles.ringWrap, 'data-embodiment-ring': String(Math.round(percent)), title: props.title },
-        h(
-          'svg',
-          { viewBox: '0 0 104 104', width: 104, height: 104, style: styles.ringSvg, 'aria-hidden': true },
-          h('circle', { cx: 52, cy: 52, r: radius, fill: 'none', stroke: 'var(--dsw-alias-interactive-bg-hover)', strokeWidth: 9 }),
-          h('circle', {
-            cx: 52,
-            cy: 52,
-            r: radius,
-            fill: 'none',
-            stroke: props.color || 'var(--dsw-alias-brand-primary)',
-            strokeWidth: 9,
-            strokeLinecap: 'round',
-            strokeDasharray: `${(circumference * percent) / 100} ${circumference}`,
-            style: { transition: 'stroke-dasharray .6s cubic-bezier(.22,.61,.36,1), stroke .2s ease' },
-          }),
-        ),
-        h(
-          'div',
-          { style: styles.ringCenter },
-          h('span', { style: { ...styles.ringPercent, color: props.color } }, percent === null ? '—' : `${Math.round(percent)}%`),
-          h('span', { style: styles.ringLabel }, props.label || ''),
-        ),
-      )
-    }
 
     /** 小号环形用量：规格与内置 ContextMeter 一致（14px、2px 描边）。 */
     function ContextRing(props) {
@@ -1480,17 +1428,31 @@ window.__ModuleLoader__.load({
     /** 打开页面时同步一次 /live；重新可见/窗口聚焦或点刷新时再同步，不做定时轮询。 */
     function useLive(path, refreshKey, enabled = true) {
       const [state, setState] = react.useState({ data: null, at: null, error: null })
+      const lastPathRef = react.useRef(path)
+      const pathRef = react.useRef(path)
+      pathRef.current = path
       const reload = react.useCallback(() => {
+        const requestedPath = path
         fetch(path, { headers: { accept: 'application/json' } })
           .then((response) => {
             if (!response.ok) throw new Error(`HTTP ${response.status}`)
             return response.json()
           })
           .then((payload) => {
+            if (pathRef.current !== requestedPath) return
             if (payload && payload.ok) setState({ data: payload, at: new Date().toISOString(), error: null })
             else throw new Error('invalid payload')
           })
-          .catch((error) => setState((previous) => ({ ...previous, error: String((error && error.message) || error) })))
+          .catch((error) => {
+            if (pathRef.current !== requestedPath) return
+            setState((previous) => ({ ...previous, error: String((error && error.message) || error) }))
+          })
+      }, [path])
+      // 切会话/切详情时先清掉旧 payload，避免新请求返回前把上一个会话的数据画到新标题下。
+      react.useEffect(() => {
+        if (lastPathRef.current === path) return
+        lastPathRef.current = path
+        setState({ data: null, at: null, error: null })
       }, [path])
       react.useEffect(() => {
         if (!enabled) return undefined
@@ -1533,12 +1495,16 @@ window.__ModuleLoader__.load({
       const [data, setData] = react.useState(null)
       const { open, setOpen, rootRef, triggerProps } = useDock()
       const usageTick = useUsageActivity()
+      const sessionRef = react.useRef(sessionId)
+      sessionRef.current = sessionId
 
       const fetchLive = react.useCallback(() => {
         if (!sessionId) return
+        const requestedSession = sessionId
         fetch(`${STATUS_PATH}/live?sessionId=${encodeURIComponent(String(sessionId))}`, { headers: { accept: 'application/json' } })
           .then((response) => (response.ok ? response.json() : null))
           .then((payload) => {
+            if (sessionRef.current !== requestedSession) return
             if (payload && payload.ok) setData(payload)
           })
           .catch(() => {})
@@ -1547,6 +1513,7 @@ window.__ModuleLoader__.load({
       // 打开会话时同步一次触发器；随后补一次延迟同步（等首次装配完成），窗口重新可见/聚焦时也同步。
       // 不是定时轮询：只在挂载、会话变化、可见性变化时各取一次。
       react.useEffect(() => {
+        setData(null)
         fetchLive()
         const timer = setTimeout(fetchLive, 4000)
         const onVisible = () => {
@@ -1635,80 +1602,6 @@ window.__ModuleLoader__.load({
     }
 
     // ── 面板内部区块 ───────────────────────────────────────────────────────
-    function OverviewCard(props) {
-      const t = props.t
-      const live = props.live
-      const budget = props.budget || {}
-      const latest = props.latest
-      const liveUsed = live && typeof live.used === 'number' ? live.used : null
-      const liveBudget = live && typeof live.budget === 'number' ? live.budget : null
-      const used = liveUsed !== null ? liveUsed : latest && typeof latest.totalTokens === 'number' ? latest.totalTokens : null
-      const budgetTokens = liveBudget !== null ? liveBudget : budget.tokens
-      const ratio = used !== null && budgetTokens > 0 ? used / budgetTokens : null
-      const warnAt = live && typeof live.warnAt === 'number' ? live.warnAt : typeof budget.warnAt === 'number' ? budget.warnAt : 0.75
-      const errorAt = live && typeof live.errorAt === 'number' ? live.errorAt : typeof budget.errorAt === 'number' ? budget.errorAt : 0.9
-      const triggerAt = live && typeof live.triggerAt === 'number' ? live.triggerAt : typeof budget.triggerAt === 'number' ? budget.triggerAt : 1
-      const targetAt = live && typeof live.targetAt === 'number' ? live.targetAt : typeof budget.targetAt === 'number' ? budget.targetAt : 0.6
-      const color = ratioColor(ratio, warnAt, errorAt)
-      const state = ratioState(ratio, warnAt, errorAt)
-      const remaining = used !== null && budgetTokens > 0 ? Math.max(0, budgetTokens - used) : null
-      const breakdown = (live && live.breakdown) || (liveUsed === null && latest ? latest.breakdown : null)
-      const categories = breakdownCategories(t, breakdown)
-      const sub = live ? `${t('synced')} ${formatTime(props.liveAt)}` : latest ? formatTime(latest.at) : undefined
-      // 增量：同会话内这次刷新相对上次刷新的变化（切换会话时重新计）。
-      const previousRef = react.useRef({ sessionId: null, used: null })
-      const sessionKey = live && live.sessionId ? live.sessionId : latest && latest.id ? latest.id : null
-      const delta = used !== null && previousRef.current.used !== null && previousRef.current.sessionId === sessionKey ? used - previousRef.current.used : null
-      react.useEffect(() => {
-        if (used === null) return
-        previousRef.current = { sessionId: sessionKey, used }
-      }, [sessionKey, used])
-      const exact = (value) => (typeof value === 'number' ? `${formatTokens(value)} ${t('tokens')}` : '—')
-      return h(
-        Card,
-        { title: t('budget'), sub, action: h(StatusBadge, { t, state }), id: 'overview', t },
-        h(
-          'div',
-          { style: styles.heroBody },
-          h(BigRing, { percent: ratio === null ? 0 : ratio * 100, color, label: t('ratio'), title: used === null ? '—' : `${formatTokens(used)} / ${formatTokens(budgetTokens)} ${t('tokens')}` }),
-          h(
-            'dl',
-            { style: styles.statRow },
-            h('div', { style: styles.stat, title: exact(used) }, h('span', { style: styles.kpiLabel }, t('used')), h('span', { style: styles.kpiValue }, compactTokens(used)), h('span', { style: styles.kpiSub }, `${t('tokens')} · ${formatPercent(ratio, 0)}`)),
-            h('div', { style: styles.stat, title: exact(budgetTokens) }, h('span', { style: styles.kpiLabel }, t('budgetLimit')), h('span', { style: styles.kpiValue }, compactTokens(budgetTokens)), h('span', { style: styles.kpiSub }, t('tokens'))),
-            h('div', { style: styles.stat, title: exact(remaining) }, h('span', { style: styles.kpiLabel }, t('remaining')), h('span', { style: styles.kpiValue }, compactTokens(remaining)), h('span', { style: styles.kpiSub }, t('tokens'))),
-            h(
-              'div',
-              { style: styles.stat, title: delta === null ? '—' : exact(delta) },
-              h('span', { style: styles.kpiLabel }, t('lastDelta')),
-              h(
-                'span',
-                {
-                  style: {
-                    ...styles.kpiValue,
-                    color: delta === null ? 'var(--dsw-alias-label-tertiary)' : delta > 0 ? 'var(--dsw-alias-state-warn-primary)' : 'var(--dsw-alias-state-success-primary)',
-                  },
-                },
-                delta === null ? '—' : `${delta > 0 ? '+' : ''}${compactTokens(delta)}`,
-              ),
-              h('span', { style: styles.kpiSub }, t('tokens')),
-            ),
-          ),
-        ),
-        h(SegmentedBar, { usedRatio: ratio ?? 0, categories, warnAt, errorAt, ticks: true }),
-        h(
-          'div',
-          { style: styles.thresholds },
-          h('span', { style: styles.thresholdChip }, `${t('warnAt')} `, h('span', { style: styles.thresholdValue }, formatPercent(warnAt, 0))),
-          h('span', { style: styles.thresholdChip }, `${t('errorAt')} `, h('span', { style: styles.thresholdValue }, formatPercent(errorAt, 0))),
-          h('span', { style: styles.thresholdChip }, `${t('triggerAt')} `, h('span', { style: styles.thresholdValue }, formatPercent(triggerAt, 0))),
-          h('span', { style: styles.thresholdChip }, `${t('targetAt')} `, h('span', { style: styles.thresholdValue }, formatPercent(targetAt, 0))),
-        ),
-        h(LegendGrid, { categories, tokensLabel: t('tokens') }),
-        h('p', { style: styles.text }, t('hint')),
-      )
-    }
-
     /** 本会话工具 / 提示词 section 清单：两级折叠 + 会话/全局开关 + 展开看原文。 */
     function InventoryCard(props) {
       const t = props.t
@@ -1735,6 +1628,22 @@ window.__ModuleLoader__.load({
       const [restorePending, setRestorePending] = react.useState(false)
       const [localEdits, setLocalEdits] = react.useState({})
       const [notice, setNotice] = react.useState(null)
+      const activeId = props.sessionId || data.sessionId || null
+
+      // 会话切换时丢弃上一会话的草稿/展开/确认态，避免把 A 会话的编辑带到 B 会话。
+      react.useEffect(() => {
+        setExpanded({})
+        setCopied(null)
+        setPending(null)
+        setBusy(null)
+        setEditDraft(null)
+        setPromptSave(null)
+        setExtraDraft(null)
+        setExtraDeletePending(null)
+        setRestorePending(false)
+        setLocalEdits({})
+        setNotice(null)
+      }, [activeId])
 
       const controlReady = props.controlActive !== false
       const requireControl = () => {
@@ -2681,13 +2590,10 @@ window.__ModuleLoader__.load({
     function KpiBand(props) {
       const t = props.t
       const kpi = props.kpi || {}
-      const cost = formatCost(kpi.cost)
-      const costSub = kpi.cost === null || kpi.cost === undefined ? t('costUnknown') : t('costEstimated')
       const items = [
         { key: 'sessions', label: t('kpiSessions'), value: formatTokens(kpi.sessions), sub: props.coverage ? t('coverageShort').replace('{scanned}', props.coverage.scanned).replace('{total}', props.coverage.total) : '' },
         { key: 'tokens', label: t('kpiTokens'), value: compactTokens(kpi.tokens), sub: `≈ ${formatTokens(kpi.tokens)} tok` },
         { key: 'cache', label: t('kpiCache'), value: formatPercent(kpi.cacheHit, 1), sub: `${compactTokens(kpi.cacheRead || 0)} cache` },
-        { key: 'cost', label: t('kpiCost'), value: cost, sub: costSub },
         { key: 'tools', label: t('kpiTools'), value: formatTokens(kpi.toolCalls), sub: '' },
         { key: 'active', label: t('kpiActive'), value: formatDurationMs(kpi.activeMs), sub: '' },
         { key: 'compactions', label: t('kpiCompactions'), value: formatTokens(kpi.compactions), sub: kpi.injections ? `${formatTokens(kpi.injections)} inject` : '' },
@@ -2755,45 +2661,40 @@ window.__ModuleLoader__.load({
       )
     }
 
-    function Heatmap(props) {
-      const t = props.t
-      const daily = Array.isArray(props.daily) ? props.daily : []
-      const max = Math.max(1, ...daily.map((day) => Number(day.tokens) || 0))
-      return h('div', { style: styles.chartWrap, 'data-embodiment-heatmap': '1' },
-        h('div', { style: styles.cardHead }, h('h3', { style: styles.cardTitle }, t('heatmapTitle')), h('span', { style: styles.cardSub }, `${daily.length}d`)),
-        h('div', { style: styles.heatGrid }, daily.map((day) => {
-          const ratio = (Number(day.tokens) || 0) / max
-          return h('div', { key: day.date, style: { ...styles.heatCell, opacity: ratio === 0 ? 1 : 0.2 + ratio * 0.8, background: ratio === 0 ? undefined : 'var(--dsw-alias-brand-primary)' }, title: `${day.date} · ${formatTokens(day.tokens)} tok · ${day.requests} req` })
-        })),
-        daily.length > 0
-          ? h(
-              'div',
-              { style: styles.heatScale },
-              h('span', null, t('heatLow')),
-              h('i', { style: { ...styles.heatScaleCell, background: 'var(--dsw-alias-brand-primary)', opacity: 0.25 } }),
-              h('i', { style: { ...styles.heatScaleCell, background: 'var(--dsw-alias-brand-primary)', opacity: 0.55 } }),
-              h('i', { style: { ...styles.heatScaleCell, background: 'var(--dsw-alias-brand-primary)', opacity: 0.9 } }),
-              h('span', null, t('heatHigh')),
-            )
-          : null,
-      )
-    }
-
     /**
-     * 没有公开的「切换主视图会话」客户端 API；按标题找到左侧会话列表按钮并点击。
-     * 只在 sidebar 容器里找，避免点到对话标题；找不到时静默返回 false。
+     * 优先用官方 uiWorkspace.openSession 切换主视图；没有该服务时回退到
+     * role=treeitem 的侧栏会话行（pointer 序列），避免只按文字找到错误节点。
      */
-    function openSessionInSidebar(title) {
+    function openSessionInSidebar(title, sessionId) {
+      if (workspaceService && typeof workspaceService.openSession === 'function' && sessionId) {
+        try {
+          workspaceService.openSession(sessionId)
+          return true
+        } catch {}
+      }
       if (!title || typeof document === 'undefined') return false
       const norm = (value) => String(value || '').replace(/\s+/g, ' ').trim()
-      const containers = Array.from(document.querySelectorAll('aside, nav, [class*="sidebar"], [class*="Sidebar"]'))
+      const containers = Array.from(document.querySelectorAll('[role="tree"], aside, nav, [class*="sidebar"], [class*="Sidebar"]'))
       for (const container of containers) {
-        const target = Array.from(container.querySelectorAll('button, [role="button"], a')).find((element) => {
+        const target = Array.from(container.querySelectorAll('[role="treeitem"], button, [role="button"], a')).find((element) => {
           const text = norm(element.textContent)
           return text === title || (text.startsWith(title) && text.length <= title.length + 24)
         })
         if (target) {
-          target.click()
+          // 会话树行是 role=treeitem 的 div，监听的是 pointer 序列；单纯 click() 在桌面端不生效。
+          const rect = target.getBoundingClientRect()
+          const x = Math.round(rect.left + rect.width / 2)
+          const y = Math.round(rect.top + rect.height / 2)
+          const eventInit = { bubbles: true, cancelable: true, composed: true, view: window, button: 0, clientX: x, clientY: y }
+          const fire = (type) => {
+            const usePointer = type.startsWith('pointer') && typeof PointerEvent === 'function'
+            const event = usePointer
+              ? new PointerEvent(type, { ...eventInit, pointerId: 1, pointerType: 'mouse', isPrimary: true, buttons: type.endsWith('down') ? 1 : 0 })
+              : new MouseEvent(type, { ...eventInit, buttons: type.endsWith('down') ? 1 : 0, detail: 1 })
+            target.dispatchEvent(event)
+          }
+          // 从会话卡的 click 处理器里同步派发到侧栏行会被 React 的当前事件批次吞掉；挪到下一拍。
+          window.setTimeout(() => { for (const type of ['pointerdown', 'mousedown', 'pointerup', 'mouseup', 'click']) fire(type) }, 0)
           return true
         }
       }
@@ -2824,7 +2725,16 @@ window.__ModuleLoader__.load({
           h('button', { type: 'button', style: { ...styles.filterToggle, ...(sort === 'tokens' ? styles.filterToggleOn : null) }, onClick: () => setSort('tokens') }, t('sortTokens')),
         ),
         filtered.length === 0 ? h('p', { style: styles.emptyText }, t('noSessions')) : h('div', { style: styles.sessionList }, visible.map((item) =>
-          h('button', { key: item.id, type: 'button', style: { ...styles.sessionCard, ...(props.selected === item.id ? styles.sessionCardOn : null) }, onClick: () => props.onSelect(item.id), title: item.id, 'data-embodiment-session-card': item.id },
+          h('div', {
+            key: item.id,
+            role: 'button',
+            tabIndex: 0,
+            style: { ...styles.sessionCard, ...(props.selected === item.id ? styles.sessionCardOn : null) },
+            onClick: () => props.onSelect(item.id),
+            onKeyDown: (event) => { if (event.key === 'Enter' || event.key === ' ') { event.preventDefault(); props.onSelect(item.id) } },
+            title: item.id,
+            'data-embodiment-session-card': item.id,
+          },
             h('p', { style: styles.sessionTitle }, item.title || shortSessionId(item.id)),
             h('span', { style: styles.sessionMeta }, `${base(item.cwd)} · ${item.lastActivityAt ? new Date(item.lastActivityAt).toLocaleString() : '—'}`),
             h('div', { style: styles.sessionStats },
@@ -2834,12 +2744,10 @@ window.__ModuleLoader__.load({
               item.cost !== null && item.cost !== undefined ? h('span', null, formatCost(item.cost)) : null,
               item.compactions > 0 ? h('span', null, `${formatTokens(item.compactions)}×` ) : null,
             ),
-            h('span', {
-              role: 'button',
-              tabIndex: 0,
-              style: styles.linkAction,
+            h('button', {
+              type: 'button',
+              style: { ...styles.linkAction, border: 0, background: 'transparent', padding: 0 },
               onClick: (event) => { event.preventDefault(); event.stopPropagation(); if (props.onOpen) props.onOpen(item) },
-              onKeyDown: (event) => { if (event.key === 'Enter' || event.key === ' ') { event.preventDefault(); event.stopPropagation(); if (props.onOpen) props.onOpen(item) } },
               'data-embodiment-session-open': item.id,
             }, `${t('openSession')} ↗`),
           ),
@@ -3153,11 +3061,16 @@ window.__ModuleLoader__.load({
       const analyticsPath = `${STATUS_PATH}/analytics?range=${encodeURIComponent(range)}&limit=40`
       const detailSession = selected || activeSession
       const detailPath = detailSession ? `${STATUS_PATH}/session-detail?sessionId=${encodeURIComponent(detailSession)}` : `${STATUS_PATH}/session-detail`
-      const [liveState, reloadLive] = useLive(livePath, usageTick)
+      const [liveState, reloadLive] = useLive(livePath, usageTick, Boolean(activeSession))
       const [invState, reloadInv] = useLive(inventoryPath, usageTick, tab === 'settings')
-      const [analyticsState, reloadAnalytics] = useLive(analyticsPath, undefined, tab === 'overview')
-      const [detailState, reloadDetail] = useLive(detailPath, undefined, tab === 'trend' || tab === 'events')
+      const [analyticsState, reloadAnalytics] = useLive(analyticsPath, activeSession, tab === 'overview')
+      const [detailState, reloadDetail] = useLive(detailPath, detailSession || activeSession, tab === 'trend' || tab === 'events')
+      // 切换主视图会话时清掉手动选中的历史会话，避免详情停在旧会话而头部显示新会话。
+      react.useEffect(() => {
+        setSelected(null)
+      }, [activeSession])
       const live = liveState.data
+      const liveForHeader = live && (!activeSession || live.sessionId === activeSession) ? live : null
       const data = state.phase === 'ready' ? state.data || {} : null
       const budget = data ? data.budget || {} : {}
       const control = data ? data.control || {} : {}
@@ -3181,23 +3094,32 @@ window.__ModuleLoader__.load({
         ['settings', t('tabsSettings')],
       ]
 
-      const headerSessionId = (live && live.sessionId) || activeSession
+      const headerSessionId = activeSession || (liveForHeader && liveForHeader.sessionId) || null
       const headerSession = (detail && detail.session && (!headerSessionId || detail.session.id === headerSessionId) ? detail.session : null)
         || (analytics && Array.isArray(analytics.sessions) ? analytics.sessions.find((session) => session.id === headerSessionId) : null)
-      const headerUsed = live && typeof live.used === 'number' ? live.used : latest && headerSessionId && latest.id === headerSessionId && typeof latest.totalTokens === 'number' ? latest.totalTokens : null
-      const headerBudget = live && typeof live.budget === 'number' ? live.budget : typeof budget.tokens === 'number' ? budget.tokens : null
+      const headerAggregate = analytics && Array.isArray(analytics.sessions) ? analytics.sessions.find((session) => session.id === headerSessionId) : null
+      const headerMeta = headerAggregate || headerSession
+      const latestForSession = activeSession && latest && latest.id === activeSession ? latest : null
+      const headerUsed = liveForHeader && typeof liveForHeader.used === 'number' ? liveForHeader.used : latestForSession && typeof latestForSession.totalTokens === 'number' ? latestForSession.totalTokens : null
+      const headerBudget = liveForHeader && typeof liveForHeader.budget === 'number' ? liveForHeader.budget : typeof budget.tokens === 'number' ? budget.tokens : null
       const headerRatio = headerUsed !== null && headerBudget !== null && headerBudget > 0 ? headerUsed / headerBudget : null
-      const headerWarnAt = live && typeof live.warnAt === 'number' ? live.warnAt : typeof budget.warnAt === 'number' ? budget.warnAt : 0.75
-      const headerErrorAt = live && typeof live.errorAt === 'number' ? live.errorAt : typeof budget.errorAt === 'number' ? budget.errorAt : 0.9
-      const headerRequests = detail && Array.isArray(detail.requests) ? detail.requests.length : headerSession && typeof headerSession.requests === 'number' ? headerSession.requests : null
-      let headerCost = headerSession && typeof headerSession.cost === 'number' ? headerSession.cost : null
-      if (detail && detail.session && (!headerSessionId || detail.session.id === headerSessionId) && typeof detail.session.cost === 'number') headerCost = detail.session.cost
+      const headerWarnAt = liveForHeader && typeof liveForHeader.warnAt === 'number' ? liveForHeader.warnAt : typeof budget.warnAt === 'number' ? budget.warnAt : 0.75
+      const headerErrorAt = liveForHeader && typeof liveForHeader.errorAt === 'number' ? liveForHeader.errorAt : typeof budget.errorAt === 'number' ? budget.errorAt : 0.9
+      const headerDetailMatches = Boolean(detail && detail.session && (!headerSessionId || detail.session.id === headerSessionId))
+      const headerRequests = headerDetailMatches && Array.isArray(detail.requests) ? detail.requests.length : headerMeta && typeof headerMeta.requests === 'number' ? headerMeta.requests : null
+      let headerCost = headerMeta && typeof headerMeta.cost === 'number' ? headerMeta.cost : null
+      if (headerDetailMatches && typeof detail.session.cost === 'number') headerCost = detail.session.cost
+      const headerBreakdown = (liveForHeader && liveForHeader.breakdown) || (latestForSession && latestForSession.breakdown) || null
+      const headerCategories = breakdownCategories(t, headerBreakdown)
+      const hasHeaderComposition = headerCategories.some((row) => (Number(row.tokens) || 0) > 0)
       const headerParts = []
       if (headerSession && headerSession.title) headerParts.push(`${t('sessionLabel')} ${headerSession.title}`)
       if (headerUsed !== null && headerBudget !== null && headerBudget > 0) {
-        headerParts.push(`${t('budgetLine')} ${compactTokens(headerBudget)}`)
-        headerParts.push(`${t('ratio')} ${compactTokens(headerUsed)}（${formatPercent(headerRatio, 0)}）`)
+        headerParts.push(`${t('ratio')} ${compactTokens(headerUsed)} / ${compactTokens(headerBudget)}（${formatPercent(headerRatio, 0)}）`)
         headerParts.push(`${t('remaining')} ${compactTokens(Math.max(0, headerBudget - headerUsed))}`)
+      } else if (headerMeta && typeof headerMeta.tokens === 'number') {
+        // 历史会话可能不在当前进程的 live 表里；此时至少给出该会话累计 tokens，而不是让头部空着。
+        headerParts.push(`${t('kpiTokens')} ${compactTokens(headerMeta.tokens)}`)
       }
       if (headerRequests !== null) headerParts.push(`${headerRequests} ${t('requestsUnit')}`)
       if (headerCost !== null) headerParts.push(`${t('costLabel')} ${formatCost(headerCost)}`)
@@ -3213,9 +3135,10 @@ window.__ModuleLoader__.load({
             h('button', { type: 'button', style: styles.button, onClick: reloadAll, 'data-embodiment-refresh': '1' }, t('refresh')),
           ),
           h('p', { style: styles.subtitle, 'data-embodiment-header-status': '1' }, headerLine),
-          headerRatio !== null ? h('div', { style: styles.headerBar, title: `${t('ratio')} ${formatPercent(headerRatio, 0)}` },
-            h('div', { style: { ...styles.headerBarFill, width: `${Math.min(100, Math.max(0, headerRatio * 100))}%`, background: ratioColor(headerRatio, headerWarnAt, headerErrorAt) } }),
-          ) : null,
+          hasHeaderComposition
+            ? h(SegmentedBar, { usedRatio: headerRatio ?? 0, categories: headerCategories, warnAt: headerWarnAt, errorAt: headerErrorAt, ticks: true })
+            : null,
+          hasHeaderComposition ? h(LegendGrid, { categories: headerCategories, tokensLabel: t('tokens') }) : null,
           h('div', { style: styles.tabs, role: 'tablist' }, tabs.map(([key, label]) =>
             h('button', { key, type: 'button', role: 'tab', 'aria-selected': tab === key ? 'true' : 'false', style: { ...styles.tab, ...(tab === key ? styles.tabActive : null) }, onClick: () => setTab(key), 'data-embodiment-tab': key }, label),
           )),
@@ -3267,8 +3190,6 @@ window.__ModuleLoader__.load({
       }
 
       if (tab === 'overview') {
-        // 先答"还剩多少"，再给跨会话统计与图表。
-        children.push(h(OverviewCard, { key: 'overview', t, budget, latest, live, liveAt: liveState.at }))
         children.push(h(KpiBand, { key: 'kpis', t, kpi: analytics ? analytics.kpi : {}, coverage: analytics ? analytics.coverage : null }))
         if (analytics) children.push(h(BillingCard, { key: 'billing', t, kpi: analytics.kpi, pricing: data ? data.pricing : null }))
         if (analyticsState.error && !analytics) {
@@ -3280,17 +3201,14 @@ window.__ModuleLoader__.load({
           children.push(h('div', { key: 'analyticsLoading', style: styles.banner }, t('analyticsLoading')))
         }
         if (analytics) {
-          children.push(h('div', { key: 'charts', style: styles.cols },
-            h('div', { style: { ...styles.card, ...styles.chartWide } }, h(DailyChart, { t, daily: analytics.daily })),
-            h('div', { style: { ...styles.card, ...styles.chartNarrow } }, h(Heatmap, { t, daily: analytics.daily })),
-          ))
+          children.push(h('div', { key: 'charts', style: styles.card }, h(DailyChart, { t, daily: analytics.daily })))
         }
-        children.push(h(SessionCards, { key: 'sessions', t, sessions: analytics ? analytics.sessions : [], selected: detailSession, onSelect: (id) => { setSelected(id); setTab('trend') }, onOpen: (item) => { openSessionInSidebar(item.title || shortSessionId(item.id)) } }))
+        children.push(h(SessionCards, { key: 'sessions', t, sessions: analytics ? analytics.sessions : [], selected: detailSession, onSelect: (id) => { setSelected(id); setTab('trend') }, onOpen: (item) => { openSessionInSidebar(item.title || shortSessionId(item.id), item.id) } }))
         if (analytics && Array.isArray(analytics.warnings) && analytics.warnings.length > 0) {
           children.push(h('div', { key: 'warnings', style: styles.banner, title: analytics.warnings.join(' | ') }, `${t('coverage').replace('{scanned}', analytics.coverage.scanned).replace('{total}', analytics.coverage.total)} · ${t('readFailures').replace('{count}', String(analytics.warnings.length))}`))
         }
       } else if (tab === 'trend') {
-        children.push(h(TrendCard, { key: 'trend', t, detail, error: detailState.error, budget: (live && live.budget && live.budget.tokens) || (latest && latest.budget && latest.budget.tokens) || budget.tokens }))
+        children.push(h(TrendCard, { key: 'trend', t, detail, error: detailState.error, budget: (liveForHeader && liveForHeader.budget && liveForHeader.budget.tokens) || (latestForSession && latestForSession.budget && latestForSession.budget.tokens) || budget.tokens }))
         if (selected) children.push(h('button', { key: 'back', type: 'button', style: styles.button, onClick: () => setSelected(null) }, t('tabsOverview')))
       } else if (tab === 'events') {
         children.push(h(EventsCard, { key: 'events', t, logs: control.log || [], detail }))
@@ -3398,8 +3316,13 @@ window.__ModuleLoader__.load({
         return () => observer.disconnect()
       }, 'agent-embodiment: usage activity observer')
       if (typeof ctx.inject === 'function') ctx.inject(['sessions'], (sub) => {
-        sessionService = sub?.sessions ?? null
-        if (typeof sub.effect === 'function') sub.effect(() => () => { sessionService = null }, 'agent-embodiment: sessions presence')
+        publishSessionService(sub?.sessions ?? null)
+        if (typeof sub.effect === 'function') sub.effect(() => () => { publishSessionService(null) }, 'agent-embodiment: sessions presence')
+      })
+      // uiWorkspace 提供官方 openSession；优先走它，避免模拟侧栏点击。
+      if (typeof ctx.inject === 'function') ctx.inject(['uiWorkspace'], (sub) => {
+        workspaceService = sub?.uiWorkspace ?? null
+        if (typeof sub.effect === 'function') sub.effect(() => () => { workspaceService = null }, 'agent-embodiment: uiWorkspace presence')
       })
       // 账号余额来自 DSH 官方 remote.account；没有账号扩展时自动隐藏胶囊。
       if (typeof ctx.inject === 'function') ctx.inject(['remote', 'remote.account'], (sub) => {

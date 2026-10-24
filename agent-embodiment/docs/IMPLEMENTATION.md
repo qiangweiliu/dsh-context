@@ -178,7 +178,9 @@ inventory 属于进程内存，只反映最近一次装配；新会话需要先�
 - `settings.section`：设置 → 上下文；
 - `conversation.composer.dock`：输入框下方指示器，环形 + 插件预算已用百分比；弹层显示已用/上限/剩余。
 
-面板头部常驻“会话/预算/已用/剩余/请求数/费用”摘要与使用率条；概览 KPI 下方有计费卡，按缓存命中/未命中/输出拆分 token 与人民币；趋势图用纵轴刻度 + 预算线 + 输入/输出色块，X 轴按请求序号 `#n` 标注，压缩点用橙色竖线标记，tooltip 含单次费用。
+面板头部合并为一行实时摘要：会话标题 + 已用/预算（或历史会话的累计 tokens）+ 请求数 + 费用；下方复用分段构成条与图例，空会话不渲染四个 0% 构成。概览只保留 KPI 带、计费卡、每日 tokens 图与最近会话；原先重复的上下文大卡、活跃度热力图与费用 KPI 已移除。计费卡按缓存命中/未命中/输出拆分 token 与人民币；趋势图用纵轴刻度 + 预算线 + 输入/输出色块，X 轴按请求序号 `#n` 标注，压缩点用橙色竖线标记，tooltip 含单次费用。
+
+会话切换时客户端做四层保护：`useLive` 在 path 变化时立即清空旧 payload 并用请求路径守卫丢弃迟到响应；`CtxDock` 按 sessionId 守卫；`CtxPanel` 清空 `selected` 历史选择；`InventoryCard` 清空上一会话的草稿/展开/确认态。`sessions` 服务晚注入时通过 `sessionServiceSubscribers` 补订阅。会话卡“打开会话”优先调用 `uiWorkspace.openSession(sessionId)`，找不到服务时回退到 `role=treeitem` 侧栏行的 pointer 序列点击。
 
 客户端只通过状态接口读取数据；新增提示词、全局配置等写入通过宿主路由完成。API 路径相对 `document.baseURI` 解析，兼容反向代理的路径前缀；`apply` 带 window 级幂等守卫，避免同一页面重复挂载出两套导航/设置/dock。
 
@@ -231,7 +233,7 @@ node --check client.js
 当前结果：
 
 ```text
-static       86/86
+static       89/89
 metrics      31/31
 state        16/16
 scaffold    146/146

@@ -28,7 +28,7 @@ node test/state.mjs         # 会话开关/提示词文本持久化往返
 node test/scaffold.mjs      # 脚手架生成计划、YAML 与 AGENTS 合并
 ```
 
-当前基线（0.23.0）：static 81/81、metrics 24/24、state 16/16、scaffold 146/146。
+当前基线（0.23.0）：static 83/83、metrics 24/24、state 16/16、scaffold 146/146。
 
 CI 在 `.github/workflows/test.yml`：Node 20/22/24 三档，先 `node --check index.js control.js client.js`，再 `npm test`，最后 `npm pack --dry-run`（提前暴露 `files`/`exports` 缺文件）。
 
@@ -174,7 +174,7 @@ UI 脚本通过 Windows Edge 的 CDP 连接（`scripts/lib/cdp.mjs`，默认 Edg
 - `agent-embodiment/README.md`：用户功能与入口。
 - `agent-embodiment/docs/IMPLEMENTATION.md`：实现细节、路由清单、测试结果（最接近架构总览）。
 - `agent-embodiment/docs/LIMITATIONS.md`：行为边界与已知限制。
-- `agent-embodiment/docs/EVIDENCE.md`：逐版本 UI/运行证据（E16–E25 覆盖 0.19–0.23）。
+- `agent-embodiment/docs/EVIDENCE.md`：逐版本 UI/运行证据（E16–E26 覆盖 0.19–0.23）。
 - `agent-embodiment/docs/RELEASE-PLAN.md`：0.22.0 → 1.0.0 的版本路线图、发布门禁、兼容矩阵与回滚步骤。
 - `agent-embodiment/docs/UI-PROPOSAL.md`：面板信息架构与视觉提案。
 - `agent-embodiment/CHANGELOG.md`：版本变更记录（Keep a Changelog）。

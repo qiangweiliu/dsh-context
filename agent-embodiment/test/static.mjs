@@ -205,6 +205,8 @@ check('client 脚手架面板调用宿主路由', clientSource.includes('/scaffo
 check('client 脚手架支持 MCP/AGENTS 选项', clientSource.includes('data-embodiment-scaffold-mcp') && clientSource.includes('writeAgents'))
 check('client 暴露压缩策略选择', clientSource.includes('data-embodiment-strategy') && clientSource.includes('compressionStrategy'))
 check('client 在 control 未挂载时给出提示', clientSource.includes('data-embodiment-control-required') && clientSource.includes('controlRequired'))
+check('趋势图有纵轴、预算线与压缩标记', clientSource.includes('niceAxisMax') && clientSource.includes('trendBudgetLabel') && clientSource.includes('trendMarkerDot'))
+check('头部摘要与趋势请求数走本地化单位', clientSource.includes('data-embodiment-header-status') && clientSource.includes("t('requestsUnit')"))
 check('scaffold 中英文词典齐全', Boolean(client.dictionaries.agentEmbodiment?.en?.scaffoldTitle) && Boolean(client.dictionaries.agentEmbodiment?.zh?.scaffoldTitle))
 
 // 同一个 window 下加载两次：第二次 apply 必须被挂载守卫挡住，不能重复注册槽位。

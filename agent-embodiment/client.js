@@ -249,9 +249,13 @@ window.__ModuleLoader__.load({
       sortTokens: 'Tokens',
       openSession: 'Open chat',
       trendTitle: 'Request context trend',
-      trendPrompt: 'Prompt',
+      trendPrompt: 'Input',
       trendOutput: 'Output',
       trendCompaction: 'Compaction',
+      trendPeak: 'Peak',
+      trendAfterCompaction: 'after compaction',
+      requestsUnit: 'requests',
+      sessionLabel: 'Session',
       trendNoData: 'No completed requests yet',
       eventsTitle: 'Compaction & injections',
       eventAll: 'All',
@@ -478,9 +482,13 @@ window.__ModuleLoader__.load({
       sortTokens: 'Tokens',
       openSession: '打开会话',
       trendTitle: '请求上下文趋势',
-      trendPrompt: '请求',
+      trendPrompt: '输入',
       trendOutput: '输出',
       trendCompaction: '压缩',
+      trendPeak: '峰值',
+      trendAfterCompaction: '压缩后',
+      requestsUnit: '次请求',
+      sessionLabel: '会话',
       trendNoData: '还没有完成的请求',
       eventsTitle: '压缩与注入事件',
       eventAll: '全部',
@@ -561,6 +569,17 @@ window.__ModuleLoader__.load({
     function formatPercent(value, digits = 1) {
       const number = Number(value)
       return Number.isFinite(number) ? `${(number * 100).toFixed(digits)}%` : '—'
+    }
+
+    /** 趋势图纵轴：把峰值向上取整到 1/2/5×10^n 的刻度，避免每根柱子都顶满。 */
+    function niceAxisMax(value) {
+      const number = Number(value)
+      if (!Number.isFinite(number) || number <= 0) return 1
+      const rough = number / 3
+      const magnitude = Math.pow(10, Math.floor(Math.log10(rough)))
+      const normalized = rough / magnitude
+      const step = (normalized <= 1 ? 1 : normalized <= 2 ? 2 : normalized <= 5 ? 5 : 10) * magnitude
+      return Math.ceil(number / step) * step
     }
 
     /** 与 DSH 账号页一致的金额格式：两位小数，低于一分钱时显示 <¥0.01。 */
@@ -748,7 +767,7 @@ window.__ModuleLoader__.load({
       pageInner: { maxWidth: '1040px', margin: '0 auto', padding: '24px clamp(16px, 4vw, 40px) 48px', display: 'flex', flexDirection: 'column', gap: '16px' },
       root: { display: 'flex', flexDirection: 'column', gap: '12px' },
       title: { margin: 0, fontSize: '21px', fontWeight: 600, lineHeight: '29px', letterSpacing: '-0.01em' },
-      versionChip: { display: 'inline-flex', alignItems: 'center', borderRadius: '999px', border: '0.5px solid var(--dsw-alias-border-l1)', background: 'var(--dsw-alias-bg-layer-1)', padding: '1px 8px', fontSize: '11.5px', lineHeight: '18px', color: 'var(--dsw-alias-label-tertiary)', fontVariantNumeric: 'tabular-nums' },
+      versionChip: { display: 'inline-flex', alignItems: 'center', borderRadius: '999px', border: '0.5px solid var(--dsw-alias-border-l2)', background: 'var(--dsw-alias-bg-layer-2)', padding: '1px 8px', fontSize: '11.5px', lineHeight: '18px', color: 'var(--dsw-alias-label-secondary)', fontVariantNumeric: 'tabular-nums' },
       subtitle: { margin: 0, fontSize: '12px', lineHeight: 1.6, color: 'var(--dsw-alias-label-tertiary)' },
       cols: { display: 'flex', flexWrap: 'wrap', gap: '12px', alignItems: 'flex-start' },
       chartWide: { flex: '2 1 380px', minWidth: 'min(320px, 100%)' },
@@ -852,6 +871,8 @@ window.__ModuleLoader__.load({
       headerCard: { position: 'sticky', top: 0, zIndex: 3, background: 'var(--dsw-alias-bg-base)', padding: '4px 0 8px', display: 'flex', flexDirection: 'column', gap: '8px', borderBottom: '0.5px solid var(--dsw-alias-border-l1)' },
       headerRow: { display: 'flex', alignItems: 'center', gap: '10px', flexWrap: 'wrap' },
       headerSpacer: { flex: '1 1 auto' },
+      headerBar: { height: '4px', borderRadius: '999px', background: 'var(--dsw-alias-interactive-bg-hover)', overflow: 'hidden', marginTop: '2px' },
+      headerBarFill: { height: '100%', borderRadius: '999px', transition: 'width .4s ease' },
       tabs: { display: 'flex', gap: '2px', flexWrap: 'wrap', background: 'var(--dsw-alias-interactive-bg-hover)', padding: '2px', borderRadius: '9px', alignSelf: 'flex-start' },
       tab: { border: 'none', background: 'transparent', color: 'var(--dsw-alias-label-secondary)', borderRadius: '7px', padding: '4px 12px', fontSize: '12.5px', lineHeight: '18px', cursor: 'pointer' },
       tabActive: { background: 'var(--dsw-alias-bg-layer-1)', color: 'var(--dsw-alias-label-primary)', fontWeight: 600, boxShadow: '0 0.5px 2px rgba(0,0,0,.08)' },
@@ -880,12 +901,19 @@ window.__ModuleLoader__.load({
       sessionTitle: { margin: 0, fontSize: '12.5px', fontWeight: 600, lineHeight: '18px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' },
       sessionMeta: { fontSize: '10.5px', color: 'var(--dsw-alias-label-tertiary)', fontVariantNumeric: 'tabular-nums', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' },
       sessionStats: { display: 'flex', gap: '10px', flexWrap: 'wrap', fontSize: '11px', color: 'var(--dsw-alias-label-secondary)', fontVariantNumeric: 'tabular-nums' },
-      trendScroll: { overflowX: 'auto', paddingBottom: '4px' },
-      trendCols: { display: 'flex', alignItems: 'flex-end', gap: '3px', minHeight: '130px', minWidth: '100%' },
-      trendCol: { flex: '1 0 18px', maxWidth: '48px', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'flex-end', gap: '3px', position: 'relative' },
-      trendPrompt: { width: '100%', borderRadius: '3px 3px 0 0', background: 'var(--dsw-alias-brand-primary)', minHeight: '2px' },
-      trendOutput: { width: '100%', borderRadius: '0 0 2px 2px', background: 'var(--dsw-alias-state-warn-primary)', minHeight: '1px' },
-      trendMarker: { position: 'absolute', top: '-2px', width: '100%', height: '3px', borderRadius: '2px', background: 'var(--dsw-alias-state-error-primary)' },
+      trendBody: { display: 'flex', alignItems: 'flex-start', gap: '6px', minWidth: 0 },
+      trendAxis: { flex: 'none', width: '38px', height: '130px', boxSizing: 'border-box', paddingBottom: '18px', display: 'flex', flexDirection: 'column', justifyContent: 'space-between', alignItems: 'flex-end', fontSize: '9.5px', lineHeight: '12px', color: 'var(--dsw-alias-label-tertiary)', fontVariantNumeric: 'tabular-nums' },
+      trendScroll: { overflowX: 'auto', paddingBottom: '4px', flex: '1 1 auto', minWidth: 0 },
+      trendCols: { display: 'flex', alignItems: 'flex-end', gap: '3px', minHeight: '130px', minWidth: '100%', position: 'relative' },
+      trendGridLine: { position: 'absolute', left: 0, right: 0, borderTop: '0.5px solid var(--dsw-alias-border-l1)', pointerEvents: 'none' },
+      trendCol: { flex: '1 0 18px', maxWidth: '48px', height: '130px', boxSizing: 'border-box', paddingBottom: '18px', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'flex-end', gap: 0, position: 'relative', zIndex: 1 },
+      trendLabel: { position: 'absolute', left: 0, right: 0, bottom: 0, textAlign: 'center', fontSize: '9.5px', lineHeight: '12px', color: 'var(--dsw-alias-label-tertiary)', fontVariantNumeric: 'tabular-nums', whiteSpace: 'nowrap' },
+      trendPrompt: { width: '100%', borderRadius: '0 0 3px 3px', background: 'var(--dsw-static-blue-450)', minHeight: '2px' },
+      trendOutput: { width: '100%', borderRadius: '3px 3px 0 0', background: 'var(--dsw-static-green-400)', minHeight: '1px' },
+      trendMarker: { position: 'absolute', top: 0, bottom: '18px', left: 0, width: '2px', background: 'var(--dsw-alias-state-warn-primary)', opacity: 0.85, zIndex: 2, pointerEvents: 'none' },
+      trendMarkerDot: { position: 'absolute', top: '-2px', left: '-3px', width: '8px', height: '8px', borderRadius: '999px', background: 'var(--dsw-alias-state-warn-primary)' },
+      trendBudgetLabel: { position: 'absolute', right: 0, top: '-14px', padding: '0 3px', background: 'var(--dsw-alias-bg-layer-1)', color: 'var(--dsw-alias-label-tertiary)', fontSize: '9px', lineHeight: '12px', whiteSpace: 'nowrap' },
+      trendLegendItem: { display: 'inline-flex', alignItems: 'center', gap: '5px', minWidth: 0 },
       legendInline: { display: 'flex', alignItems: 'center', gap: '12px', flexWrap: 'wrap', fontSize: '11px', color: 'var(--dsw-alias-label-tertiary)' },
       filterBar: { display: 'flex', alignItems: 'center', gap: '6px', flexWrap: 'wrap' },
       eventList: { listStyle: 'none', margin: 0, padding: 0, display: 'flex', flexDirection: 'column', gap: '0' },
@@ -2736,27 +2764,74 @@ window.__ModuleLoader__.load({
       if (!detail) {
         return h('div', { style: styles.card }, h('h3', { style: styles.cardTitle }, t('trendTitle')), props.error ? h('p', { style: styles.error }, `${t('analyticsError')}: ${props.error}`) : h('div', { style: styles.skeletonStack }, h('div', { style: { ...styles.skeleton, width: '100%', height: '120px' } })))
       }
-      const requests = Array.isArray(detail.requests) ? detail.requests.slice(-40) : []
+      const allRequests = Array.isArray(detail.requests) ? detail.requests : []
+      const requests = allRequests.slice(-40)
       const compactions = Array.isArray(detail.compactions) ? detail.compactions : []
       if (requests.length === 0) return h('div', { style: styles.card }, h('h3', { style: styles.cardTitle }, t('trendTitle')), h('p', { style: styles.emptyText }, t('trendNoData')))
-      const max = Math.max(1, ...requests.map((item) => (Number(item.prompt) || 0) + (Number(item.output) || 0)))
+      const series = requests.map((item) => {
+        const prompt = Number(item.prompt) || 0
+        const output = Number(item.output) || 0
+        return { item, prompt, output, total: prompt + output }
+      })
+      const maxTotal = Math.max(1, ...series.map((entry) => entry.total))
+      const budget = Number(props.budget) || 0
+      // 预算离峰值不远时把纵轴抬到预算，让预算线留在图内；差太远则按峰值缩放，
+      // 避免柱子被压成贴地的一条线（预算关系放到右上角摘要里）。
+      const axisCeiling = budget > 0 && budget <= maxTotal * 1.6 ? Math.max(maxTotal, budget) : maxTotal
+      const axisMax = niceAxisMax(axisCeiling)
+      const barMax = 112
+      const peakShare = budget > 0 ? maxTotal / budget : null
+      const budgetTop = budget > 0 && budget <= axisMax ? barMax - (budget / axisMax) * barMax : null
+      const showBudgetLine = budgetTop !== null && budgetTop >= 14
+      const sub = allRequests.length > requests.length
+        ? `${requests.length} / ${allRequests.length} ${t('requestsUnit')}`
+        : `${requests.length} ${t('requestsUnit')}`
+      const legendItem = (color, label, shape) => h('span', { style: styles.trendLegendItem },
+        h('i', { style: { width: shape === 'line' ? '10px' : '8px', height: shape === 'line' ? '2px' : '8px', borderRadius: '2px', background: color, display: 'inline-block', flex: 'none' } }),
+        label,
+      )
+      const timeText = (time) => {
+        if (!time) return '—'
+        try { return new Date(time).toLocaleTimeString() } catch { return '—' }
+      }
       return h('div', { style: { ...styles.card, ...styles.cardFill }, 'data-embodiment-trend': '1' },
-        h('div', { style: styles.cardHead }, h('h3', { style: styles.cardTitle }, t('trendTitle')), h('span', { style: styles.cardSub }, `${requests.length} req`)),
+        h('div', { style: styles.cardHead }, h('h3', { style: styles.cardTitle }, t('trendTitle')), h('span', { style: styles.cardSub }, sub)),
         h('div', { style: styles.legendInline },
-          h('span', null, `■ ${t('trendPrompt')}`), h('span', null, `■ ${t('trendOutput')}`), h('span', null, `━ ${t('trendCompaction')}`), h('span', null, `${t('budgetLine')} ${formatTokens(props.budget)}`),
+          legendItem('var(--dsw-static-blue-450)', t('trendPrompt')),
+          legendItem('var(--dsw-static-green-400)', t('trendOutput')),
+          legendItem('var(--dsw-alias-state-warn-primary)', t('trendCompaction'), 'line'),
+          h('span', { style: { ...styles.trendLegendItem, marginLeft: 'auto' } },
+            peakShare === null
+              ? `${t('trendPeak')} ${compactTokens(maxTotal)}`
+              : `${t('trendPeak')} ${compactTokens(maxTotal)} / ${compactTokens(budget)}（${formatPercent(peakShare, 0)}）`,
+          ),
         ),
-        h('div', { style: styles.trendScroll }, h('div', { style: styles.trendCols }, requests.map((item, index) => {
-          const previous = index > 0 ? requests[index - 1].time : 0
-          const marker = compactions.some((compaction) => compaction.at <= item.time && compaction.at > previous)
-          const promptHeight = Math.max(2, Math.round(((Number(item.prompt) || 0) / max) * 118))
-          const outputHeight = Math.max(1, Math.round(((Number(item.output) || 0) / max) * 118))
-          return h('div', { key: `${item.time}-${index}`, style: styles.trendCol, title: `#${index + 1} · ${formatTokens(item.prompt)} prompt + ${formatTokens(item.output)} output${item.compaction ? ' · after compaction' : ''}` },
-            marker ? h('div', { style: styles.trendMarker }) : null,
-            h('div', { style: { ...styles.trendOutput, height: `${outputHeight}px` } }),
-            h('div', { style: { ...styles.trendPrompt, height: `${promptHeight}px` } }),
-            h('span', { style: styles.chartLabel }, item.turn !== null ? `T${item.turn}` : ''),
-          )
-        }))),
+        h('div', { style: styles.trendBody },
+          h('div', { style: styles.trendAxis },
+            h('span', null, compactTokens(axisMax)),
+            h('span', null, compactTokens(axisMax / 2)),
+            h('span', null, '0'),
+          ),
+          h('div', { style: styles.trendScroll }, h('div', { style: styles.trendCols },
+            [0, 50, 100].map((percent) => h('div', { key: `grid-${percent}`, style: { ...styles.trendGridLine, top: `${(barMax * percent) / 100}px` } })),
+            showBudgetLine ? h('div', { key: 'budget', style: { ...styles.trendGridLine, top: `${budgetTop}px`, borderTop: '1px dashed var(--dsw-alias-label-tertiary)' }, title: `${t('budgetLine')} ${formatTokens(budget)}` }, h('span', { style: styles.trendBudgetLabel }, `${t('budgetLine')} ${compactTokens(budget)}`)) : null,
+            series.map((entry, index) => {
+              const totalHeight = Math.max(2, Math.round((entry.total / axisMax) * barMax))
+              const promptHeight = entry.total > 0 ? Math.max(1, Math.round((entry.prompt / entry.total) * totalHeight)) : 1
+              const outputHeight = Math.max(0, totalHeight - promptHeight)
+              const previousCompaction = index > 0 ? series[index - 1].item.compaction : null
+              const marker = index > 0 && entry.item.compaction && (!previousCompaction || previousCompaction.endedAt !== entry.item.compaction.endedAt)
+              const turn = entry.item.turn !== null && entry.item.turn !== undefined ? `T${entry.item.turn}` : '—'
+              const title = `#${index + 1} · ${timeText(entry.item.time)} · ${turn} · ${t('trendPrompt')} ${formatTokens(entry.prompt)} · ${t('trendOutput')} ${formatTokens(entry.output)} · ${formatTokens(entry.total)}${marker ? ` · ${t('trendAfterCompaction')}` : ''}`
+              return h('div', { key: `${entry.item.time}-${index}`, style: styles.trendCol, title },
+                marker ? h('div', { style: styles.trendMarker, title: t('trendAfterCompaction') }, h('span', { style: styles.trendMarkerDot })) : null,
+                h('div', { style: { ...styles.trendOutput, height: `${outputHeight}px` } }),
+                h('div', { style: { ...styles.trendPrompt, height: `${promptHeight}px` } }),
+                h('span', { style: styles.trendLabel }, `#${index + 1}`),
+              )
+            }),
+          )),
+        ),
         h('div', { style: styles.banner, 'data-embodiment-detail-session': detail.session ? detail.session.id : '' }, `${detail.session && detail.session.title ? detail.session.title : '—'} · ${t('requestsLabel')} ${detail.requests.length} · ${detail.session && detail.session.lastActivityAt ? new Date(detail.session.lastActivityAt).toLocaleString() : '—'}`),
         compactions.length > 0 ? h('div', { style: styles.logBox }, h('div', { style: styles.logToggle }, `${t('eventCompaction')} · ${compactions.length}`), h('ul', { style: styles.logList }, compactions.slice(-8).reverse().map((item) =>
           h('li', { key: `${item.at}-${item.turn}`, style: styles.logItem },
@@ -3014,6 +3089,25 @@ window.__ModuleLoader__.load({
         ['settings', t('tabsSettings')],
       ]
 
+      const headerSessionId = (live && live.sessionId) || activeSession
+      const headerSession = (detail && detail.session && (!headerSessionId || detail.session.id === headerSessionId) ? detail.session : null)
+        || (analytics && Array.isArray(analytics.sessions) ? analytics.sessions.find((session) => session.id === headerSessionId) : null)
+      const headerUsed = live && typeof live.used === 'number' ? live.used : latest && headerSessionId && latest.id === headerSessionId && typeof latest.totalTokens === 'number' ? latest.totalTokens : null
+      const headerBudget = live && typeof live.budget === 'number' ? live.budget : typeof budget.tokens === 'number' ? budget.tokens : null
+      const headerRatio = headerUsed !== null && headerBudget !== null && headerBudget > 0 ? headerUsed / headerBudget : null
+      const headerWarnAt = live && typeof live.warnAt === 'number' ? live.warnAt : typeof budget.warnAt === 'number' ? budget.warnAt : 0.75
+      const headerErrorAt = live && typeof live.errorAt === 'number' ? live.errorAt : typeof budget.errorAt === 'number' ? budget.errorAt : 0.9
+      const headerRequests = detail && Array.isArray(detail.requests) ? detail.requests.length : headerSession && typeof headerSession.requests === 'number' ? headerSession.requests : null
+      const headerParts = []
+      if (headerSession && headerSession.title) headerParts.push(`${t('sessionLabel')} ${headerSession.title}`)
+      if (headerUsed !== null && headerBudget !== null && headerBudget > 0) {
+        headerParts.push(`${t('budgetLine')} ${compactTokens(headerBudget)}`)
+        headerParts.push(`${t('ratio')} ${compactTokens(headerUsed)}（${formatPercent(headerRatio, 0)}）`)
+        headerParts.push(`${t('remaining')} ${compactTokens(Math.max(0, headerBudget - headerUsed))}`)
+      }
+      if (headerRequests !== null) headerParts.push(`${headerRequests} ${t('requestsUnit')}`)
+      const headerLine = headerParts.length > 0 ? headerParts.join(' · ') : t('description')
+
       const children = [
         h('div', { key: 'header', style: styles.headerCard },
           h('div', { style: styles.headerRow },
@@ -3023,7 +3117,10 @@ window.__ModuleLoader__.load({
             control.active ? h(StatusBadge, { t, state: control.compacting ? 'warn' : 'ok', label: control.compacting ? t('compacting') : undefined }) : null,
             h('button', { type: 'button', style: styles.button, onClick: reloadAll, 'data-embodiment-refresh': '1' }, t('refresh')),
           ),
-          h('p', { style: styles.subtitle }, t('description')),
+          h('p', { style: styles.subtitle, 'data-embodiment-header-status': '1' }, headerLine),
+          headerRatio !== null ? h('div', { style: styles.headerBar, title: `${t('ratio')} ${formatPercent(headerRatio, 0)}` },
+            h('div', { style: { ...styles.headerBarFill, width: `${Math.min(100, Math.max(0, headerRatio * 100))}%`, background: ratioColor(headerRatio, headerWarnAt, headerErrorAt) } }),
+          ) : null,
           h('div', { style: styles.tabs, role: 'tablist' }, tabs.map(([key, label]) =>
             h('button', { key, type: 'button', role: 'tab', 'aria-selected': tab === key ? 'true' : 'false', style: { ...styles.tab, ...(tab === key ? styles.tabActive : null) }, onClick: () => setTab(key), 'data-embodiment-tab': key }, label),
           )),

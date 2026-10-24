@@ -1,7 +1,7 @@
 {
   "name": "agent-embodiment",
-  "version": "0.21.0",
-  "description": "Give DeepSeek Harness agents a body: context budgets, compaction, environment sensing, tools, subagents, and agent scaffolds.",
+  "version": "0.23.0",
+  "description": "Cross-session context analytics, session-level budget/prompt/tool controls, and optional agent scaffolds on top of DeepSeek Harness native compaction and tools.",
   "type": "module",
   "main": "index.js",
   "scripts": {
@@ -32,11 +32,12 @@
     "PERMISSIONS.md",
     "docs/EVIDENCE.md",
     "docs/IMPLEMENTATION.md",
-    "docs/LIMITATIONS.md"
+    "docs/LIMITATIONS.md",
+    "CHANGELOG.md"
   ],
   "engines": {
     "node": ">=20",
-    "dsh": ">=0.2.0-rc.2 <0.3.0 || 0.2.1-rc.2"
+    "dsh": ">=0.2.0-rc.2 <0.3.0 || 0.2.1-rc.2 || 0.2.1-rc.3"
   },
   "keywords": [
     "dsh",
@@ -57,10 +58,11 @@
   "dsh": {
     "manifestVersion": 1,
     "compatibility": {
-      "dsh": ">=0.2.0-rc.2 <0.3.0 || 0.2.1-rc.2",
+      "dsh": ">=0.2.0-rc.2 <0.3.0 || 0.2.1-rc.2 || 0.2.1-rc.3",
       "dshReleases": {
         "0.2.0-rc.2": "compatible",
-        "0.2.1-rc.2": "compatible"
+        "0.2.1-rc.2": "compatible",
+        "0.2.1-rc.3": "compatible"
       },
       "profiles": [
         "web",

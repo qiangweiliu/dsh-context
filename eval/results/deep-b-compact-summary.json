@@ -1,0 +1,41 @@
+{
+  "startedAt": "2026-10-24T03:27:54.267Z",
+  "elapsedSeconds": 2916,
+  "out": "/home/wu/dsh-context/eval/results/deep-b-compact.jsonl",
+  "profile": "headless",
+  "condition": "compact",
+  "byCategory": {
+    "multi-turn": {
+      "n": 30,
+      "graded": 30,
+      "correct": 25,
+      "manual": 0,
+      "failed": 5,
+      "seconds": 3193.1000000000013
+    },
+    "long-context": {
+      "n": 24,
+      "graded": 24,
+      "correct": 18,
+      "manual": 0,
+      "failed": 0,
+      "seconds": 496.50000000000006
+    },
+    "code": {
+      "n": 18,
+      "graded": 18,
+      "correct": 15,
+      "manual": 0,
+      "failed": 6,
+      "seconds": 1869.6
+    },
+    "agentic": {
+      "n": 12,
+      "graded": 12,
+      "correct": 12,
+      "manual": 0,
+      "failed": 0,
+      "seconds": 266.1
+    }
+  }
+}

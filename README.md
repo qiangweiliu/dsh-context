@@ -5,9 +5,9 @@ DeepSeek Harness（DSH）的 agent 具身与上下文管理插件项目。
 插件包名：`agent-embodiment`
 市场标题：`Agent Embodiment` / `智能体具身`
 插件目录：[`agent-embodiment/`](agent-embodiment/)
-当前版本：`0.21.0`
+当前版本：`0.23.0`
 
-给 DSH agent 一副身体：上下文预算与压缩、环境感知、工具/提示词控制、子 agent 与 Agent 脚手架。
+在 DSH 原生上下文管理之上，提供跨会话用量分析、会话级预算/提示词/工具控制，以及可选的 Agent 脚手架。压缩、token 计量、工具与子 agent 由 DSH 本体提供。
 
 功能、入口和安装说明见插件 README：[agent-embodiment/README.md](agent-embodiment/README.md)。
 

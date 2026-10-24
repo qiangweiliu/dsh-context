@@ -1,0 +1,15 @@
+- id: compaction-basic
+  name: "@deepseek-ai/dsh-compaction-basic"
+  config:
+    auto: false
+    headroomTokens: 1024
+    retainRatio: 0.05
+    maxTokens: 4096
+- insert:
+    - id: agent-embodiment-control
+      name: agent-embodiment/control
+      config:
+        mode: idle
+        maxContextTokens: 18000
+        keepTokens: 5000
+        cooldownMs: 5000

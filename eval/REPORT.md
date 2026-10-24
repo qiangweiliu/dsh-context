@@ -3,6 +3,9 @@
 日期 2026-10-20 · 执行器 `dsh --profile headless`（WSL，deepseek-flash）· 题库 GSM8K test 等距抽样 50 题
 （`eval/questions.jsonl`，题号 `gsm8k-<index>`，gold 取 `####` 后的数值）
 
+> 插件安装 / 不安装的 agent 能力对照见 [PLUGIN-AB.md](PLUGIN-AB.md)（2026-10-22，63 次运行）。
+> Tier B 50 题的 base / plugin / scaffold / compact 四组对照见 [deep/RESULTS.md](deep/RESULTS.md)（2026-10-24）。
+
 ## 设计
 
 | 条件 | 系统提示词 | 变量 |

@@ -1,0 +1,78 @@
+{
+  "date": "2026-10-23",
+  "profile": "headless",
+  "model": "deepseek-v4.1-flash",
+  "reps": 1,
+  "questions": 50,
+  "auto": {
+    "graded": 46,
+    "correct": 46,
+    "rate": 100
+  },
+  "manual": 4,
+  "byCategory": {
+    "math-l5": {
+      "n": 10,
+      "graded": 10,
+      "correct": 10,
+      "manual": 0,
+      "failed": 0,
+      "seconds": 301.7,
+      "avgSeconds": 30.2
+    },
+    "code": {
+      "n": 8,
+      "graded": 8,
+      "correct": 8,
+      "manual": 0,
+      "failed": 0,
+      "seconds": 1206.2,
+      "avgSeconds": 150.8
+    },
+    "agentic": {
+      "n": 6,
+      "graded": 6,
+      "correct": 6,
+      "manual": 0,
+      "failed": 0,
+      "seconds": 356.7,
+      "avgSeconds": 59.5
+    },
+    "long-context": {
+      "n": 8,
+      "graded": 8,
+      "correct": 8,
+      "manual": 0,
+      "failed": 0,
+      "seconds": 115.9,
+      "avgSeconds": 14.5
+    },
+    "data-analysis": {
+      "n": 8,
+      "graded": 8,
+      "correct": 8,
+      "manual": 0,
+      "failed": 0,
+      "seconds": 65.3,
+      "avgSeconds": 8.2
+    },
+    "robustness": {
+      "n": 6,
+      "graded": 6,
+      "correct": 6,
+      "manual": 0,
+      "failed": 0,
+      "seconds": 47.7,
+      "avgSeconds": 8
+    },
+    "planning": {
+      "n": 4,
+      "graded": 0,
+      "correct": 0,
+      "manual": 4,
+      "failed": 0,
+      "seconds": 327.5,
+      "avgSeconds": 81.9
+    }
+  }
+}

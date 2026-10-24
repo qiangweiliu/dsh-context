@@ -8,7 +8,7 @@
  */
 
 /** CNY per 1M tokens, used only for models we can name confidently. */
-const MODEL_PRICING = [
+export const DEFAULT_MODEL_PRICING = [
   { match: /deepseek[-_/].*(reasoner|r1)/i, input: 4, cacheRead: 1, output: 8 },
   { match: /deepseek[-_/].*(chat|v3)/i, input: 2, cacheRead: 0.5, output: 3 },
 ]
@@ -39,19 +39,24 @@ const modelOf = (event, previous) => {
   return previous ?? null
 }
 
-const priceOf = (model) => {
+const normalizePricing = (pricing) => (Array.isArray(pricing) ? pricing : DEFAULT_MODEL_PRICING).map((row) => ({
+  ...row,
+  match: row.match instanceof RegExp ? row.match : new RegExp(row.match, 'i'),
+}))
+
+const priceOf = (model, pricing) => {
   if (typeof model !== 'string') return null
-  const hit = MODEL_PRICING.find((row) => row.match.test(model))
+  const hit = pricing.find((row) => row.match.test(model))
   return hit ?? null
 }
 
-const costOf = (model, usage) => {
-  const price = priceOf(model)
+const costOf = (model, usage, pricing) => {
+  const price = priceOf(model, pricing)
   if (!price) return null
   return (
     (usage.input / 1e6) * price.input +
     (usage.cacheRead / 1e6) * price.cacheRead +
-    (usage.cacheWrite / 1e6) * price.input +
+    (usage.cacheWrite / 1e6) * (price.cacheWrite ?? price.input) +
     (usage.output / 1e6) * price.output
   )
 }
@@ -74,7 +79,8 @@ const tokenTitle = (event) => {
  * @param {{id?: string, createdAt?: number, cwd?: string}} header
  * @param {readonly any[]} events
  */
-export function foldSession(header, events) {
+export function foldSession(header, events, pricingRows = DEFAULT_MODEL_PRICING) {
+  const pricing = normalizePricing(pricingRows)
   const list = Array.isArray(events) ? events.filter((event) => event && typeof event.time === 'number') : []
   const id = typeof header?.id === 'string' ? header.id : null
   const cwd = typeof header?.cwd === 'string' ? header.cwd : null
@@ -193,7 +199,7 @@ export function foldSession(header, events) {
       compaction.shadowedTokens = shadowed || null
       const usage = usageOf(event.data?.usage)
       const compactionModel = typeof event.data?.model === 'string' && event.data.model !== '' ? event.data.model : model?.model ?? null
-      const cost = usage ? costOf(compactionModel, usage) : null
+      const cost = usage ? costOf(compactionModel, usage, pricing) : null
       compaction.usage = usage
       compaction.model = compactionModel
       compaction.cost = cost
@@ -236,7 +242,7 @@ export function foldSession(header, events) {
       if (!usage) continue
       const requestModel = modelOf(event, model)
       if (requestModel) model = requestModel
-      const cost = costOf(requestModel?.model, usage)
+      const cost = costOf(requestModel?.model, usage, pricing)
       const request = {
         time: event.time,
         turn: typeof event.data?.turn === 'number' ? event.data.turn : null,

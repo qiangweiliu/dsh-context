@@ -17,6 +17,7 @@ const fileOf = (plan, suffix) => plan.files.find((file) => file.path.endsWith(su
 check('模板数量为 6', SCAFFOLD_TEMPLATES.length === 6, SCAFFOLD_TEMPLATES.map((item) => item.id))
 check('模板 id 唯一', new Set(SCAFFOLD_TEMPLATES.map((item) => item.id)).size === SCAFFOLD_TEMPLATES.length)
 check('每个模板有 name/description/pattern', SCAFFOLD_TEMPLATES.every((item) => item.name && item.description && item.pattern))
+check('未验证模板标记为 experimental', SCAFFOLD_TEMPLATES.filter((item) => item.experimental).map((item) => item.id).join(',') === 'ops-runbook,browser-operator,data-analyst,support-router', SCAFFOLD_TEMPLATES.map((item) => `${item.id}:${item.experimental === true}`))
 
 for (const template of SCAFFOLD_TEMPLATES) {
   const slug = `check-${template.id}`
@@ -24,7 +25,6 @@ for (const template of SCAFFOLD_TEMPLATES) {
   const bundle = `.dsh/scaffolds/${slug}`
   const expected = [
     `${bundle}/package.json`,
-    `${bundle}/senses.js`,
     `${bundle}/dsh.bundle.patch.yml`,
     `${bundle}/embodiment.json`,
     `${bundle}/README.md`,
@@ -32,34 +32,27 @@ for (const template of SCAFFOLD_TEMPLATES) {
     `${bundle}/HANDS.md`,
     `${bundle}/LOOP.md`,
     `${bundle}/AGENTS.snippet.md`,
-    `${bundle}/skills/sense-environment/SKILL.md`,
-    `${bundle}/skills/verify-change/SKILL.md`,
-    `${bundle}/skills/tool-catalog/SKILL.md`,
-    `${bundle}/evals/sense-act.jsonl`,
+    `${bundle}/evals/cases.jsonl`,
     `${bundle}/evals/run.mjs`,
-    `.agents/skills/${slug}-sense-environment/SKILL.md`,
-    `.agents/skills/${slug}-verify-change/SKILL.md`,
-    `.agents/skills/${slug}-tool-catalog/SKILL.md`,
     ...(template.subagent
       ? [`${bundle}/skills/delegate-${template.subagent.role}/SKILL.md`, `.agents/skills/${slug}-delegate-${template.subagent.role}/SKILL.md`]
       : []),
   ]
   check(`${template.id}: 生成完整文件集`, expected.every((path) => plan.files.some((file) => file.path === path)), plan.files.map((file) => file.path))
 
+  check(`${template.id}: 默认不生成 process skills`, !plan.files.some((file) => /sense-environment|verify-change/u.test(file.path)), plan.files.map((file) => file.path))
+  const withProcess = planScaffold({ template: template.id, slug, name: `Check ${template.id}`, processSkills: true })
+  check(`${template.id}: processSkills 开启 sense/verify`, withProcess.files.some((file) => file.path.includes('/sense-environment/SKILL.md')) && withProcess.files.some((file) => file.path.includes('/verify-change/SKILL.md')), withProcess.files.map((file) => file.path))
+
   const pkg = JSON.parse(fileOf(plan, '/package.json').content)
   check(`${template.id}: package 是 DSH bundle`, pkg.name === `dsh-embodiment-${slug}` && pkg.dsh?.bundle?.patch === './dsh.bundle.patch.yml', pkg)
-  check(`${template.id}: package 导出 senses`, pkg.exports?.['./senses'] === './senses.js', pkg.exports)
   check(`${template.id}: package 不声明 npm 依赖`, !pkg.dependencies && !pkg.devDependencies, pkg.dependencies)
-
-  const senses = fileOf(plan, '/senses.js').content
-  check(`${template.id}: senses 插件注册 sense_environment`, senses.includes("name: 'sense_environment'") && senses.includes('ctx.tools.register(tool)') && senses.includes("inject = ['tools']"), senses.slice(0, 200))
-  check(`${template.id}: senses 只 import node 内置`, (senses.match(/from '[^']+'/g) ?? []).every((line) => line.includes("'node:")), senses.match(/from '[^']+'/g))
 
   const patch = fileOf(plan, 'dsh.bundle.patch.yml').content
   check(`${template.id}: patch 顶层是 insert 数组`, patch.startsWith('- insert:\n'), patch.slice(0, 40))
   check(`${template.id}: patch 含 preset 行`, patch.includes(`id: "preset-${slug}"`) && patch.includes('name: "@deepseek-ai/dsh-agent-preset"'), patch.slice(0, 200))
   check(`${template.id}: patch 含 persona`, patch.includes('name: "@deepseek-ai/dsh-persona"'))
-  check(`${template.id}: patch 含 sense 工具行`, patch.includes(`name: "dsh-embodiment-${slug}/senses"`), patch.slice(0, 400))
+  check(`${template.id}: patch 不再挂载自造 sense 工具`, !patch.includes(`dsh-embodiment-${slug}/senses`), patch.slice(0, 400))
   check(`${template.id}: patch 含上下文控制`, patch.includes('name: "agent-embodiment/control"'))
   check(`${template.id}: patch 含 skill 工具`, patch.includes('@deepseek-ai/dsh-skill-filesystem') && patch.includes('@deepseek-ai/dsh-tool-skill'))
   if (template.tools.some((item) => item.name === '@deepseek-ai/dsh-tool-bash')) {
@@ -74,10 +67,10 @@ for (const template of SCAFFOLD_TEMPLATES) {
   check(`${template.id}: 每个 skill 有前端元数据`, skills.every((file) => /^---\nname: [a-z0-9-]+\ndescription: ".+"\n---\n/u.test(file.content)), skills.map((file) => file.path))
   check(`${template.id}: skill 名带 slug 前缀`, skills.every((file) => file.content.includes(`name: ${slug}-`)), skills.map((file) => file.content.split('\n')[1]))
 
-  const evals = fileOf(plan, 'evals/sense-act.jsonl').content.trim().split('\n').map((line) => JSON.parse(line))
+  const evals = fileOf(plan, 'evals/cases.jsonl').content.trim().split('\n').map((line) => JSON.parse(line))
   check(`${template.id}: 至少 2 条 eval`, evals.length >= 2 && evals.every((item) => item.id && item.task && item.expect), evals)
   const runner = fileOf(plan, 'evals/run.mjs').content
-  check(`${template.id}: eval runner 只依赖 node 内置`, runner.includes('spawnSync') && runner.includes('sense-act.jsonl') && (runner.match(/from '[^']+'/g) ?? []).every((line) => line.includes("'node:")), runner.match(/from '[^']+'/g))
+  check(`${template.id}: eval runner 只依赖 node 内置`, runner.includes('spawnSync') && runner.includes('cases.jsonl') && (runner.match(/from '[^']+'/g) ?? []).every((line) => line.includes("'node:")), runner.match(/from '[^']+'/g))
 
   // 提示词/技能/preset 必须稳定；eval runner 用 Date.now 记耗时，不进入模型上下文。
   const generated = plan.files.filter((file) => !file.path.endsWith('evals/run.mjs')).map((file) => file.content).join('\n')

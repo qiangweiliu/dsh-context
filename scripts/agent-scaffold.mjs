@@ -24,7 +24,7 @@ if (has('list') || args.length === 0) {
   for (const template of SCAFFOLD_TEMPLATES) {
     console.log(`  ${template.id.padEnd(16)} ${template.name} — ${template.description}`)
   }
-  console.log('\nUsage: node scripts/agent-scaffold.mjs --template <id> --out <workspace> [--slug ...] [--name ...] [--overwrite] [--agents] [--mcp <json> | --mcp-file <path>]')
+  console.log('\nUsage: node scripts/agent-scaffold.mjs --template <id> --out <workspace> [--slug ...] [--name ...] [--overwrite] [--agents] [--process-skills] [--mcp <json> | --mcp-file <path>]')
   process.exit(0)
 }
 
@@ -65,6 +65,7 @@ try {
     slug: flag('slug'),
     name: flag('name'),
     description: flag('description'),
+    ...(has('process-skills') ? { processSkills: true } : {}),
     ...(mcp === undefined ? {} : { mcp }),
   })
 } catch (error) {

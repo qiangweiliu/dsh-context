@@ -21,7 +21,7 @@ window.__ModuleLoader__.load({
 
     const NS = 'agentEmbodiment'
     /** 与 package.json 版本保持一致；宿主版本不同时提示刷新页面而不是重启 DSH。 */
-    const CLIENT_VERSION = '0.21.0'
+    const CLIENT_VERSION = '0.23.0'
     /**
      * API 路径必须相对页面 base 解析，而不是写死根路径：
      * 反向代理部署在 /app/dsh/ 这类前缀下时，根路径 /api/... 会打到网关根并 404。
@@ -65,6 +65,10 @@ window.__ModuleLoader__.load({
       warnAt: 'Warn at',
       errorAt: 'Error at',
       triggerAt: 'Trigger at',
+      compressionStrategy: 'Compression strategy',
+      strategyConservative: 'Conservative — late compression, keep more',
+      strategyBalanced: 'Balanced — compress at the limit, keep 25%',
+      strategyAggressive: 'Aggressive — early compression, keep 10%',
       triggerLabel: 'Trigger ratio',
       invalidTrigger: 'Trigger ratio must be in (0, 1].',
       triggerHint: 'Auto-compaction triggers when usage reaches this share of the budget (1 = only at the limit; 0.75 = pre-compress at the warn ratio).',
@@ -87,6 +91,7 @@ window.__ModuleLoader__.load({
       controlOff: 'not active',
       controlReady: 'Control row is mounted in the agent preset; the context limit is enforced automatically.',
       controlMissing: 'Not active yet — mount agent-embodiment/control inside the agent preset (Settings → Agent preset → compaction group).',
+      controlRequired: 'Prompt and tool changes need the control row. Mount agent-embodiment/control in the agent preset first.',
       controlLast: 'Last compaction',
       compactLog: 'Compaction log',
       compactSuccess: 'success',
@@ -116,6 +121,8 @@ window.__ModuleLoader__.load({
       warnLabel: 'Warn ratio',
       errorLabel: 'Error ratio',
       meterAria: 'ctx context limit',
+      pluginContext: 'Plugin context',
+      pluginContextHint: 'Only the plugin budget configured for this session. Live usage is shown by the built-in context meter.',
       balance: 'Balance',
       balanceTopped: 'Topped up',
       balanceBonus: 'Granted',
@@ -208,6 +215,7 @@ window.__ModuleLoader__.load({
       scaffoldTargetRequired: 'Enter an absolute workspace path.',
       scaffoldOverwrite: 'Overwrite existing files',
       scaffoldAgents: 'Merge a marked section into AGENTS.md',
+      scaffoldProcessSkills: 'Include process skills (sense-environment, verify-change)',
       scaffoldMcp: 'MCP servers (JSON, optional)',
       scaffoldMcpHint: 'Array of { serverName, transport: "stdio"|"streamable-http", command/args/env or url/headers }. Use ${ENV_VAR} for secrets.',
       scaffoldMcpInvalid: 'MCP JSON is not valid JSON.',
@@ -285,6 +293,10 @@ window.__ModuleLoader__.load({
       warnAt: '警告阈值',
       errorAt: '超限阈值',
       triggerAt: '触发阈值',
+      compressionStrategy: '压缩策略',
+      strategyConservative: '保守 —— 晚压缩，保留更多',
+      strategyBalanced: '均衡 —— 到上限压缩，保留 25%',
+      strategyAggressive: '激进 —— 提前压缩，保留 10%',
       triggerLabel: '触发比例',
       invalidTrigger: '触发比例必须在 (0, 1] 之间。',
       triggerHint: '用量达到预算的这个比例时自动压缩（1 = 到上限才触发；0.75 = 到警告比例就预压缩）。',
@@ -307,6 +319,7 @@ window.__ModuleLoader__.load({
       controlOff: '未启用',
       controlReady: '控制行已挂在 agent preset 内，超出上下文会自动压缩。',
       controlMissing: '尚未生效 —— 需要把 agent-embodiment/control 加到 agent preset 的 compaction 组里（设置 → Agent preset → compaction group）。',
+      controlRequired: '提示词与工具修改需要控制行生效。请先把 agent-embodiment/control 挂进 agent preset。',
       controlLast: '最近一次压缩',
       compactLog: '压缩记录',
       compactSuccess: '成功',
@@ -336,6 +349,8 @@ window.__ModuleLoader__.load({
       warnLabel: '警告比例',
       errorLabel: '超限比例',
       meterAria: 'ctx 上下文',
+      pluginContext: '插件上下文',
+      pluginContextHint: '这里只显示插件为本会话配置的上下文上限；实时用量见内置上下文指示器。',
       balance: '余额',
       balanceTopped: '充值',
       balanceBonus: '赠金',
@@ -428,6 +443,7 @@ window.__ModuleLoader__.load({
       scaffoldTargetRequired: '请输入工作区的绝对路径。',
       scaffoldOverwrite: '覆盖已有文件',
       scaffoldAgents: '合并带标记的 section 到 AGENTS.md',
+      scaffoldProcessSkills: '包含过程 skill（sense-environment、verify-change）',
       scaffoldMcp: 'MCP servers（JSON，可选）',
       scaffoldMcpHint: '{ serverName, transport: "stdio"|"streamable-http", command/args/env 或 url/headers } 数组；secret 用 ${ENV_VAR}。',
       scaffoldMcpInvalid: 'MCP JSON 格式不正确。',
@@ -881,28 +897,6 @@ window.__ModuleLoader__.load({
     })
 
     // ── 基础视觉组件 ────────────────────────────────────────────────────────
-    function Ring(props) {
-      const percent = Math.max(0, Math.min(100, Number(props.percent) || 0))
-      const radius = 5.5
-      const circumference = 2 * Math.PI * radius
-      return h(
-        'svg',
-        { viewBox: '0 0 14 14', width: 14, height: 14, 'aria-hidden': true },
-        h('circle', { cx: 7, cy: 7, r: radius, fill: 'none', stroke: 'var(--dsw-alias-border-l3)', strokeWidth: 2 }),
-        h('circle', {
-          cx: 7,
-          cy: 7,
-          r: radius,
-          fill: 'none',
-          stroke: props.color || 'var(--dsw-alias-label-tertiary)',
-          strokeWidth: 2,
-          strokeLinecap: 'round',
-          strokeDasharray: `${(circumference * percent) / 100} ${circumference}`,
-          transform: 'rotate(-90 7 7)',
-        }),
-      )
-    }
-
     /** 大号环形图：外圈背景 + 进度弧，中心显示百分比/已用。 */
     function BigRing(props) {
       const percent = Math.max(0, Math.min(100, Number(props.percent) || 0))
@@ -1469,16 +1463,13 @@ window.__ModuleLoader__.load({
       }, [usageTick, fetchLive])
 
       const budget = data && typeof data.budget === 'number' ? data.budget : null
-      const used = data && typeof data.used === 'number' ? data.used : null
-      const ratio = data && typeof data.ratio === 'number' ? data.ratio : null
-      const warnAt = data && typeof data.warnAt === 'number' ? data.warnAt : 0.75
-      const errorAt = data && typeof data.errorAt === 'number' ? data.errorAt : 0.9
-      const percent = ratio === null ? null : Math.round(ratio * 100)
-      const color = ratioColor(ratio, warnAt, errorAt)
-      const state = ratioState(ratio, warnAt, errorAt)
-      const categories = breakdownCategories(t, data && data.breakdown)
       const compacting = Boolean(data && data.compacting)
-      const label = compacting ? `${t('ctxBrand')} ${t('compacting')}` : percent === null ? `${t('ctxBrand')} —` : `${t('ctxBrand')} ${percent}%`
+      const budgetText = budget === null ? '—' : formatTokens(budget)
+      // 只显示插件配置的上下文上限（含会话级覆盖）；实时 token 用量由官方
+      // ContextMeter 负责，这里不重复百分比/构成。
+      const label = compacting
+        ? `${t('pluginContext')} · ${t('compacting')}`
+        : `${t('pluginContext')} ${budget === null ? '—' : compactTokens(budget)}`
 
       return h(
         'span',
@@ -1487,34 +1478,31 @@ window.__ModuleLoader__.load({
           'button',
           {
             ...triggerProps,
-            'aria-label': `${t('meterAria')}${percent === null ? '' : ` ${percent}%`}`,
-            title: used !== null && budget !== null ? `${formatTokens(used)} / ${formatTokens(budget)} ${t('tokens')}${state === 'error' ? ` · ${t('statusError')}` : state === 'warn' ? ` · ${t('statusWarn')}` : ''}` : t('meterAria'),
+            'aria-label': `${t('pluginContext')} ${budgetText}`,
+            title: `${t('pluginContext')}: ${budgetText}${props.controlActive ? ` · ${t('controlOn')}` : ` · ${t('controlOff')}`}`,
             'data-embodiment-dock': '1',
           },
-          h(Ring, { percent: percent ?? 0, color }),
-          h('span', { style: { color } }, label),
+          h('span', { style: { color: 'var(--dsw-alias-label-secondary)' } }, label),
         ),
         open
           ? h(
               DockPanel,
               {
-                label: t('meterAria'),
-                title: t('budget'),
-                percent: percent === null ? '—' : `${percent}%`,
-                figures: `~${compactTokens(used)} / ${compactTokens(budget)}`,
+                label: t('pluginContext'),
+                title: t('pluginContext'),
+                figures: budgetText,
                 action: h(
                   'button',
                   { type: 'button', style: styles.copyBtn, 'data-embodiment-open-panel': '1', onClick: () => { setOpen(false); openCtxPanelPage() } },
                   t('openPanel'),
                 ),
               },
-              h(SegmentedBar, { usedRatio: ratio ?? 0, categories, warnAt, errorAt }),
               h(
                 'dl',
                 { style: meter.rows },
-                categories.map((row) => h(DockRow, { key: row.key, color: row.color, label: row.label, value: `${compactTokens(row.tokens)} · ${formatPercent(row.share)}` })),
+                h(DockRow, { label: t('budget'), value: budgetText }),
                 h(DockRow, { label: t('control'), value: props.controlActive ? t('controlOn') : t('controlOff') }),
-                h('p', { style: { margin: '6px 0 0', fontSize: '11px', opacity: 0.7 } }, t('compositionHint')),
+                h('p', { style: { margin: '6px 0 0', fontSize: '11px', opacity: 0.7 } }, t('pluginContextHint')),
               ),
             )
           : null,
@@ -1623,6 +1611,13 @@ window.__ModuleLoader__.load({
       const [localEdits, setLocalEdits] = react.useState({})
       const [notice, setNotice] = react.useState(null)
 
+      const controlReady = props.controlActive !== false
+      const requireControl = () => {
+        if (controlReady) return true
+        setNotice(t('controlRequired'))
+        return false
+      }
+
       const readPromptResult = (response) =>
         response
           .json()
@@ -1642,6 +1637,7 @@ window.__ModuleLoader__.load({
         })
 
       const post = (body) => {
+        if (!requireControl()) return
         setBusy(body)
         postJson('/inventory/toggle', body)
           .then((response) => response.json().catch(() => ({})))
@@ -1669,6 +1665,7 @@ window.__ModuleLoader__.load({
       }
 
       const restore = () => {
+        if (!requireControl()) return
         postJson('/inventory/reset', { layer: 'all' })
           .then(readPromptResult)
           .then(() => {
@@ -1693,6 +1690,7 @@ window.__ModuleLoader__.load({
       }
 
       const postPrompt = (suffix, body) => {
+        if (!requireControl()) return
         setPromptBusy(true)
         postJson(`/inventory/prompt${suffix}`, body)
           .then(readPromptResult)
@@ -1712,6 +1710,7 @@ window.__ModuleLoader__.load({
       }
 
       const postSessionPrompt = (name, text) => {
+        if (!requireControl()) return
         setPromptBusy(true)
         postJson('/inventory/prompt/session', { name, text, ...(props.sessionId ? { sessionId: props.sessionId } : {}) })
           .then(readPromptResult)
@@ -1730,6 +1729,7 @@ window.__ModuleLoader__.load({
       }
 
       const postSessionPromptReset = (name) => {
+        if (!requireControl()) return
         setPromptBusy(true)
         postJson('/inventory/prompt/session/reset', { name, ...(props.sessionId ? { sessionId: props.sessionId } : {}) })
           .then(readPromptResult)
@@ -1750,6 +1750,7 @@ window.__ModuleLoader__.load({
       }
 
       const postExtraPrompt = (name, text, placement = 'system') => {
+        if (!requireControl()) return
         setExtraBusy(true)
         postJson('/inventory/extra-prompt', { name, text, placement })
           .then(readPromptResult)
@@ -2131,6 +2132,9 @@ window.__ModuleLoader__.load({
       return h(
         Card,
         { title: t('inventoryTitle'), sub: data.sessionId ? shortSessionId(data.sessionId) : undefined, id: 'inventory', t },
+        !controlReady
+          ? h('div', { style: styles.banner, 'data-embodiment-control-required': '1' }, t('controlRequired'))
+          : null,
         empty
           ? h(
               'div',
@@ -2145,6 +2149,9 @@ window.__ModuleLoader__.load({
           ? h(
               'div',
               { style: { display: 'flex', flexDirection: 'column', gap: '10px' } },
+              !controlReady
+                ? h('div', { style: styles.banner, 'data-embodiment-control-required': '1' }, t('controlRequired'))
+                : null,
               h(
                 'div',
                 { style: styles.filterRow },
@@ -2363,11 +2370,17 @@ window.__ModuleLoader__.load({
       )
     }
 
+    const STRATEGY_PRESETS = {
+      conservative: { trigger: 0.9, target: 0.7 },
+      balanced: { trigger: 1, target: 0.6 },
+      aggressive: { trigger: 0.75, target: 0.5 },
+    }
+
     function ConfigSection(props) {
       const t = props.t
       const budget = props.budget || {}
       const editable = Boolean(props.editable)
-      const [draft, setDraft] = react.useState({ tokens: '', warn: '', error: '', trigger: '', target: '' })
+      const [draft, setDraft] = react.useState({ tokens: '', warn: '', error: '', trigger: '', target: '', strategy: 'balanced' })
       const [result, setResult] = react.useState({ kind: 'idle' })
 
       react.useEffect(() => {
@@ -2377,8 +2390,9 @@ window.__ModuleLoader__.load({
           error: budget.errorAt === undefined ? '' : String(budget.errorAt),
           trigger: budget.triggerAt === undefined ? '' : String(budget.triggerAt),
           target: budget.targetAt === undefined ? '' : String(budget.targetAt),
+          strategy: typeof budget.compressionStrategy === 'string' ? budget.compressionStrategy : 'balanced',
         })
-      }, [budget.tokens, budget.warnAt, budget.errorAt, budget.triggerAt, budget.targetAt])
+      }, [budget.tokens, budget.warnAt, budget.errorAt, budget.triggerAt, budget.targetAt, budget.compressionStrategy])
 
       const save = () => {
         const tokens = Number(draft.tokens)
@@ -2406,7 +2420,7 @@ window.__ModuleLoader__.load({
         fetch(`${STATUS_PATH}/config`, {
           method: 'POST',
           headers: { 'content-type': 'application/json' },
-          body: JSON.stringify({ contextWindowTokens: tokens, warnAt: warn, errorAt: error, triggerAt: trigger, targetAt: target }),
+          body: JSON.stringify({ contextWindowTokens: tokens, warnAt: warn, errorAt: error, triggerAt: trigger, targetAt: target, compressionStrategy: draft.strategy }),
         })
           .then(async (response) => {
             const payload = await response.json().catch(() => ({}))
@@ -2441,6 +2455,30 @@ window.__ModuleLoader__.load({
           ? h(
               'div',
               { style: styles.configGrid },
+              h(
+                'label',
+                { style: styles.field },
+                h(
+                  'span',
+                  { style: styles.fieldLabelRow },
+                  h('span', { style: styles.label }, t('compressionStrategy')),
+                ),
+                h('select', {
+                  style: styles.input,
+                  value: draft.strategy,
+                  disabled,
+                  'data-embodiment-strategy': '1',
+                  onChange: (event) => {
+                    const strategy = event.target.value
+                    const preset = STRATEGY_PRESETS[strategy] || STRATEGY_PRESETS.balanced
+                    setDraft({ ...draft, strategy, trigger: String(preset.trigger), target: String(preset.target) })
+                  },
+                },
+                  h('option', { value: 'conservative' }, t('strategyConservative')),
+                  h('option', { value: 'balanced' }, t('strategyBalanced')),
+                  h('option', { value: 'aggressive' }, t('strategyAggressive')),
+                ),
+              ),
               h(
                 'label',
                 { style: styles.field },
@@ -2736,6 +2774,7 @@ window.__ModuleLoader__.load({
       const [slug, setSlug] = react.useState('')
       const [overwrite, setOverwrite] = react.useState(false)
       const [writeAgents, setWriteAgents] = react.useState(false)
+      const [processSkills, setProcessSkills] = react.useState(false)
       const [mcpJson, setMcpJson] = react.useState('')
       const [plan, setPlan] = react.useState(null)
       const [busy, setBusy] = react.useState(false)
@@ -2763,6 +2802,7 @@ window.__ModuleLoader__.load({
           targetDir,
           ...(overwrite ? { overwrite: true } : {}),
           ...(writeAgents ? { writeAgents: true } : {}),
+          ...(processSkills ? { processSkills: true } : {}),
           ...(mcp === undefined ? {} : { mcp }),
         }
       }
@@ -2824,7 +2864,7 @@ window.__ModuleLoader__.load({
         h('div', { style: { display: 'grid', gridTemplateColumns: 'minmax(0, 1fr) minmax(0, 1fr)', gap: '10px', marginTop: '10px' } },
           h('label', { style: styles.field }, h('span', { style: styles.label }, t('scaffoldTemplate')),
             h('select', { style: styles.input, value: templateId, onChange: (event) => setTemplateId(event.target.value), 'data-embodiment-scaffold-template': '1' },
-              templates.map((item) => h('option', { key: item.id, value: item.id }, `${item.name} (${item.id})`)),
+              templates.map((item) => h('option', { key: item.id, value: item.id }, `${item.name} (${item.id})${item.experimental ? ' · experimental' : ''}`)),
             ),
           ),
           h('label', { style: styles.field }, h('span', { style: styles.label }, t('scaffoldSlug')),
@@ -2856,6 +2896,10 @@ window.__ModuleLoader__.load({
         h('label', { style: { display: 'flex', alignItems: 'center', gap: '6px', marginTop: '6px', fontSize: '12px' } },
           h('input', { type: 'checkbox', checked: writeAgents, onChange: (event) => setWriteAgents(event.target.checked) }),
           h('span', null, t('scaffoldAgents')),
+        ),
+        h('label', { style: { display: 'flex', alignItems: 'center', gap: '6px', marginTop: '6px', fontSize: '12px' } },
+          h('input', { type: 'checkbox', checked: processSkills, onChange: (event) => setProcessSkills(event.target.checked) }),
+          h('span', null, t('scaffoldProcessSkills')),
         ),
         h('div', { style: { display: 'flex', gap: '8px', marginTop: '10px', flexWrap: 'wrap' } },
           h('button', { type: 'button', style: styles.button, disabled: busy || !templateId, onClick: preview, 'data-embodiment-scaffold-preview': '1' }, t('scaffoldPreview')),
@@ -2984,7 +3028,7 @@ window.__ModuleLoader__.load({
 
       if (tab === 'overview') {
         // 先答"还剩多少"，再给跨会话统计与图表。
-        children.push(h(OverviewCard, { key: 'overview', t, budget, latest, live, liveAt: liveState.at, controlActive: Boolean(control.active) }))
+        children.push(h(OverviewCard, { key: 'overview', t, budget, latest, live, liveAt: liveState.at }))
         children.push(h(KpiBand, { key: 'kpis', t, kpi: analytics ? analytics.kpi : {}, coverage: analytics ? analytics.coverage : null }))
         if (analyticsState.error && !analytics) {
           children.push(h('div', { key: 'analyticsError', style: styles.emptyState },
@@ -3017,7 +3061,7 @@ window.__ModuleLoader__.load({
           h(ConfigSection, { t, budget, editable: Boolean(data.configEditable), onSaved: load }),
           h(BalanceDisplayCard, { key: 'balance-display', t }),
         ))
-        children.push(h(InventoryCard, { key: 'inventory', t, data: invState.data, loading: invState.data === null && invState.error === null, error: invState.data === null ? invState.error : null, reload: reloadInv, sessionId: activeSession }))
+        children.push(h(InventoryCard, { key: 'inventory', t, data: invState.data, loading: invState.data === null && invState.error === null, error: invState.data === null ? invState.error : null, reload: reloadInv, sessionId: activeSession, controlActive: Boolean(control.active) }))
       }
       return h('div', { style: styles.root, 'data-embodiment-panel': '1' }, children)
     }

@@ -1,0 +1,17 @@
+{
+  "startedAt": "2026-10-24T04:20:42.021Z",
+  "elapsedSeconds": 17,
+  "out": "/home/wu/dsh-context/eval/results/deep-b-base.jsonl",
+  "profile": "headless",
+  "condition": "base",
+  "byCategory": {
+    "agentic": {
+      "n": 1,
+      "graded": 1,
+      "correct": 1,
+      "manual": 0,
+      "failed": 0,
+      "seconds": 16.8
+    }
+  }
+}

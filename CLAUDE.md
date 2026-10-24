@@ -61,6 +61,11 @@ node eval/report.mjs eval/results/main.jsonl          # 正确率 / 逐题对照
 python3 eval/grade-math.py eval/results/math5.jsonl   # MATH 用 sympy 判分
 node eval/effort-test.mjs --tiers low,high --limit 10
 node eval/summarize-effort.mjs <file.jsonl> [--math]
+node eval/agent-ab/run.mjs --reps 3 --workers 3  # 插件安装 A/B/C（需隔离 DSH_HOME 与 profile）
+node eval/deep/v2/make-suite.mjs --check         # Tier B 50 题自检（代码题参考实现）
+node eval/deep/setup-conditions.mjs              # 准备 base/plugin/scaffold/compact 隔离 profile
+node eval/deep/run.mjs --condition base --workers 2 --out eval/results/deep-b-base.jsonl
+node eval/deep/compare.mjs --markdown            # 四组对照表
 ```
 
 `eval/run.mjs` 的对照臂（`--arms`）定义在文件顶部 `PATCHES`，题目与结果都是 JSONL（每行含 `id`、`cond`）。`eval/REPORT.md` 记录实验设计与结论；改提示词模板后至少用 `make-template-patch.mjs` 保证测的是实际下发文本。
@@ -91,7 +96,7 @@ UI 脚本通过 Windows Edge 的 CDP 连接（`scripts/lib/cdp.mjs`，默认 Edg
 - `control.js`（preset 平面，`inject: ['tokenMeter']`）：在 `agent/pre-step` 测量并调用 `compaction.compactIfNeeded` / `compactRegion`，注册 `/embody-compact`。`mode` 为 `idle`（默认，含范围压缩兜底）/ `pre-step` / `notify` / `off`。
 - `state.js`：两个半侧共享的进程内状态。Cordis realm 隔离使二者互相 `import` 服务不可行，但同一包内 `./state.js` 的 ESM 模块缓存是同一份实例。
 - `client.js`：浏览器半侧，经 `window.__ModuleLoader__.load` 注册 `settings.section`、`main`（`key='embody'`）、`sidebar.panellist`、`conversation.composer.dock`。只用内联样式和 `--dsw-alias-*` token，不引 CSS/Tailwind。0.21.0 起面板有 Agent tab（Embodiment Scaffold）。
-- `scaffold.js`：Agent Embodiment Scaffold 的纯函数生成器。把模板变成可安装的 DSH preset bundle（`.dsh/scaffolds/<slug>/`）、生成 host tool `sense_environment`（`senses.js`）、`.agents/skills/*/SKILL.md`（含 `tool-catalog`）、SENSES/HANDS/LOOP、AGENTS 片段、MCP rows 和 eval cases/runner；不读写磁盘、不 import npm 包。合并 AGENTS.md 用 `mergeAgentsContent`（marker 幂等）。
+- `scaffold.js`：Agent Embodiment Scaffold 的纯函数生成器。把模板变成可安装的 DSH preset bundle（`.dsh/scaffolds/<slug>/`）、`.agents/skills/*/SKILL.md`（`sense-environment`、`verify-change`、角色/delegation skill，全部使用 DSH 原生工具）、SENSES/HANDS/LOOP、AGENTS 片段、MCP rows 和 eval cases/runner；不读写磁盘、不 import npm 包。合并 AGENTS.md 用 `mergeAgentsContent`（marker 幂等）。
 - `dsh.bundle.patch.yml`：只 `insert` 一行宿主插件行，不覆盖任何宿主行。
 
 控制半侧必须挂进 agent preset（设置 → Agent preset → compaction 组），原因：Web 形态下 `dsh-web-app` 把宿主平面的 compaction 行全部 disabled，真正的 `compaction` 服务在 `preset-standard` 的 isolate group 里，宿主上下文拿不到。插件启动时会自动往 `preset-standard` 补挂一行（受 `autoMountControl` 控制）。
@@ -137,6 +142,8 @@ UI 脚本通过 Windows Edge 的 CDP 连接（`scripts/lib/cdp.mjs`，默认 Edg
 - `agent-embodiment/docs/IMPLEMENTATION.md`：实现细节、路由清单、测试结果（最接近架构总览）。
 - `agent-embodiment/docs/LIMITATIONS.md`：行为边界与已知限制。
 - `agent-embodiment/docs/EVIDENCE.md`：逐版本 UI/运行证据。
+- `agent-embodiment/docs/RELEASE-PLAN.md`：0.22.0 → 1.0.0 的版本路线图、发布门禁、兼容矩阵与回滚步骤。
 - `agent-embodiment/PERMISSIONS.md`：访问面披露。
 - `research/arch.md`：DSH 插件/bundle/client 机制调研（写新插件集成时先看）。
-- `eval/REPORT.md`：评测设计、结果与结论。
+- `eval/REPORT.md`：评测设计、结果与结论；`eval/PLUGIN-AB.md`：插件安装 / 不安装的 agent 能力对照（63 次运行）。
+- `eval/deep/`：Tier B 50 题深度套件（20 多轮记忆 / 15 长上下文 / 9 代码 / 6 仓库），用于 base / plugin / scaffold / compact 四组对照；`README.md` 是使用说明，`RESULTS.md` 与 `COMPARE.md` 是实测结果，旧版题目在 `archive/`。

@@ -17,7 +17,7 @@ DSH 默认启用 HMR（`dsh-hmr` + `dsh-client-hmr`），因此：
 如果安装后仍未出现，按顺序检查：
 
 1. **profile 是否一致**：Desktop 运行的是 `desktop`，WSL `dsh web` 通常是 `web`。带 `--profile` 安装到另一个 profile 不会出现在当前实例里。
-2. **DSH 版本**：支持矩阵是 `0.2.0-rc.2` / `0.2.1-rc.2`；`0.2.1-rc.1` 不在矩阵内，旧版本也可能没有 `dsh-client-hmr`。
+2. **DSH 版本**：支持矩阵是 `0.2.0-rc.2` / `0.2.1-rc.2` / `0.2.1-rc.3`；`0.2.1-rc.1` 不在矩阵内，旧版本也可能没有 `dsh-client-hmr`。
 3. **HMR 是否被关闭**：自定义 profile patch 若把 `hmr` 行设为 `disabled: true`，运行中的进程不会重新组合。
 4. **是否在替换已安装包**：升级到新版本属于 DSH 的“package replacement”，仍需重启进程；首次安装不受此限制。
 5. **页面是否陈旧**：Web 刷新一次即可；Desktop 0.2.1-rc.2 实测无需刷新，若仍未出现再重启应用。
@@ -75,6 +75,7 @@ Web 形态下，宿主自带的 `auto` 压缩行被 `dsh-web-app` 置为 disable
 ## 8. 未验证项
 
 - 未对 DSH `0.2.0-rc.1`、`0.2.1-alpha.*`、`0.1.x` 做运行验证。
+- DSH `0.2.1-rc.3` 已做 headless + Web 实测并加入兼容矩阵；Desktop（Electron）尚未在该版本上验收。
 - Desktop 插件管理器的部分边界行为与 Web 形态不同，不能完全用 WSL 结果替代。
 - 未进行独立安全审计；[PERMISSIONS.md](../PERMISSIONS.md) 只披露访问面，不构成安全认证。
 - 自动压缩在高负载/超大历史下的耗时未做系统性压测。
@@ -82,8 +83,9 @@ Web 形态下，宿主自带的 `auto` 压缩行被 `dsh-web-app` 置为 disable
 
 ## 9. Agent 脚手架
 
-- 只写用户提交的**绝对**工作区目录；拒绝文件系统根目录/用户 home，默认不覆盖已有文件。
+- 只写用户提交的**绝对**工作区目录；拒绝文件系统根目录、用户 home 及其祖先、`/etc` 等系统目录、DSH 配置目录和常见凭据目录，默认不覆盖已有文件。
 - 生成的是起点模板，不保证直接达到生产质量；必须用真实任务和 eval 继续迭代。
+- `ops-runbook`、`browser-operator`、`data-analyst`、`support-router` 标记为 `experimental`，依赖外部 MCP/知识库，尚未做任务验证。
 - 生成的 preset 复用 `agent-embodiment/control`；同一 profile 需要安装本插件，否则 preset 激活会失败。
 - MCP 行可由用户提交的 JSON 生成（stdio / streamable-http）；插件只写配置，不执行 MCP 命令；secret 用 `${ENV_VAR}`，安装/启用前仍需审查 command/args 与凭据。
 - `AGENTS.md` 支持带 marker 的幂等合并（保留用户内容）；不勾选 `writeAgents` 时只生成 `AGENTS.snippet.md`。
@@ -91,8 +93,12 @@ Web 形态下，宿主自带的 `auto` 压缩行被 `dsh-web-app` 置为 disable
 - 不会自动修改默认 preset；安装后在 Settings → Agent presets 手动选择。
 - **子 agent 跨版本差异**：DSH 0.2.1-rc.2 已移除 `dsh-tool-subagent` 的 `persona` / `toolFilter`。生成器只使用跨版本字段，角色说明放在 `delegate-<role>` skill；如果需要子 agent 的工具隔离或独立 persona，应另建 Agent Preset 并用 `agentPreset` 选择。
 - 脚手架不是安全沙箱：它只约束写盘路径、覆盖行为和默认 MCP secret 形式，不限制生成后的 agent 工具权限。
+- `sense-environment` / `verify-change` 是可选过程 skill（`processSkills: true` / `--process-skills`），默认只生成角色/delegation skill；它们只使用 DSH 原生工具，不再注册自造 `sense_environment` 工具。
 
 ## 10. 其他
+
+- 插件的 HTTP 路由先经过 `ctx.connection.requestRejection`（Host/Origin + 浏览器/API 认证）；没有 `connection` 服务时不拦截。POST 只接受 `application/json`。
+- 上下文上限、提示词覆盖、工具开关的实际执行在 `control.js`（preset 平面）；control 未挂载时这些功能不生效。
 
 - 插件不会修改会话历史来“修复”旧提示词；它只影响后续请求。
 - 配置写入会改动 profile 的 `cordis.patch.yml`，请保留备份。

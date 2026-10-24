@@ -93,6 +93,16 @@ class MockWebServer extends Service {
   }
 }
 
+/** 模拟 DSH connection 的 admission：x-test-auth: deny 时拒绝。 */
+class MockConnection extends Service {
+  constructor(ctx) {
+    super(ctx, 'connection')
+  }
+  requestRejection(request) {
+    return request?.headers?.['x-test-auth'] === 'deny' ? 401 : undefined
+  }
+}
+
 
 // ── 1. 合法插件形状 ───────────────────────────────────────────────────────
 check('exports name', plugin.name === 'agent-embodiment', plugin.name)
@@ -104,6 +114,7 @@ const root = new Context()
 await root.plugin(MockCommands)
 await root.plugin(MockTokenMeter)
 await root.plugin(MockWebServer)
+await root.plugin(MockConnection)
 const commands = root.get('commands')
 const webServer = root.get('webServer')
 
@@ -188,6 +199,11 @@ const methodResponse = makeResponse()
 statusRoute?.handler({ method: 'POST' }, methodResponse)
 check('状态路由非 GET 返回 405', methodResponse.statusCode === 405, methodResponse.statusCode)
 
+// DSH connection admission 被拒绝时必须 401，不能绕过到 handler。
+const deniedResponse = makeResponse()
+statusRoute?.handler({ method: 'GET', headers: { 'x-test-auth': 'deny' } }, deniedResponse)
+check('状态路由遵循 connection admission（401）', deniedResponse.statusCode === 401, deniedResponse.statusCode)
+
 // ── 3c. Agent Embodiment Scaffold 路由 ────────────────────────────────────
 const scaffoldTemplates = webServer.routes.get('/api/agent-embodiment/status/scaffold/templates')
 const scaffoldPreview = webServer.routes.get('/api/agent-embodiment/status/scaffold/preview')
@@ -196,10 +212,11 @@ check('注册 scaffold/templates 路由', scaffoldTemplates?.kind === 'exact', s
 check('注册 scaffold/preview 路由', scaffoldPreview?.kind === 'exact', scaffoldPreview?.path)
 check('注册 scaffold/generate 路由', scaffoldGenerate?.kind === 'exact', scaffoldGenerate?.path)
 
-const makeJsonRequest = (method, payload) => {
+const makeJsonRequest = (method, payload, headers = { 'content-type': 'application/json' }) => {
   const request = new EventEmitter()
   request.method = method
   request.url = '/'
+  request.headers = headers
   request.destroy = () => {}
   setImmediate(() => {
     request.emit('data', Buffer.from(JSON.stringify(payload)))
@@ -217,6 +234,19 @@ const callJson = (route, method, payload) => new Promise((resolve) => {
   route.handler(makeJsonRequest(method, payload), response)
 })
 
+// 跨站 text/plain 简单请求不能触发写操作。
+const plainResponse = makeResponse()
+const plainDone = new Promise((resolve) => {
+  const originalEnd = plainResponse.end.bind(plainResponse)
+  plainResponse.end = (body) => {
+    originalEnd(body)
+    resolve()
+  }
+})
+scaffoldPreview?.handler(makeJsonRequest('POST', {}, { 'content-type': 'text/plain' }), plainResponse)
+await plainDone
+check('POST 非 application/json 返回 415', plainResponse.statusCode === 415, plainResponse.statusCode)
+
 const listResponse = makeResponse()
 scaffoldTemplates?.handler({ method: 'GET' }, listResponse)
 const listPayload = listResponse.body ? JSON.parse(listResponse.body) : {}
@@ -225,7 +255,10 @@ check('scaffold/templates 返回 6 个模板', listResponse.statusCode === 200 &
 const previewResponse = await callJson(scaffoldPreview, 'POST', { template: 'repo-coder', slug: 'smoke-coder' })
 const previewPayload = previewResponse.body ? JSON.parse(previewResponse.body) : {}
 check('scaffold/preview 返回文件与 preset', previewResponse.statusCode === 200 && previewPayload.presetId === 'smoke-coder' && previewPayload.files?.length >= 10, JSON.stringify({ status: previewResponse.statusCode, preset: previewPayload.presetId, files: previewPayload.files?.length }))
-check('scaffold/preview 含 sense/verify skill', previewPayload.files?.some((file) => file.path.endsWith('/sense-environment/SKILL.md')) && previewPayload.files?.some((file) => file.path.endsWith('/verify-change/SKILL.md')), previewPayload.files?.map((file) => file.path))
+check('scaffold/preview 默认不含 process skill', !previewPayload.files?.some((file) => /sense-environment|verify-change/u.test(file.path)), previewPayload.files?.map((file) => file.path))
+const processPreviewResponse = await callJson(scaffoldPreview, 'POST', { template: 'repo-coder', slug: 'smoke-coder', processSkills: true })
+const processPreviewPayload = processPreviewResponse.body ? JSON.parse(processPreviewResponse.body) : {}
+check('scaffold/preview processSkills 含 sense/verify', processPreviewPayload.files?.some((file) => file.path.endsWith('/sense-environment/SKILL.md')) && processPreviewPayload.files?.some((file) => file.path.endsWith('/verify-change/SKILL.md')), processPreviewPayload.files?.map((file) => file.path))
 const previewPatch = previewPayload.files?.find((file) => file.path.endsWith('dsh.bundle.patch.yml'))?.content ?? ''
 check('scaffold/preview patch 含 preset 行', previewPatch.includes('id: "preset-smoke-coder"') && previewPatch.includes('@deepseek-ai/dsh-agent-preset'), previewPatch.slice(0, 120))
 
@@ -233,7 +266,7 @@ const scaffoldRoot = mkdtempSync(join(tmpdir(), 'ctx-scaffold-'))
 const generateResponse = await callJson(scaffoldGenerate, 'POST', { template: 'repo-coder', slug: 'smoke-coder', targetDir: scaffoldRoot })
 const generatePayload = generateResponse.body ? JSON.parse(generateResponse.body) : {}
 check('scaffold/generate 写入文件', generateResponse.statusCode === 202 && existsSync(join(scaffoldRoot, '.dsh/scaffolds/smoke-coder/dsh.bundle.patch.yml')), JSON.stringify({ status: generateResponse.statusCode, error: generatePayload.error }))
-check('scaffold/generate 写入工作区 skill', existsSync(join(scaffoldRoot, '.agents/skills/smoke-coder-sense-environment/SKILL.md')))
+check('scaffold/generate 写入工作区 skill', existsSync(join(scaffoldRoot, '.agents/skills/smoke-coder-repo-coder/SKILL.md')))
 const duplicateResponse = await callJson(scaffoldGenerate, 'POST', { template: 'repo-coder', slug: 'smoke-coder', targetDir: scaffoldRoot })
 check('scaffold/generate 默认拒绝覆盖', duplicateResponse.statusCode === 409, duplicateResponse.statusCode)
 const overwriteResponse = await callJson(scaffoldGenerate, 'POST', { template: 'repo-coder', slug: 'smoke-coder', targetDir: scaffoldRoot, overwrite: true })
@@ -268,6 +301,17 @@ try {
   unknownKeyError = error
 }
 check('未知配置键被拒绝', unknownKeyError?.name === 'ValidationError' && /unknown config key/.test(unknownKeyError.message), unknownKeyError?.message)
+
+const aggressive = plugin.Config['~standard'].validate({ compressionStrategy: 'aggressive', contextWindowTokens: 100000 })
+check('compressionStrategy=aggressive 套用 0.75/0.5/10%', aggressive.value?.triggerAt === 0.75 && aggressive.value?.targetAt === 0.5 && aggressive.value?.keepTokens === 10000, JSON.stringify(aggressive.value))
+const overridden = plugin.Config['~standard'].validate({ compressionStrategy: 'aggressive', contextWindowTokens: 100000, triggerAt: 1, targetAt: 0.8 })
+check('显式 trigger/target 覆盖 preset', overridden.value?.triggerAt === 1 && overridden.value?.targetAt === 0.8, JSON.stringify(overridden.value))
+const badStrategy = plugin.Config['~standard'].validate({ compressionStrategy: 'nope' })
+check('非法 compressionStrategy 被拒绝', Array.isArray(badStrategy.issues) && /conservative, balanced, aggressive/.test(badStrategy.issues[0]?.message ?? ''), JSON.stringify(badStrategy.issues))
+const analytics = plugin.Config['~standard'].validate({ analyticsLimit: 200 })
+check('analyticsLimit 上限 200 可用', analytics.value?.analyticsLimit === 200, JSON.stringify(analytics.value?.analyticsLimit))
+const badAnalytics = plugin.Config['~standard'].validate({ analyticsLimit: 201 })
+check('analyticsLimit 超过 200 被拒绝', Array.isArray(badAnalytics.issues) && /1\.\.200/.test(badAnalytics.issues[0]?.message ?? ''), JSON.stringify(badAnalytics.issues))
 
 // ── 5. 卸载清理 ───────────────────────────────────────────────────────────
 await fiber.dispose()

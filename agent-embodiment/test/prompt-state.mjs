@@ -114,6 +114,7 @@ const call = async (path, method, body) => {
   const request = Readable.from(body === undefined ? [] : [Buffer.from(JSON.stringify(body))])
   request.method = method
   request.url = path
+  request.headers = { 'content-type': 'application/json' }
   const response = makeResponse()
   route.handler(request, response)
   await response.done

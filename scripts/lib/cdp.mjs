@@ -2,7 +2,7 @@
  * Shared Edge/CDP bootstrap for the one-off UI probes.
  * Connection only: callers still decide when to enable Runtime/Page and navigate.
  */
-import { spawn } from 'node:child_process'
+import { execFileSync, spawn } from 'node:child_process'
 import { mkdtempSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
@@ -10,16 +10,38 @@ import { join } from 'node:path'
 export const EDGE = process.env.EDGE_PATH || 'C:\\Program Files (x86)\\Microsoft\\Edge\\Application\\msedge.exe'
 export const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms))
 
+/**
+ * WSL interop 只能直接执行 /mnt/<drive>/... 形式的 Windows exe；同时
+ * Windows 版 Edge 不认识 Linux 路径的 --user-data-dir。这里按需做双向路径转换。
+ */
+function wslPathToWindows(path) {
+  try {
+    return execFileSync('wslpath', ['-w', path], { encoding: 'utf8' }).trim()
+  } catch {
+    return path
+  }
+}
+
+function windowsPathToWsl(path) {
+  const match = /^([A-Za-z]):[\\/](.*)$/u.exec(path)
+  if (!match) return path
+  return `/mnt/${match[1].toLowerCase()}/${match[2].replace(/\\/gu, '/')}`
+}
+
+const WINDOWS_EXE = /^[A-Za-z]:[\\/]/u.test(EDGE) || /\.exe$/iu.test(EDGE)
+const EXECUTABLE = WINDOWS_EXE ? windowsPathToWsl(EDGE) : EDGE
+
 export async function openCdp({ port, profilePrefix = 'edge-dsh-', captureConsole = false, captureAllConsole = false, timeoutMs = 12000 } = {}) {
   if (!Number.isInteger(port) || port <= 0) throw new Error('openCdp requires a valid port')
   const profile = mkdtempSync(join(tmpdir(), profilePrefix))
-  const child = spawn(EDGE, [
+  const profileArg = WINDOWS_EXE ? wslPathToWindows(profile) : profile
+  const child = spawn(EXECUTABLE, [
     '--headless=new',
     '--disable-gpu',
     '--no-first-run',
     '--no-default-browser-check',
     `--remote-debugging-port=${port}`,
-    `--user-data-dir=${profile}`,
+    `--user-data-dir=${profileArg}`,
     'about:blank',
   ], { stdio: 'ignore' })
 

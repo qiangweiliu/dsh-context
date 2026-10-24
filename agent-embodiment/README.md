@@ -1,8 +1,10 @@
 # Agent Embodiment
 
-给 DeepSeek Harness（DSH）agent 一副身体：上下文预算与压缩、环境感知、工具/提示词控制、子 agent 与 Agent 脚手架。
+在 DeepSeek Harness（DSH）原生上下文管理之上，提供跨会话用量分析、会话级预算/提示词/工具控制，以及可选的 Agent 脚手架。
 
-包名：`agent-embodiment` · 市场标题：`Agent Embodiment` / `智能体具身` · 当前版本：`0.21.0`
+> **与 DSH 原生能力的关系**：token 计量、自动压缩、系统提示词装配、文件/命令/Web/子 agent 等由 DSH 本体提供；本插件不重复实现这些引擎，而是复用官方 seam，补上可观测性与用户控制。单轮任务能力不会因为安装本插件而提升。
+
+包名：`agent-embodiment` · 市场标题：`Agent Embodiment` / `智能体具身` · 当前版本：`0.23.0`
 
 ## 安装后何时生效
 
@@ -12,21 +14,20 @@
 - 安装时确认 `--profile` 与运行实例一致（Desktop 是 `desktop`，WSL web 通常是 `web`）；DSH `0.2.1-rc.1` 不在支持矩阵内。
 - 只有**替换已安装包（升级到新版本）**时，DSH 才要求重启进程；面板检测到宿主/客户端版本不一致时也会提示“刷新页面”。
 
-## Agent 脚手架（0.21.0）
+## Agent 脚手架（0.23.0，experimental 可选）
 
-把 AI 当思维核心、脚手架当“感官 + 手 + 反馈”的具身能力包：
+把 AI 当思维核心、脚手架当“感官 + 手 + 反馈”的具身能力包。**默认不推荐作为首选能力**：实测它会让工具调用和输出变多，但没有稳定的准确率收益；需要流程提示时再显式开启 process skills。
 
 - 面板新增 **Agent** tab；也可以命令行生成：
   ```bash
   node scripts/agent-scaffold.mjs --template repo-coder --out /path/to/workspace --slug my-agent
   ```
-- 模板：`repo-coder`、`web-researcher`、`ops-runbook`、`browser-operator`、`data-analyst`、`support-router`。
+- 模板：`repo-coder`、`web-researcher`；`ops-runbook`、`browser-operator`、`data-analyst`、`support-router` 标记为 **experimental**（依赖外部 MCP/知识库，尚未做任务验证）。
 - 生成物：
   - `.dsh/scaffolds/<slug>/`：可安装的 DSH bundle，insert 一个 agent preset；
-  - `.dsh/scaffolds/<slug>/senses.js`：真实 host tool `sense_environment`（只读 cwd/git/顶层目录/manifest 快照）；
-  - `.agents/skills/<slug>-*/SKILL.md`：`sense-environment`、`verify-change`、`tool-catalog` 和角色 skill；
+  - `.agents/skills/<slug>-*/SKILL.md`：角色 skill 与 delegation skill；`sense-environment`、`verify-change` 是过程 skill，默认不生成，需加 `--process-skills`（面板勾选 “Include process skills”）；全部使用 DSH 原生工具，不注册自造工具；
   - `SENSES.md` / `HANDS.md` / `LOOP.md` / `AGENTS.snippet.md` / `evals/`；
-  - `evals/run.mjs`：按 case 调用 `dsh headless` 记录 transcript 的 runner（不自动判分）。
+  - `evals/cases.jsonl` + `evals/run.mjs`：按 case 调用 `dsh headless` 记录 transcript 的 runner（不自动判分）。
 - 预览与生成走宿主路由：`/api/agent-embodiment/status/scaffold/{templates,preview,generate}`。
 - 面板支持可选 MCP JSON（stdio / streamable-http；secret 用 `${ENV_VAR}`）和 AGENTS.md 带标记合并。
 - 生成的 preset 复用 `agent-embodiment/control` 做上下文压缩；需要在同一 profile 安装本插件。
@@ -38,8 +39,9 @@
 ### 1. 控制上下文长度
 
 - 设置当前会话的上下文上限和压缩触发线。
+- 压缩策略 preset：`conservative`（0.9 触发 / 0.7 目标 / 保留 35%）、`balanced`（1 / 0.6 / 25%）、`aggressive`（0.75 / 0.5 / 10%）；手动填写 `triggerAt` / `targetAt` / `keepTokens` 时以手动值为准。
 - 达到触发线时自动压缩，减少后续请求的 token 消耗。
-- 手动压缩当前会话：
+- 手动压缩当前会话（官方 `/compact` 也可用；本命令按插件预算重试）：
 
 ```text
 /embody-compact
@@ -56,8 +58,10 @@
 
 - 查看当前会话的上下文用量、剩余空间和占用比例。
 - 查看提示词、工具定义、历史消息、本轮对话各占多少 token。
-- 面板提供概览、趋势、事件三个视图。
-- 输入框下方会显示 `embody` 指示器。
+- 面板提供概览、趋势、事件三个视图；趋势/事件会跨会话折叠会话日志。
+- 跨会话分析默认扫描 `analyticsLimit` 个会话（默认 40，最大 200）；请求里带 `?limit=` 可临时覆盖。
+- 输入框下方只显示 **插件上下文**上限（会话级覆盖后的值）；实时 token 用量与构成由 DSH 内置 ContextMeter 显示，不重复。
+- 成本默认只估算内置 DeepSeek 模型；可在插件配置 `modelPricing` 里按 `{ match, input, cacheRead, cacheWrite, output }`（CNY / 1M tokens）补充新模型。
 - 设置 → 上下文 → 余额胶囊可开启输入框下方的 DSH 余额显示（默认关闭，开启状态保存在本机，重启后保留）；展开可看充值/赠金分项、跳转充值页，账号接口失败时给出来源链接。
 
 ### 3. 修改提示词
@@ -89,7 +93,7 @@
 - 设置 → 上下文；
 - 输入框下方的 `embody` 指示器。
 
-也可以在会话中直接使用 `/embody` 查看当前上下文（`/ctx` 保留为兼容别名）。
+也可以在会话中直接使用 `/embody` 查看当前上下文。`/ctx`、`/ctx-compact` 保留为兼容别名，计划在下一个大版本移除；新脚本请使用 `/embody`、`/embody-compact`（或官方 `/compact`）。
 
 ## 更多文档
 

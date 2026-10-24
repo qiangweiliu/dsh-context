@@ -1,0 +1,202 @@
+{
+  "generatedAt": "2026-10-22T15:14:03.002Z",
+  "dshHome": "/tmp/dsh-ab",
+  "reps": 0,
+  "tasks": [
+    "orientation",
+    "bugfix",
+    "feature",
+    "refactor",
+    "csv",
+    "expr",
+    "lru"
+  ],
+  "summary": {
+    "base": {
+      "label": "clean DSH",
+      "runs": 21,
+      "pass": 21,
+      "passRate": 100,
+      "avgSeconds": 20.7,
+      "avgToolCalls": 5.6,
+      "verified": 18,
+      "avgOutputTokens": 891,
+      "avgContextTokens": 14339.8,
+      "byTask": {
+        "orientation": {
+          "runs": 3,
+          "pass": 3,
+          "avgSeconds": 8.4,
+          "avgToolCalls": 2,
+          "verified": 0
+        },
+        "bugfix": {
+          "runs": 3,
+          "pass": 3,
+          "avgSeconds": 32.9,
+          "avgToolCalls": 8,
+          "verified": 3
+        },
+        "feature": {
+          "runs": 3,
+          "pass": 3,
+          "avgSeconds": 18.2,
+          "avgToolCalls": 5,
+          "verified": 3
+        },
+        "refactor": {
+          "runs": 3,
+          "pass": 3,
+          "avgSeconds": 21,
+          "avgToolCalls": 7.7,
+          "verified": 3
+        },
+        "csv": {
+          "runs": 3,
+          "pass": 3,
+          "avgSeconds": 23.8,
+          "avgToolCalls": 5.3,
+          "verified": 3
+        },
+        "expr": {
+          "runs": 3,
+          "pass": 3,
+          "avgSeconds": 21.2,
+          "avgToolCalls": 5.7,
+          "verified": 3
+        },
+        "lru": {
+          "runs": 3,
+          "pass": 3,
+          "avgSeconds": 19.7,
+          "avgToolCalls": 5.7,
+          "verified": 3
+        }
+      }
+    },
+    "plugin": {
+      "label": "agent-embodiment installed",
+      "runs": 21,
+      "pass": 21,
+      "passRate": 100,
+      "avgSeconds": 23.2,
+      "avgToolCalls": 6.7,
+      "verified": 18,
+      "avgOutputTokens": 1031.5,
+      "avgContextTokens": 14567.6,
+      "byTask": {
+        "orientation": {
+          "runs": 3,
+          "pass": 3,
+          "avgSeconds": 11.2,
+          "avgToolCalls": 2,
+          "verified": 0
+        },
+        "bugfix": {
+          "runs": 3,
+          "pass": 3,
+          "avgSeconds": 31.9,
+          "avgToolCalls": 8.7,
+          "verified": 3
+        },
+        "feature": {
+          "runs": 3,
+          "pass": 3,
+          "avgSeconds": 23.1,
+          "avgToolCalls": 7.7,
+          "verified": 3
+        },
+        "refactor": {
+          "runs": 3,
+          "pass": 3,
+          "avgSeconds": 25.8,
+          "avgToolCalls": 9.7,
+          "verified": 3
+        },
+        "csv": {
+          "runs": 3,
+          "pass": 3,
+          "avgSeconds": 22.9,
+          "avgToolCalls": 6.7,
+          "verified": 3
+        },
+        "expr": {
+          "runs": 3,
+          "pass": 3,
+          "avgSeconds": 25.2,
+          "avgToolCalls": 5.3,
+          "verified": 3
+        },
+        "lru": {
+          "runs": 3,
+          "pass": 3,
+          "avgSeconds": 22.4,
+          "avgToolCalls": 7,
+          "verified": 3
+        }
+      }
+    },
+    "scaffold": {
+      "label": "plugin + scaffold embodiment",
+      "runs": 21,
+      "pass": 21,
+      "passRate": 100,
+      "avgSeconds": 23.9,
+      "avgToolCalls": 6.7,
+      "verified": 18,
+      "avgOutputTokens": 1184.1,
+      "avgContextTokens": 15193.6,
+      "byTask": {
+        "orientation": {
+          "runs": 3,
+          "pass": 3,
+          "avgSeconds": 12.2,
+          "avgToolCalls": 2.3,
+          "verified": 0
+        },
+        "bugfix": {
+          "runs": 3,
+          "pass": 3,
+          "avgSeconds": 27.1,
+          "avgToolCalls": 8,
+          "verified": 3
+        },
+        "feature": {
+          "runs": 3,
+          "pass": 3,
+          "avgSeconds": 20.2,
+          "avgToolCalls": 8,
+          "verified": 3
+        },
+        "refactor": {
+          "runs": 3,
+          "pass": 3,
+          "avgSeconds": 20,
+          "avgToolCalls": 5.7,
+          "verified": 3
+        },
+        "csv": {
+          "runs": 3,
+          "pass": 3,
+          "avgSeconds": 31.9,
+          "avgToolCalls": 7.7,
+          "verified": 3
+        },
+        "expr": {
+          "runs": 3,
+          "pass": 3,
+          "avgSeconds": 35.3,
+          "avgToolCalls": 8.7,
+          "verified": 3
+        },
+        "lru": {
+          "runs": 3,
+          "pass": 3,
+          "avgSeconds": 20.6,
+          "avgToolCalls": 6.3,
+          "verified": 3
+        }
+      }
+    }
+  }
+}

@@ -1,0 +1,41 @@
+{
+  "startedAt": "2026-10-24T02:55:07.747Z",
+  "elapsedSeconds": 1808,
+  "out": "/home/wu/dsh-context/eval/results/deep-b-scaffold-default.jsonl",
+  "profile": "headless",
+  "condition": "scaffold",
+  "byCategory": {
+    "multi-turn": {
+      "n": 20,
+      "graded": 20,
+      "correct": 19,
+      "manual": 0,
+      "failed": 0,
+      "seconds": 2341.5
+    },
+    "long-context": {
+      "n": 15,
+      "graded": 15,
+      "correct": 12,
+      "manual": 0,
+      "failed": 0,
+      "seconds": 396.3
+    },
+    "code": {
+      "n": 9,
+      "graded": 9,
+      "correct": 9,
+      "manual": 0,
+      "failed": 0,
+      "seconds": 748.1999999999999
+    },
+    "agentic": {
+      "n": 6,
+      "graded": 6,
+      "correct": 6,
+      "manual": 0,
+      "failed": 0,
+      "seconds": 112.4
+    }
+  }
+}

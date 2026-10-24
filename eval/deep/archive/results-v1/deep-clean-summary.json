@@ -1,0 +1,64 @@
+{
+  "startedAt": "2026-10-23T15:46:14.257Z",
+  "elapsedSeconds": 924,
+  "out": "/home/wu/dsh-context/eval/results/deep-clean.jsonl",
+  "profile": "headless",
+  "byCategory": {
+    "math-l5": {
+      "n": 10,
+      "graded": 10,
+      "correct": 8,
+      "manual": 0,
+      "failed": 0,
+      "seconds": 352.6
+    },
+    "code": {
+      "n": 8,
+      "graded": 8,
+      "correct": 8,
+      "manual": 0,
+      "failed": 0,
+      "seconds": 1018.2
+    },
+    "agentic": {
+      "n": 6,
+      "graded": 6,
+      "correct": 6,
+      "manual": 0,
+      "failed": 0,
+      "seconds": 154.5
+    },
+    "long-context": {
+      "n": 8,
+      "graded": 8,
+      "correct": 8,
+      "manual": 0,
+      "failed": 0,
+      "seconds": 62.5
+    },
+    "data-analysis": {
+      "n": 8,
+      "graded": 8,
+      "correct": 8,
+      "manual": 0,
+      "failed": 0,
+      "seconds": 69.89999999999999
+    },
+    "robustness": {
+      "n": 6,
+      "graded": 6,
+      "correct": 5,
+      "manual": 0,
+      "failed": 0,
+      "seconds": 30.5
+    },
+    "planning": {
+      "n": 4,
+      "graded": 0,
+      "correct": 0,
+      "manual": 4,
+      "failed": 0,
+      "seconds": 633.3
+    }
+  }
+}

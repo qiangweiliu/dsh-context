@@ -2,7 +2,7 @@
 
 本文描述 `agent-embodiment` 的内部结构、集成点和验证方式。面向用户的功能说明见 [README.md](../README.md)；约束与已知限制见 [LIMITATIONS.md](LIMITATIONS.md)。
 
-当前版本：`0.21.0`
+当前版本：`0.23.0`
 
 ## 1. 两个半侧
 
@@ -24,6 +24,8 @@
 `index.js` 的 `Config` 使用手写 Standard Schema：
 
 - `contextWindowTokens`
+- `compressionStrategy`（conservative / balanced / aggressive）
+- `analyticsLimit`（1..200，默认 40）
 - `warnAt` / `errorAt`
 - `triggerAt` / `targetAt`
 - `keepTokens`
@@ -32,6 +34,7 @@
 - `extraPrompts`
 - `extraPromptPlacements`
 - `autoMountControl`
+- `modelPricing`（用户价格表，补充/覆盖内置模型）
 
 注册内容：
 
@@ -46,6 +49,8 @@
 - `POST /api/agent-embodiment/config`（经 `ctx.configEditor` 写入 profile patch）。
 
 全局配置写入后会触发 Loader 重挂插件。写入对象是 profile 的插件 config 行，不直接改会话历史。
+
+所有 HTTP 路由注册时统一套 `authed`：先调用 `ctx.connection.requestRejection`（Host/Origin + 浏览器/API 认证），拒绝时返回 401/403；没有 `connection` 服务（如 headless）时放行。POST 只接受 `application/json`，其他 content-type 返回 415。
 
 ## 3. 控制半侧
 
@@ -77,6 +82,8 @@
 | `off` | 关闭控制 |
 
 触发线 = 预算 × `triggerAt`；目标线 = 预算 × `targetAt`。`warnAt` / `errorAt` 只用于 UI 标记。
+
+`compressionStrategy` 提供三档 preset：`conservative`（0.9 / 0.7 / keep 35%）、`balanced`（1 / 0.6 / 25%）、`aggressive`（0.75 / 0.5 / 10%）。只有在配置里没有显式写 `triggerAt` / `targetAt` / `keepTokens` 时，preset 才会填入默认；显式值优先。
 
 ## 4. 工具与提示词
 
@@ -213,12 +220,12 @@ node --check client.js
 当前结果：
 
 ```text
-static       77/77
-metrics      23/23
+static       79/79
+metrics      24/24
 state        16/16
-scaffold    151/151
+scaffold    146/146
 control      54/54
-smoke        63/63
+smoke        71/71
 prompt-state 11/11
 ```
 
@@ -234,25 +241,24 @@ manifest 声明：
 
 已实测 WSL `dsh 0.2.0-rc.2` 和 Windows Desktop `0.2.1-rc.2`。其他版本保持 `unknown`。
 
-## 11. Agent 脚手架（0.21.0）
+## 11. Agent 脚手架（0.23.0，experimental 可选）
 
 `scaffold.js` 是纯函数生成器（不读写磁盘、不 import npm 包），把 `EmbodimentSpec` 变成一份可安装的 Embodiment Pack：
 
 - `.dsh/scaffolds/<slug>/package.json` + `dsh.bundle.patch.yml`：insert 一个 `@deepseek-ai/dsh-agent-preset` 行；
 - `.dsh/scaffolds/<slug>/SENSES.md` / `HANDS.md` / `LOOP.md` / `AGENTS.snippet.md`；
-- `.dsh/scaffolds/<slug>/senses.js`：生成一个 preset 内挂载的 host plugin，注册只读 `sense_environment` 工具（cwd、`git status --short`、顶层目录、最近 manifest；有界、可取消）；
-- `.dsh/scaffolds/<slug>/skills/<skill>/SKILL.md`，同时复制到 `.agents/skills/<slug>-<skill>/SKILL.md`（`dsh-skill-filesystem` 扫描）；公共 skill 包括 `sense-environment`、`verify-change`、`tool-catalog`；
-- `evals/sense-act.jsonl` + `evals/run.mjs`（按 case 调 `dsh headless`，记录 transcript，不自动判分）；
+- `.dsh/scaffolds/<slug>/skills/<skill>/SKILL.md`，同时复制到 `.agents/skills/<slug>-<skill>/SKILL.md`（`dsh-skill-filesystem` 扫描）；默认只生成角色/delegation skill；`sense-environment`、`verify-change` 需 `processSkills: true`（CLI `--process-skills`）才生成，均使用 DSH 原生 `bash`/`read`/`grep` 等工具，不注册自造工具；
+- `evals/cases.jsonl` + `evals/run.mjs`（按 case 调 `dsh headless`，记录 transcript，不自动判分）；
 - 可选 `mcp`：生成 `dsh-mcp-client` 行，支持 stdio / streamable-http，`${ENV_VAR}` 转为 `!!js process.env.*`；
 - 可选 `writeAgents`：把带 marker 的 section 幂等合并进 `AGENTS.md`，保留用户内容。
 
-模板：`repo-coder`、`web-researcher`、`ops-runbook`、`browser-operator`、`data-analyst`、`support-router`。
+模板：`repo-coder`、`web-researcher`；`ops-runbook`、`browser-operator`、`data-analyst`、`support-router` 标记为 `experimental`（依赖外部 MCP/知识库，尚未做任务验证）。
 
 宿主路由：
 
 - `GET /api/agent-embodiment/status/scaffold/templates`
 - `POST .../scaffold/preview`（只返回文件计划，不写盘）
-- `POST .../scaffold/generate`（要求绝对 `targetDir`；默认拒绝覆盖，`overwrite:true` 才覆盖；路径逃逸校验）
+- `POST .../scaffold/generate`（要求绝对 `targetDir`；拒绝系统目录、home 及其祖先、`$DSH_HOME` 与常见凭据目录；默认拒绝覆盖，`overwrite:true` 才覆盖；路径逃逸校验）
 
 命令行：`node scripts/agent-scaffold.mjs --template <id> --out <absolute-workspace>`。
 

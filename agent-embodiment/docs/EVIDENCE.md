@@ -1,7 +1,7 @@
 # 验收证据（agent-embodiment）
 
 - 仓库：<https://github.com/qiangweiliu/dsh-context>（插件目录 `agent-embodiment/`）
-- 版本：`0.21.0`（本文件随 manifest 兼容性声明一起提交）
+- 版本：`0.23.0`（本文件随 manifest 兼容性声明一起提交）
 - 采集日期：2026-10-18
 - 证据层级说明：`verified` = 本次固定源码上实际执行并记录结果；`partial` = 只在明确边界内验证；`unknown` = 未取得证据。**这些证据不构成独立安全审计，也不替代商城的专项审阅。**
 
@@ -272,6 +272,59 @@ npm 运行依赖：无；生命周期脚本：无
 - UI（中文）：在设置里切换语言到中文后，设置分区显示 `智能体具身`，面板标题与描述为中文，`Agent` tab 显示 6 个模板（repo-coder / web-researcher / ops-runbook / browser-operator / data-analyst / support-router）。
 - 测试：`static 77/77`、`metrics 23/23`、`state 16/16`、`scaffold 151/151`、`control 54/54`、`smoke 63/63`、`prompt-state 11/11`。
 - 边界：市场收录仍取决于 `awesome-dsh-plugin` 的 PR 审核；本次只验证市场元数据与本地实机显示，旧路由不做兼容别名。
+
+## E20. 0.21.0 后续加固（2026-10-23，源码审查驱动）
+
+- 路由鉴权：18 个 `/api/agent-embodiment/status` 路由统一经过 `ctx.connection.requestRejection`（Host/Origin + 浏览器/API 认证）；测试用 MockConnection 断言拒绝时返回 401。
+- POST 只接受 `application/json`，其他 content-type 返回 415，避免跨站 `text/plain` 简单请求触发写操作。
+- scaffold `targetDir` 拒绝文件系统根目录、home 及其祖先、`/etc` 等系统目录、`$DSH_HOME` 与常见凭据目录。
+- 底部指示器只显示“插件上下文”上限，不再重复官方 ContextMeter 的用量百分比与构成。
+- 脚手架不再生成 `sense_environment` 工具与 `tool-catalog` skill；`sense-environment` / `verify-change` 改用 DSH 原生 `bash`/`read`/`grep`。
+- `ops-runbook`、`browser-operator`、`data-analyst`、`support-router` 标记为 `experimental`，模板列表接口返回 `experimental` 字段。
+- 成本估算支持 `config.modelPricing` 用户价格表（排在内置表之前，可补充/覆盖模型）。
+- 测试：`npm test`、`test/control.mjs`、`test/smoke.mjs`、`test/prompt-state.mjs` 全部通过。
+
+## E21. v0.22.0 定位调整与脚手架降本（2026-10-24）
+
+- Tier B 四组对照（base / plugin / scaffold / compact，50 题）见仓库 [`eval/deep/RESULTS.md`](../../eval/deep/RESULTS.md)：
+  - base 47/50；3 道长上下文题稳定失败，四组都失败；
+  - compact 单次全量曾显示 input −28%，但全量 3 reps 未复现（−363，CI 跨 0；McNemar p=0.200）；
+  - scaffold 工具调用 5.5 → 15.2、output +30%、耗时 +10%，补跑后准确率无提升；
+  - plugin 仅宿主半侧，补跑后无准确率差异。
+- 脚手架定位改为 **experimental 可选**：`sense-environment` / `verify-change` 改为 `processSkills: true`（CLI `--process-skills`、面板 checkbox）才生成，默认只生成角色/delegation skill。
+- 10 道多轮题复核：旧 scaffold（含 process skills）工具调用 46.5、output 9,994、7/10；0.22.0 默认（仅角色 skill）工具调用 4.7、output 2,597、10/10；base 0.9、1,572、10/10。process skills 是主要成本来源，保留为 opt-in。
+- `autoMountControl` 写入后回读 `presetMountState`，失败写 warning，避免静默失效。
+- 版本升到 `0.22.0`；`client.js` 的 `CLIENT_VERSION` 同步。
+- 测试：`static 77/77`、`metrics 24/24`、`state 16/16`、`scaffold 146/146`、`control 54/54`、`smoke 66/66`、`prompt-state 11/11`。
+- 边界：Tier B 仅 1 次完整运行 + 差异题第 2 次；准确率差异需 3 reps 才能下正式结论。
+
+## E22. 0.22.0 发布门禁、市场条目与 DSH rc.3 初测（2026-10-24）
+
+- 发布门禁：`npm test`（static 77 / metrics 24 / state 16 / scaffold 146）、`npm run test:integration`（control 54 / smoke 66 / prompt-state 11）、`npm pack --dry-run`（18 个文件）全部通过。
+- 市场根因：`agent-embodiment` 不在 `awesome-dsh-plugin` 的 `data/plugins/`，npm 上也没有发布；旧条目仍指向已删除的 `ctx-mon-and-con` 路径。
+- 市场条目：已把 `qiangweiliu__dsh-context--ctx-mon-and-con.yml` 更新/重命名为 `qiangweiliu__dsh-context--agent-embodiment.yml`，并创建 [PR #9029](https://github.com/awesome-dsh-plugin/awesome-dsh-plugin/pull/9029)；CI（Submission gate + check）全绿、mergeable。catalog 需等维护者合并后更新。
+- DSH `0.2.1-rc.3` 初测：临时 npm 安装 `0.2.1-rc.3`；隔离 profile 需要显式 `OPENCODE_GO_API_KEY`（rc.3 不再从凭据文件自动解析）；`--dump-config` 出现 `agent-embodiment`；headless 子集（memory-01 / long-01 / long-05 / code-json-patch）可运行，无启动/兼容崩溃；用 rc.3 自带的 Cordis 4.0.5 跑 smoke 66/66、control 54/54、prompt-state 11/11。Web 侧已进一步验证：隔离 web profile 启动成功，`GET /api/agent-embodiment/status` 返回 v0.23.0、`control.active:true`、`presetMounted:true`，UI 侧栏出现 `embody`、0 console error；`dshReleases` 已加入 `0.2.1-rc.3`。Desktop（Electron）仍未验收。
+- 3 reps 子集：base 19/24（79.2%，avg input 23,715）、compact 20/24（83.3%，avg input 20,525）；`long-05` 在两组都是 0/3，确认系统性长表错误。
+
+## E23. v0.23.0 压缩策略与控制 UX（2026-10-24）
+
+- 新增 `compressionStrategy` 三档 preset：conservative（0.9 / 0.7 / keep 35%）、balanced（1 / 0.6 / 25%）、aggressive（0.75 / 0.5 / 10%）；显式 `triggerAt` / `targetAt` / `keepTokens` 优先。
+- 设置页增加压缩策略下拉；切换时同步触发/目标比例。宿主 `POST /config` 支持 `compressionStrategy`，并在未显式给 trigger/target/keep 时按 preset 推导。
+- `analyticsLimit` 配置（1..200，默认 40）；`?limit=` 仍可临时覆盖。
+- 控制行未挂载（`control.active === false`）时，工具/提示词修改显示 `controlRequired` 提示并拒绝执行；`presetMounted` 状态继续由状态接口暴露。
+- 测试：`static 79/79`（新增策略选择/control 未挂载提示断言）、`metrics 24/24`、`state 16/16`、`scaffold 146/146`、`control 54/54`、`smoke 71/71`（新增三档 preset、显式覆盖、非法策略断言）、`prompt-state 11/11`。
+- 默认 scaffold 全量 50 题复核：默认（仅角色 skill）46/50、tools 5.1、output 3,836、input 18,817、72s；旧（含 process skills）42/50、tools 15.2、output 5,617、87.4s；base 47/50、tools 5.5、43:32、22,317、79s。默认 scaffold 成本接近 base，仍无准确率收益。
+- 边界：策略选择只在真实 Web/Desktop 面板中做静态/单元验证，尚未做 CDP 截图。
+
+## E24. Tier B 全量 3 reps 对照（2026-10-24）
+
+- base：121/150（80.7%），avg 73.6s，input 21,133，output 3,933，tools 6.0。
+- compact：129/150（86.0%），avg 70.7s，input 20,770，output 4,199，tools 5.4。
+- 逐次配对：both pass 110、both fail 10、base 赢 11、compact 赢 19；McNemar 精确检验 p=0.200。
+- input 差值 −363 tokens/次（95% CI −2,941～+2,227）；output +266（CI −293～+807）；耗时 −2.9s（CI −10.4～+4.5）。
+- `long-05` 两组都是 0/3，系统性长表错误。
+- rc.3：headless + Cordis 测试 + Web 状态/UI 已通过；Desktop 未验收。`engines.dsh` 与 `dshReleases` 已加入 `0.2.1-rc.3`。
+- 结论：compact 的准确率/ token /耗时差异均不显著；单次全量的 −28% 不能作为卖点。Tier B 题库继续作为固定回归基线。
 
 ## 已知限制（unknown）
 

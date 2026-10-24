@@ -54,7 +54,7 @@ import {
   clearSessionBudget,
 } from './state.js'
 
-import { foldSession, sessionDetail, summarizeFolds } from './metrics.js'
+import { DEFAULT_MODEL_PRICING, foldSession, sessionDetail, summarizeFolds } from './metrics.js'
 import { SCAFFOLD_TEMPLATES, mergeAgentsContent, planScaffold } from './scaffold.js'
 
 /** 依赖的真实服务名（见 @deepseek-ai/dsh-commands / @deepseek-ai/dsh-token-meter）。 */
@@ -88,9 +88,18 @@ const MAX_BODY_BYTES = 256 * 1024
 /** 内存里最多保留多少条会话测量（进程内，重启即清空）。 */
 const MAX_MEASUREMENTS = 10
 
+/** 压缩策略 preset：只在用户没有显式覆盖 trigger/target/keep 时生效。 */
+const COMPRESSION_STRATEGIES = Object.freeze({
+  conservative: { triggerAt: 0.9, targetAt: 0.7, keepRatio: 0.35 },
+  balanced: { triggerAt: 1, targetAt: 0.6, keepRatio: 0.25 },
+  aggressive: { triggerAt: 0.75, targetAt: 0.5, keepRatio: 0.1 },
+})
+
 const DEFAULT_CONFIG = {
   // 上下文窗口上下文（token）。不同模型窗口不同，按需覆盖。
   contextWindowTokens: 128000,
+  // 压缩策略 preset：conservative / balanced / aggressive。
+  compressionStrategy: 'balanced',
   // 达到窗口的多少比例时标记“警告”（只影响标记/颜色，不触发压缩）。
   warnAt: 0.75,
   // 达到窗口的多少比例时标记“超限”（只影响标记/颜色，不做拦截）。
@@ -109,6 +118,11 @@ const DEFAULT_CONFIG = {
   extraPromptPlacements: {},
   // 压缩时保留的最近 tokens（0 = 用插件预算的 25%）。
   keepTokens: 0,
+  // 跨会话分析默认扫描多少个会话（1..200；页面可用 ?limit= 临时覆盖）。
+  analyticsLimit: 40,
+  // 追加的用户价格表：[{ match: '正则', input, cacheRead, cacheWrite, output }]，单位 CNY / 1M tokens。
+  // 排在内置表之前，因此同名模型可以用它覆盖或补充。
+  modelPricing: [],
   // 是否在启动时自动把控制行补挂进 agent preset（面板手动停用后置 false）。
   autoMountControl: true,
 }
@@ -163,7 +177,7 @@ function validateConfig(input) {
   if (typeof raw !== 'object' || raw === null || Array.isArray(raw)) {
     return { issues: [{ message: 'config must be an object' }] }
   }
-  const config = { ...DEFAULT_CONFIG, disabledTools: [], promptOverrides: {}, extraPrompts: {}, extraPromptPlacements: {}, autoMountControl: true, keepTokens: 0 }
+  const config = { ...DEFAULT_CONFIG, disabledTools: [], promptOverrides: {}, extraPrompts: {}, extraPromptPlacements: {}, modelPricing: [], autoMountControl: true, keepTokens: 0 }
   for (const key of NUMERIC_KEYS) {
     const value = raw[key]
     if (value === undefined) continue
@@ -245,6 +259,54 @@ function validateConfig(input) {
       config.extraPromptPlacements = placements
     }
   }
+  if (raw.modelPricing !== undefined) {
+    if (!Array.isArray(raw.modelPricing)) {
+      issues.push({ message: 'expected an array of pricing rows', path: ['modelPricing'] })
+    } else {
+      const rows = []
+      for (const [index, row] of raw.modelPricing.entries()) {
+        if (typeof row !== 'object' || row === null || Array.isArray(row)) {
+          issues.push({ message: 'expected an object', path: ['modelPricing', index] })
+          break
+        }
+        const okNumber = (value) => value === undefined || (typeof value === 'number' && Number.isFinite(value) && value >= 0)
+        if (typeof row.match !== 'string' || row.match.trim().length === 0) {
+          issues.push({ message: 'expected a non-empty regex', path: ['modelPricing', index, 'match'] })
+          break
+        }
+        try { new RegExp(row.match, 'i') } catch {
+          issues.push({ message: 'invalid regex', path: ['modelPricing', index, 'match'] })
+          break
+        }
+        if (!okNumber(row.input) || !okNumber(row.cacheRead) || !okNumber(row.cacheWrite) || !okNumber(row.output)) {
+          issues.push({ message: 'prices must be non-negative numbers', path: ['modelPricing', index] })
+          break
+        }
+        if (typeof row.input !== 'number' || typeof row.output !== 'number') {
+          issues.push({ message: 'input and output prices are required', path: ['modelPricing', index] })
+          break
+        }
+        rows.push({
+          match: row.match,
+          input: row.input,
+          cacheRead: row.cacheRead ?? 0,
+          cacheWrite: row.cacheWrite ?? row.input,
+          output: row.output,
+        })
+      }
+      config.modelPricing = rows
+    }
+  }
+  if (raw.compressionStrategy !== undefined) {
+    if (!Object.prototype.hasOwnProperty.call(COMPRESSION_STRATEGIES, raw.compressionStrategy)) {
+      issues.push({ message: `expected one of ${Object.keys(COMPRESSION_STRATEGIES).join(', ')}`, path: ['compressionStrategy'] })
+    } else config.compressionStrategy = raw.compressionStrategy
+  }
+  if (raw.analyticsLimit !== undefined) {
+    if (!Number.isInteger(raw.analyticsLimit) || raw.analyticsLimit < 1 || raw.analyticsLimit > 200) {
+      issues.push({ message: 'expected an integer in 1..200', path: ['analyticsLimit'] })
+    } else config.analyticsLimit = raw.analyticsLimit
+  }
   if (raw.keepTokens !== undefined) {
     if (!Number.isInteger(raw.keepTokens) || raw.keepTokens < 0) issues.push({ message: 'expected a non-negative integer', path: ['keepTokens'] })
     else config.keepTokens = raw.keepTokens
@@ -259,6 +321,11 @@ function validateConfig(input) {
   if (!Number.isInteger(config.contextWindowTokens) || config.contextWindowTokens <= 0) {
     issues.push({ message: 'expected a positive integer', path: ['contextWindowTokens'] })
   }
+  // preset 只在字段未显式出现时填默认，显式值优先。
+  const strategy = COMPRESSION_STRATEGIES[config.compressionStrategy] ?? COMPRESSION_STRATEGIES.balanced
+  if (raw.triggerAt === undefined) config.triggerAt = strategy.triggerAt
+  if (raw.targetAt === undefined) config.targetAt = strategy.targetAt
+  if (raw.keepTokens === undefined && config.compressionStrategy !== 'balanced' && config.contextWindowTokens > 0) config.keepTokens = Math.round(config.contextWindowTokens * strategy.keepRatio)
   for (const key of ['warnAt', 'errorAt', 'triggerAt']) {
     const value = config[key]
     if (!(value > 0 && value <= 1)) issues.push({ message: 'expected a number in (0, 1]', path: [key] })
@@ -353,6 +420,11 @@ export function apply(ctx, config) {
   setGlobalExtraPrompts(config.extraPrompts)
   setGlobalExtraPromptPlacements(config.extraPromptPlacements)
   setGlobalDisabledTools(config.disabledTools)
+
+  // 成本估算：用户价格表排在内置表之前，因此可以覆盖或补充内置模型。
+  const effectivePricing = Array.isArray(config.modelPricing) && config.modelPricing.length > 0
+    ? [...config.modelPricing, ...DEFAULT_MODEL_PRICING]
+    : DEFAULT_MODEL_PRICING
 
   // 状态目录：0.21.0 从 ctx-mon-and-con 改名；首次启动把旧目录的两个状态文件复制过来。
   const STATE_DIR = join(homedir(), '.dsh', 'agent-embodiment')
@@ -618,14 +690,61 @@ export function apply(ctx, config) {
     if (typeof sub.effect === 'function') sub.effect(() => () => { sessions = null }, 'agent-embodiment: sessions presence')
   })
 
+  let workspaceRegistry = null
+  ctx.inject(['workspaceRegistry'], (sub) => {
+    workspaceRegistry = sub?.workspaceRegistry ?? null
+    if (typeof sub.effect === 'function') sub.effect(() => () => { workspaceRegistry = null }, 'agent-embodiment: workspace registry presence')
+  })
+
+  // 浏览器/API 认证：DSH 把认证放在 connection 的 /api 前缀路由里，本插件注册的是
+  // 精确路由，必须自己调用官方 admission，否则会绕过 Host/Origin 与 cookie 校验。
+  let connection = null
+  ctx.inject(['connection'], (sub) => {
+    connection = sub?.connection ?? null
+    if (typeof sub.effect === 'function') sub.effect(() => () => { connection = null }, 'agent-embodiment: connection presence')
+  })
+
+  /**
+   * 用 DSH 的 requestRejection 决定是否放行。没有 connection（headless 等）时不拦截；
+   * 检查本身抛错时按 403 失败关闭。
+   */
+  const requestRejection = (request) => {
+    try {
+      return connection && typeof connection.requestRejection === 'function'
+        ? connection.requestRejection(request)
+        : undefined
+    } catch {
+      return 403
+    }
+  }
+
+  const authed = (handler) => (request, response) => {
+    const rejection = requestRejection(request)
+    if (rejection) {
+      response.statusCode = rejection
+      response.setHeader('content-type', 'text/plain; charset=utf-8')
+      response.end(rejection === 401 ? 'unauthorized' : 'forbidden')
+      return undefined
+    }
+    return handler(request, response)
+  }
+
   const requestUrl = (request) => new URL(request.url ?? '/', 'http://localhost')
 
   /**
    * 读取 JSON 请求体并交给 handle。非法 JSON 回 400；
    * 传 limitBytes 时超限回 413 并断开连接。
+   * 只接受 application/json，避免跨站 text/plain 简单请求触发写操作。
    */
   const readJson = (request, response, handle, limitBytes = MAX_BODY_BYTES, invalidError = 'invalid body') => {
     const send = jsonSender(response)
+    const contentType = String(request.headers?.['content-type'] ?? '').toLowerCase()
+    if (!contentType.startsWith('application/json')) {
+      response.statusCode = 415
+      response.setHeader('content-type', 'application/json; charset=utf-8')
+      response.end(JSON.stringify({ ok: false, error: 'content-type must be application/json' }))
+      return
+    }
     const chunks = []
     let size = 0
     request.on('data', (chunk) => {
@@ -691,6 +810,7 @@ export function apply(ctx, config) {
       triggerAt: config.triggerAt,
       targetAt: config.targetAt,
       keepTokens: config.keepTokens,
+      compressionStrategy: config.compressionStrategy,
       ratio: typeof used === 'number' && budget > 0 ? used / budget : null,
     })
   }
@@ -731,6 +851,21 @@ export function apply(ctx, config) {
       presetMountable: true,
       presetMounted: rows.some((row) => row && row.id === CONTROL_ROW_ID) && !rows.some((row) => row && row.id === LEGACY_CONTROL_ROW_ID),
     }
+  }
+
+  const presetWarn = (message) => {
+    const logger = ctx.logger
+    if (typeof logger?.warn === 'function') logger.warn(`agent-embodiment: ${message}`)
+  }
+
+  /** 写完 preset 后回读，避免静默失败（DSH 升级改了 preset 结构时尤其重要）。 */
+  const verifyPresetMount = (expected, label) => {
+    const state = presetMountState()
+    if (state.presetMounted !== expected) {
+      presetWarn(`${label}: preset mount is ${state.presetMounted}, expected ${expected}`)
+      return false
+    }
+    return true
   }
 
   /** 只复制路径上的对象/数组，保留 !!js 解析出来的函数与其他行原样。 */
@@ -774,9 +909,9 @@ export function apply(ctx, config) {
     if (presetMountState().presetMounted) return
     void editor
       .edit(entry, (current) => mutatePreset(current, true))
+      .then(() => verifyPresetMount(true, 'auto-mount'))
       .catch((error) => {
-        const logger = ctx.logger
-        if (typeof logger?.warn === 'function') logger.warn(`agent-embodiment: auto-mount failed: ${error instanceof Error ? error.message : String(error)}`)
+        presetWarn(`auto-mount failed: ${error instanceof Error ? error.message : String(error)}`)
       })
   }
 
@@ -797,7 +932,10 @@ export function apply(ctx, config) {
         enqueuePreset(async () => {
           const ed = configEditor
           const target = findPresetEntry()
-          if (ed && typeof ed.edit === 'function' && target) await ed.edit(target, (current) => mutatePreset(current, true))
+          if (ed && typeof ed.edit === 'function' && target) {
+            await ed.edit(target, (current) => mutatePreset(current, true))
+            verifyPresetMount(true, 'enable')
+          }
         })
       } else {
         setAutoMountControl(false)
@@ -805,7 +943,10 @@ export function apply(ctx, config) {
         enqueuePreset(async () => {
           const ed = configEditor
           const target = findPresetEntry()
-          if (ed && typeof ed.edit === 'function' && target) await ed.edit(target, (current) => mutatePreset(current, false))
+          if (ed && typeof ed.edit === 'function' && target) {
+            await ed.edit(target, (current) => mutatePreset(current, false))
+            verifyPresetMount(false, 'disable')
+          }
         })
       }
     })
@@ -854,7 +995,7 @@ export function apply(ctx, config) {
     if (!sessionQuery || typeof sessionQuery.observeSession !== 'function') throw new Error('sessionQuery.observeSession unavailable')
     const observation = await withTimeout(sessionQuery.observeSession(sessionId, { projectionMode: 'none' }), 4000, 'observeSession')
     try {
-      const fold = foldSession(observation.header ?? header, observation.events ?? [])
+      const fold = foldSession(observation.header ?? header, observation.events ?? [], effectivePricing)
       foldCache.delete(sessionId)
       foldCache.set(sessionId, { at: Date.now(), fold })
       while (foldCache.size > FOLD_CACHE_MAX) foldCache.delete(foldCache.keys().next().value)
@@ -881,7 +1022,7 @@ export function apply(ctx, config) {
     }
     const url = requestUrl(request)
     const days = parseRange(url.searchParams.get('range'))
-    const limit = Math.min(80, Math.max(1, Number(url.searchParams.get('limit')) || 40))
+    const limit = Math.min(200, Math.max(1, Number(url.searchParams.get('limit')) || config.analyticsLimit))
     try {
       const records = await withTimeout(sessionQuery.listSessions(), 8000, 'listSessions')
       const list = Array.isArray(records) ? records : []
@@ -940,6 +1081,7 @@ export function apply(ctx, config) {
         triggerAt: config.triggerAt,
         targetAt: config.targetAt,
         keepTokens: config.keepTokens,
+        compressionStrategy: config.compressionStrategy,
         source: 'default',
       },
       sessionBudgets: listSessionBudgets(),
@@ -1023,6 +1165,17 @@ export function apply(ctx, config) {
     if (input.targetAt !== undefined) {
       if (typeof input.targetAt !== 'number' || !(input.targetAt > 0 && input.targetAt < 1)) return null
       ratios.targetAt = input.targetAt
+    }
+    if (input.compressionStrategy !== undefined) {
+      if (!Object.prototype.hasOwnProperty.call(COMPRESSION_STRATEGIES, input.compressionStrategy)) return null
+      const preset = COMPRESSION_STRATEGIES[input.compressionStrategy]
+      patch.compressionStrategy = input.compressionStrategy
+      if (input.triggerAt === undefined) ratios.triggerAt = preset.triggerAt
+      if (input.targetAt === undefined) ratios.targetAt = preset.targetAt
+      if (input.keepTokens === undefined) {
+        const budget = input.contextWindowTokens ?? config.contextWindowTokens
+        patch.keepTokens = input.compressionStrategy === 'balanced' ? 0 : Math.max(0, Math.round(budget * preset.keepRatio))
+      }
     }
     const warn = ratios.warnAt ?? config.warnAt
     const error = ratios.errorAt ?? config.errorAt
@@ -1363,6 +1516,7 @@ export function apply(ctx, config) {
         id: template.id,
         name: template.name,
         description: template.description,
+        experimental: template.experimental === true,
         pattern: template.pattern,
         senses: template.senses,
         hands: template.hands,
@@ -1392,6 +1546,24 @@ export function apply(ctx, config) {
     }, 64 * 1024, 'invalid scaffold spec')
   }
 
+  /** 拒绝系统目录、home 及其祖先、DSH 配置目录和常见凭据目录。 */
+  const protectedScaffoldPath = (root) => {
+    const home = resolve(homedir())
+    const dshHome = resolve(process.env.DSH_HOME || join(home, '.dsh'))
+    const systemPrefixes = ['/etc', '/usr', '/bin', '/sbin', '/boot', '/dev', '/proc', '/sys', '/var', '/root']
+    const privateDirs = ['.ssh', '.gnupg', '.aws', '.kube', '.config', '.local'].map((name) => join(home, name))
+    if (root === resolve('/') || root === home) return true
+    // home 的任意祖先（/home、C:\Users、C:\ 等）都不允许。
+    let cursor = home
+    while (dirname(cursor) !== cursor) {
+      cursor = dirname(cursor)
+      if (root === cursor) return true
+    }
+    if (systemPrefixes.some((prefix) => root === resolve(prefix) || root.startsWith(resolve(prefix) + sep))) return true
+    if (root === dshHome || root.startsWith(dshHome + sep)) return true
+    return privateDirs.some((dir) => root === dir || root.startsWith(dir + sep))
+  }
+
   const scaffoldGenerateHandler = (request, response) => {
     const send = jsonSender(response)
     if (!requireMethod(request, response, 'POST')) return
@@ -1400,8 +1572,8 @@ export function apply(ctx, config) {
         return send(400, { ok: false, error: 'targetDir must be an absolute path' })
       }
       const root = resolve(input.targetDir.trim())
-      if (root === resolve('/') || root === resolve(homedir())) {
-        return send(400, { ok: false, error: 'targetDir is too broad; choose a workspace directory' })
+      if (protectedScaffoldPath(root)) {
+        return send(400, { ok: false, error: 'targetDir points at a protected location; choose a workspace directory' })
       }
       let plan
       try {
@@ -1458,24 +1630,24 @@ export function apply(ctx, config) {
     if (!server || typeof server.register !== 'function') return
     const register = () => {
       const offs = [
-        server.register({ kind: 'exact', path: STATUS_PATH, handler: statusHandler }),
-        server.register({ kind: 'exact', path: `${STATUS_PATH}/config`, handler: configHandler }),
-        server.register({ kind: 'exact', path: `${STATUS_PATH}/live`, handler: liveHandler }),
-        server.register({ kind: 'exact', path: `${STATUS_PATH}/analytics`, handler: analyticsHandler }),
-        server.register({ kind: 'exact', path: `${STATUS_PATH}/session-detail`, handler: sessionDetailHandler }),
-        server.register({ kind: 'exact', path: `${STATUS_PATH}/config/preset`, handler: presetHandler }),
-        server.register({ kind: 'exact', path: `${STATUS_PATH}/inventory`, handler: inventoryHandler }),
-        server.register({ kind: 'exact', path: `${STATUS_PATH}/inventory/toggle`, handler: inventoryToggleHandler }),
-        server.register({ kind: 'exact', path: `${STATUS_PATH}/inventory/reset`, handler: inventoryResetHandler }),
-        server.register({ kind: 'exact', path: `${STATUS_PATH}/inventory/prompt`, handler: promptEditHandler }),
-        server.register({ kind: 'exact', path: `${STATUS_PATH}/inventory/prompt/reset`, handler: promptResetHandler }),
-        server.register({ kind: 'exact', path: `${STATUS_PATH}/inventory/prompt/session`, handler: sessionPromptHandler }),
-        server.register({ kind: 'exact', path: `${STATUS_PATH}/inventory/prompt/session/reset`, handler: sessionPromptResetHandler }),
-        server.register({ kind: 'exact', path: `${STATUS_PATH}/inventory/extra-prompt`, handler: extraPromptHandler }),
-        server.register({ kind: 'exact', path: `${STATUS_PATH}/inventory/extra-prompt/reset`, handler: extraPromptResetHandler }),
-        server.register({ kind: 'exact', path: `${STATUS_PATH}/scaffold/templates`, handler: scaffoldTemplateList }),
-        server.register({ kind: 'exact', path: `${STATUS_PATH}/scaffold/preview`, handler: scaffoldPreviewHandler }),
-        server.register({ kind: 'exact', path: `${STATUS_PATH}/scaffold/generate`, handler: scaffoldGenerateHandler }),
+        server.register({ kind: 'exact', path: STATUS_PATH, handler: authed(statusHandler) }),
+        server.register({ kind: 'exact', path: `${STATUS_PATH}/config`, handler: authed(configHandler) }),
+        server.register({ kind: 'exact', path: `${STATUS_PATH}/live`, handler: authed(liveHandler) }),
+        server.register({ kind: 'exact', path: `${STATUS_PATH}/analytics`, handler: authed(analyticsHandler) }),
+        server.register({ kind: 'exact', path: `${STATUS_PATH}/session-detail`, handler: authed(sessionDetailHandler) }),
+        server.register({ kind: 'exact', path: `${STATUS_PATH}/config/preset`, handler: authed(presetHandler) }),
+        server.register({ kind: 'exact', path: `${STATUS_PATH}/inventory`, handler: authed(inventoryHandler) }),
+        server.register({ kind: 'exact', path: `${STATUS_PATH}/inventory/toggle`, handler: authed(inventoryToggleHandler) }),
+        server.register({ kind: 'exact', path: `${STATUS_PATH}/inventory/reset`, handler: authed(inventoryResetHandler) }),
+        server.register({ kind: 'exact', path: `${STATUS_PATH}/inventory/prompt`, handler: authed(promptEditHandler) }),
+        server.register({ kind: 'exact', path: `${STATUS_PATH}/inventory/prompt/reset`, handler: authed(promptResetHandler) }),
+        server.register({ kind: 'exact', path: `${STATUS_PATH}/inventory/prompt/session`, handler: authed(sessionPromptHandler) }),
+        server.register({ kind: 'exact', path: `${STATUS_PATH}/inventory/prompt/session/reset`, handler: authed(sessionPromptResetHandler) }),
+        server.register({ kind: 'exact', path: `${STATUS_PATH}/inventory/extra-prompt`, handler: authed(extraPromptHandler) }),
+        server.register({ kind: 'exact', path: `${STATUS_PATH}/inventory/extra-prompt/reset`, handler: authed(extraPromptResetHandler) }),
+        server.register({ kind: 'exact', path: `${STATUS_PATH}/scaffold/templates`, handler: authed(scaffoldTemplateList) }),
+        server.register({ kind: 'exact', path: `${STATUS_PATH}/scaffold/preview`, handler: authed(scaffoldPreviewHandler) }),
+        server.register({ kind: 'exact', path: `${STATUS_PATH}/scaffold/generate`, handler: authed(scaffoldGenerateHandler) }),
       ]
       return () => offs.forEach((off) => off())
     }

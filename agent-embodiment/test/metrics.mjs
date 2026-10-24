@@ -78,6 +78,10 @@ const unknown = foldSession({ id: 's2' }, [
   { type: 'assistant/message', seq: 1, time: now, data: { usage: { inputTokens: 1, outputTokens: 1, totalTokens: 2 }, message: { source: { provider: 'agnes', model: 'agnes-3.0-flash' } } } },
 ])
 check('未知模型不伪造费用', unknown.cost === null, unknown.cost)
+const custom = foldSession({ id: 's2b' }, [
+  { type: 'assistant/message', seq: 1, time: now, data: { usage: { inputTokens: 1_000_000, outputTokens: 1_000_000, totalTokens: 2_000_000 }, message: { source: { provider: 'custom', model: 'deepseek-v4.1-flash' } } } },
+], [{ match: 'deepseek-v4', input: 1, cacheRead: 0, output: 2 }])
+check('自定义价格表可补充内置未覆盖的模型', custom.cost !== null && Math.abs(custom.cost - 3) < 1e-9, custom.cost)
 const old = foldSession({ id: 's3', createdAt: now - 40 * 24 * 3600 * 1000 }, [
   { type: 'assistant/message', seq: 1, time: now - 40 * 24 * 3600 * 1000, data: { usage: { inputTokens: 1, outputTokens: 1, totalTokens: 2 } } },
 ])

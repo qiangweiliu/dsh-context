@@ -24,6 +24,7 @@ import {
   budgetFor,
   clearSessionToggles,
   clearSessionPromptText,
+  clearAllSessionToggles,
   getAutoMountControl,
   hydrateSessionToggles,
   hydrateCompactionLog,
@@ -54,7 +55,8 @@ import {
   clearSessionBudget,
 } from './state.js'
 
-import { DEFAULT_MODEL_PRICING, PRICING_CURRENCY, PRICING_META, PRICING_SOURCE, PRICING_UPDATED_AT, foldSession, isPeakTime, sessionDetail, summarizeFolds } from './metrics.js'
+import { DEFAULT_MODEL_PRICING, PRICING_CURRENCY, PRICING_META, PRICING_SOURCE, PRICING_UPDATED_AT, estimateInputCost, foldSession, isPeakTime, sessionDetail, summarizeFolds } from './metrics.js'
+import { buildHealth, buildInsights } from './insights.js'
 import { SCAFFOLD_TEMPLATES, mergeAgentsContent, planScaffold } from './scaffold.js'
 
 /** 依赖的真实服务名（见 @deepseek-ai/dsh-commands / @deepseek-ai/dsh-token-meter）。 */
@@ -91,7 +93,7 @@ const MAX_MEASUREMENTS = 10
 /** 压缩策略 preset：只在用户没有显式覆盖 trigger/target/keep 时生效。 */
 const COMPRESSION_STRATEGIES = Object.freeze({
   conservative: { triggerAt: 0.9, targetAt: 0.7, keepRatio: 0.35 },
-  balanced: { triggerAt: 1, targetAt: 0.6, keepRatio: 0.25 },
+  balanced: { triggerAt: 0.9, targetAt: 0.6, keepRatio: 0.25 },
   aggressive: { triggerAt: 0.75, targetAt: 0.5, keepRatio: 0.1 },
 })
 
@@ -104,8 +106,8 @@ const DEFAULT_CONFIG = {
   warnAt: 0.75,
   // 达到窗口的多少比例时标记“超限”（只影响标记/颜色，不做拦截）。
   errorAt: 0.9,
-  // 自动压缩的触发比例（0–1；1 = 到上下限才触发，0.75 = 到警告阈值就预压缩）。
-  triggerAt: 1,
+  // 自动压缩的触发比例（0–1；0.9 = 到 90% 预压缩，1 = 到上下限才触发）。
+  triggerAt: 0.9,
   // 压缩目标比例（0–1；压缩到该比例以下就停止，默认 0.6 = 压到 60% 左右）。
   targetAt: 0.6,
   // 全局禁用的工具名（从每个请求的 tools 里摘掉，schema token 一并省掉）。
@@ -123,8 +125,8 @@ const DEFAULT_CONFIG = {
   // 追加的用户价格表：[{ match: '正则', input, cacheRead, cacheWrite, output }]，单位 CNY / 1M tokens。
   // 排在内置表之前，因此同名模型可以用它覆盖或补充。
   modelPricing: [],
-  // 是否在启动时自动把控制行补挂进 agent preset（面板手动停用后置 false）。
-  autoMountControl: true,
+  // 首次运行/修复时，允许把控制行补挂进 agent preset；默认关闭，必须由用户显式同意。
+  autoMountControl: false,
 }
 
 const CONFIG_KEYS = Object.keys(DEFAULT_CONFIG)
@@ -177,7 +179,7 @@ function validateConfig(input) {
   if (typeof raw !== 'object' || raw === null || Array.isArray(raw)) {
     return { issues: [{ message: 'config must be an object' }] }
   }
-  const config = { ...DEFAULT_CONFIG, disabledTools: [], promptOverrides: {}, extraPrompts: {}, extraPromptPlacements: {}, modelPricing: [], autoMountControl: true, keepTokens: 0 }
+  const config = { ...DEFAULT_CONFIG, disabledTools: [], promptOverrides: {}, extraPrompts: {}, extraPromptPlacements: {}, modelPricing: [], autoMountControl: false, keepTokens: 0 }
   for (const key of NUMERIC_KEYS) {
     const value = raw[key]
     if (value === undefined) continue
@@ -460,6 +462,49 @@ export function apply(ctx, config) {
     }
   }
   loadSessionToggles()
+
+  // 首次运行状态：~/.dsh/agent-embodiment/onboarding.json。
+  // 不写 profile config（避免用户还没同意就触发插件重挂）；只记录向导是否完成、
+  // 预算是否确认，以及是否授权写 agent preset。
+  const ONBOARDING_PATH = join(STATE_DIR, 'onboarding.json')
+  let onboarding = {
+    completed: false,
+    dismissed: false,
+    budgetConfirmed: false,
+    budgetTokens: config.contextWindowTokens,
+    presetConsent: null,
+    at: null,
+    version: PLUGIN_VERSION,
+  }
+  const saveOnboarding = () => {
+    try {
+      mkdirSync(dirname(ONBOARDING_PATH), { recursive: true })
+      writeFileSync(ONBOARDING_PATH, JSON.stringify(onboarding, null, 2) + '\n', 'utf8')
+    } catch (error) {
+      const logger = ctx.logger
+      if (typeof logger?.warn === 'function') logger.warn('agent-embodiment: could not save onboarding: ' + (error instanceof Error ? error.message : String(error)))
+    }
+  }
+  const loadOnboarding = () => {
+    try {
+      if (!existsSync(ONBOARDING_PATH)) return
+      const raw = JSON.parse(readFileSync(ONBOARDING_PATH, 'utf8'))
+      if (!raw || typeof raw !== 'object' || Array.isArray(raw)) return
+      onboarding = {
+        completed: raw.completed === true,
+        dismissed: raw.dismissed === true,
+        budgetConfirmed: raw.budgetConfirmed === true,
+        budgetTokens: Number.isInteger(raw.budgetTokens) && raw.budgetTokens > 0 ? raw.budgetTokens : config.contextWindowTokens,
+        presetConsent: raw.presetConsent === true ? true : raw.presetConsent === false ? false : null,
+        at: typeof raw.at === 'string' ? raw.at : null,
+        version: typeof raw.version === 'string' ? raw.version : PLUGIN_VERSION,
+      }
+    } catch (error) {
+      const logger = ctx.logger
+      if (typeof logger?.warn === 'function') logger.warn('agent-embodiment: could not load onboarding: ' + (error instanceof Error ? error.message : String(error)))
+    }
+  }
+  loadOnboarding()
 
   // 压缩记录持久化：~/.dsh/agent-embodiment/compaction-log.jsonl（JSONL，内存最多 200 条）。
   const COMPACTION_LOG_PATH = join(STATE_DIR, 'compaction-log.jsonl')
@@ -949,19 +994,22 @@ export function apply(ctx, config) {
     const send = jsonSender(response)
     if (!requireMethod(request, response, 'POST')) return
     const editor = configEditor
-    const entry = findPresetEntry()
+    const entry = findKnownPresetEntry() || findPresetEntry()
     if (!editor || typeof editor.edit !== 'function' || !entry) {
       return send(501, { ok: false, error: 'agent preset is not editable in this profile' })
     }
     readJson(request, response, (input) => {
       if (typeof input?.enable !== 'boolean') return send(400, { ok: false, error: 'enable must be a boolean' })
+      if (input.enable && !findKnownPresetEntry()) {
+        return send(409, { ok: false, error: 'no known agent preset id; open Settings → Agent presets and add the control row manually' })
+      }
       send(202, { ok: true, accepted: { enable: input.enable } })
       if (input.enable) {
         setAutoMountControl(true)
         saveSessionToggles()
         enqueuePreset(async () => {
           const ed = configEditor
-          const target = findPresetEntry()
+          const target = findKnownPresetEntry()
           if (ed && typeof ed.edit === 'function' && target) {
             await ed.edit(target, (current) => mutatePreset(current, true))
             verifyPresetMount(true, 'enable')
@@ -972,7 +1020,7 @@ export function apply(ctx, config) {
         saveSessionToggles()
         enqueuePreset(async () => {
           const ed = configEditor
-          const target = findPresetEntry()
+          const target = findKnownPresetEntry() || findPresetEntry()
           if (ed && typeof ed.edit === 'function' && target) {
             await ed.edit(target, (current) => mutatePreset(current, false))
             verifyPresetMount(false, 'disable')
@@ -1043,40 +1091,69 @@ export function apply(ctx, config) {
     return 7
   }
 
+  /** 压缩日志里 before→after 的差值，按 Flash 输入价折算成“单次上下文减少”的估算。 */
+  const savingsFromLogs = (logs, start, pricingRows) => {
+    const picked = (Array.isArray(logs) ? logs : []).filter((entry) => {
+      if (!entry || entry.outcome !== 'success') return false
+      const at = Date.parse(entry.at)
+      return Number.isFinite(at) && at >= start
+    })
+    let tokens = 0
+    for (const entry of picked) {
+      const before = Number(entry.before)
+      const after = Number(entry.after)
+      if (Number.isFinite(before) && Number.isFinite(after) && before > after) tokens += before - after
+    }
+    const estimatedCost = estimateInputCost(tokens, 'deepseek-v4.1-flash', pricingRows)
+    return {
+      compactions: picked.length,
+      tokens,
+      estimatedCost,
+      currency: PRICING_CURRENCY,
+      method: 'compaction before-after at Flash input rate; one context reduction per event',
+    }
+  }
+
+  const analyticsPayload = async (url) => {
+    if (!sessionQuery || typeof sessionQuery.listSessions !== 'function') {
+      const error = new Error('sessionQuery unavailable in this host')
+      error.statusCode = 503
+      throw error
+    }
+    const days = parseRange(url.searchParams.get('range'))
+    const limit = Math.min(200, Math.max(1, Number(url.searchParams.get('limit')) || config.analyticsLimit))
+    const records = await withTimeout(sessionQuery.listSessions(), 8000, 'listSessions')
+    const list = sessionsNewestFirst(records)
+    const picked = list.slice(0, limit)
+    const warnings = []
+    const folds = await mapLimit(picked, 4, async (record) => {
+      try {
+        return await observeFold(record.header.id, record.header, record.live ? 3000 : 20000)
+      } catch (error) {
+        warnings.push(`${record.header.id}: ${error instanceof Error ? error.message : String(error)}`)
+        return null
+      }
+    })
+    const summary = summarizeFolds(folds.filter(Boolean), { days })
+    return {
+      ok: true,
+      generatedAt: new Date().toISOString(),
+      range: url.searchParams.get('range') ?? '7d',
+      coverage: { total: list.length, scanned: picked.length, withData: folds.filter(Boolean).length, limit },
+      warnings: warnings.slice(0, 5),
+      savings: savingsFromLogs(listCompactionLog(), summary.range.start, effectivePricing),
+      ...summary,
+    }
+  }
+
   /** GET /status/analytics?range=7d|30d|all|today&limit=40 —— 近 N 个会话的聚合。 */
   const analyticsHandler = async (request, response) => {
     const send = jsonSender(response)
     if (!requireMethod(request, response, 'GET')) return
-    if (!sessionQuery || typeof sessionQuery.listSessions !== 'function') {
-      return send(503, { ok: false, error: 'sessionQuery unavailable in this host' })
-    }
-    const url = requestUrl(request)
-    const days = parseRange(url.searchParams.get('range'))
-    const limit = Math.min(200, Math.max(1, Number(url.searchParams.get('limit')) || config.analyticsLimit))
     try {
-      const records = await withTimeout(sessionQuery.listSessions(), 8000, 'listSessions')
-      const list = sessionsNewestFirst(records)
-      const picked = list.slice(0, limit)
-      const warnings = []
-      const folds = await mapLimit(picked, 4, async (record) => {
-        try {
-          return await observeFold(record.header.id, record.header, record.live ? 3000 : 20000)
-        } catch (error) {
-          warnings.push(`${record.header.id}: ${error instanceof Error ? error.message : String(error)}`)
-          return null
-        }
-      })
-      const summary = summarizeFolds(folds.filter(Boolean), { days })
-      return send(200, {
-        ok: true,
-        generatedAt: new Date().toISOString(),
-        range: url.searchParams.get('range') ?? '7d',
-        coverage: { total: list.length, scanned: picked.length, withData: folds.filter(Boolean).length, limit },
-        warnings: warnings.slice(0, 5),
-        ...summary,
-      })
+      return send(200, await analyticsPayload(requestUrl(request)))
     } catch (error) {
-      return send(500, { ok: false, error: error instanceof Error ? error.message : String(error) })
+      return send(error?.statusCode || 500, { ok: false, error: error instanceof Error ? error.message : String(error) })
     }
   }
 
@@ -1101,6 +1178,16 @@ export function apply(ctx, config) {
 
   const statusHandler = (request, response) => {
     if (!requireMethod(request, response, 'GET')) return
+    const latestMeasurement = [...measurements.values()].reverse()[0] ?? null
+    const onboardingPayload = { ...onboarding, budgetTokens: config.contextWindowTokens }
+    const control = controlSnapshot()
+    const health = buildHealth({
+      control,
+      configEditable: Boolean(configEditor && typeof configEditor.edit === 'function'),
+      onboarding: onboardingPayload,
+      latest: latestMeasurement,
+      version: PLUGIN_VERSION,
+    })
     const body = JSON.stringify({
       plugin: 'agent-embodiment',
       version: PLUGIN_VERSION,
@@ -1112,10 +1199,13 @@ export function apply(ctx, config) {
         targetAt: config.targetAt,
         keepTokens: config.keepTokens,
         compressionStrategy: config.compressionStrategy,
+        analyticsLimit: config.analyticsLimit,
         source: 'default',
       },
       sessionBudgets: listSessionBudgets(),
-      control: controlSnapshot(),
+      control,
+      health,
+      onboarding: onboardingPayload,
       configEditable: Boolean(configEditor && typeof configEditor.edit === 'function'),
       measurements: [...measurements.values()].reverse(),
       pricing: {
@@ -1126,6 +1216,7 @@ export function apply(ctx, config) {
         peakHours: '周一至周五 09:00–12:00、14:00–18:00（北京时间）',
         models: PRICING_META,
         custom: Array.isArray(config.modelPricing) && config.modelPricing.length > 0,
+        rows: Array.isArray(config.modelPricing) ? config.modelPricing : [],
       },
     })
     response.statusCode = 200
@@ -1215,6 +1306,37 @@ export function apply(ctx, config) {
         const budget = input.contextWindowTokens ?? config.contextWindowTokens
         patch.keepTokens = input.compressionStrategy === 'balanced' ? 0 : Math.max(0, Math.round(budget * preset.keepRatio))
       }
+    }
+    if (input.analyticsLimit !== undefined) {
+      if (!Number.isInteger(input.analyticsLimit) || input.analyticsLimit < 1 || input.analyticsLimit > 200) return null
+      patch.analyticsLimit = input.analyticsLimit
+    }
+    if (input.autoMountControl !== undefined) {
+      if (typeof input.autoMountControl !== 'boolean') return null
+      patch.autoMountControl = input.autoMountControl
+    }
+    if (input.modelPricing !== undefined) {
+      if (!Array.isArray(input.modelPricing) || input.modelPricing.length > 50) return null
+      const rows = []
+      for (const row of input.modelPricing) {
+        if (!row || typeof row !== 'object' || Array.isArray(row)) return null
+        if (typeof row.match !== 'string' || row.match.trim() === '' || row.match.length > 200) return null
+        try {
+          new RegExp(row.match, 'i')
+        } catch {
+          return null
+        }
+        const numbers = ['input', 'cacheRead', 'cacheWrite', 'output'].map((key) => row[key] === undefined ? 0 : row[key])
+        if (numbers.some((value) => typeof value !== 'number' || !Number.isFinite(value) || value < 0)) return null
+        rows.push({
+          match: row.match.trim(),
+          input: numbers[0],
+          cacheRead: numbers[1],
+          cacheWrite: numbers[2],
+          output: numbers[3],
+        })
+      }
+      patch.modelPricing = rows
     }
     const warn = ratios.warnAt ?? config.warnAt
     const error = ratios.errorAt ?? config.errorAt
@@ -1330,6 +1452,112 @@ export function apply(ctx, config) {
       extraPrompts: runtimeExtraPrompts,
       extraPromptPlacements: runtimeExtraPromptPlacements,
       applied: sessionId ? getAppliedTools(sessionId) : null,
+    })
+  }
+
+  /** GET /status/insights：把分析结果折成可执行结论；文案由客户端本地化。 */
+  const insightsHandler = async (request, response) => {
+    const send = jsonSender(response)
+    if (!requireMethod(request, response, 'GET')) return
+    try {
+      const url = requestUrl(request)
+      const analytics = await analyticsPayload(url)
+      const requested = url.searchParams.get('sessionId') ?? ''
+      const session = requested && sessions && typeof sessions.get === 'function' ? sessions.get(requested) : latestSession()
+      const sessionId = requested || session?.id || null
+      const found = sessionId ? getInventory(sessionId) : null
+      const inventory = found ? { ...withLivePromptState(found, sessionId), sources: sourcesFor(found) } : null
+      return send(200, {
+        ok: true,
+        generatedAt: new Date().toISOString(),
+        insights: buildInsights({
+          analytics,
+          latest: [...measurements.values()].reverse()[0] ?? null,
+          inventory,
+          toolUsage: analytics.toolUsage,
+          logs: listCompactionLog(),
+          pricing: { custom: Array.isArray(config.modelPricing) && config.modelPricing.length > 0 },
+          onboarding,
+          budget: { tokens: config.contextWindowTokens },
+        }),
+      })
+    } catch (error) {
+      return send(error?.statusCode || 500, { ok: false, error: error instanceof Error ? error.message : String(error) })
+    }
+  }
+
+  /** POST /status/onboarding：记录首次运行是否完成/跳过、预算是否确认。 */
+  const onboardingHandler = (request, response) => {
+    const send = jsonSender(response)
+    if (!requireMethod(request, response, 'POST')) return
+    readJson(request, response, (input) => {
+      const patch = {}
+      if (input && typeof input.completed === 'boolean') patch.completed = input.completed
+      if (input && typeof input.dismissed === 'boolean') patch.dismissed = input.dismissed
+      if (input && typeof input.budgetConfirmed === 'boolean') patch.budgetConfirmed = input.budgetConfirmed
+      if (input && typeof input.presetConsent === 'boolean') patch.presetConsent = input.presetConsent
+      if (input && Number.isInteger(input.budgetTokens) && input.budgetTokens > 0) patch.budgetTokens = input.budgetTokens
+      onboarding = {
+        ...onboarding,
+        ...patch,
+        version: PLUGIN_VERSION,
+        at: new Date().toISOString(),
+      }
+      saveOnboarding()
+      return send(202, { ok: true, onboarding })
+    })
+  }
+
+  /** GET /status/export?format=json|csv：导出当前扫描范围的分析结果。 */
+  const exportHandler = async (request, response) => {
+    if (!requireMethod(request, response, 'GET')) return
+    try {
+      const url = requestUrl(request)
+      const payload = await analyticsPayload(url)
+      const format = (url.searchParams.get('format') || 'json').toLowerCase()
+      if (format === 'csv') {
+        const columns = ['id', 'title', 'cwd', 'model', 'tokens', 'input', 'cacheRead', 'cacheWrite', 'output', 'requests', 'toolCalls', 'compactions', 'activeMs', 'cost', 'lastActivityAt']
+        const escape = (value) => {
+          const text = value === null || value === undefined ? '' : String(value)
+          return /[",\n\r]/.test(text) ? `"${text.replace(/"/g, '""')}"` : text
+        }
+        const lines = [columns.join(',')]
+        for (const session of payload.sessions) lines.push(columns.map((column) => escape(session[column])).join(','))
+        response.statusCode = 200
+        response.setHeader('content-type', 'text/csv; charset=utf-8')
+        response.setHeader('content-disposition', `attachment; filename="agent-embodiment-${payload.range}.csv"`)
+        response.setHeader('cache-control', 'no-store')
+        response.end(lines.join('\n') + '\n')
+        return
+      }
+      response.statusCode = 200
+      response.setHeader('content-type', 'application/json; charset=utf-8')
+      response.setHeader('content-disposition', `attachment; filename="agent-embodiment-${payload.range}.json"`)
+      response.setHeader('cache-control', 'no-store')
+      response.end(JSON.stringify(payload, null, 2))
+    } catch (error) {
+      sendJson(response, error?.statusCode || 500, { ok: false, error: error instanceof Error ? error.message : String(error) })
+    }
+  }
+
+  /** POST /status/data/reset：清空压缩日志和/或会话开关；不删除 profile 配置。 */
+  const dataResetHandler = (request, response) => {
+    const send = jsonSender(response)
+    if (!requireMethod(request, response, 'POST')) return
+    readJson(request, response, (input) => {
+      const scope = input?.scope
+      if (!['logs', 'toggles', 'all'].includes(scope)) return send(400, { ok: false, error: 'scope must be logs, toggles or all' })
+      if (scope === 'logs' || scope === 'all') {
+        hydrateCompactionLog([])
+        try {
+          if (existsSync(COMPACTION_LOG_PATH)) writeFileSync(COMPACTION_LOG_PATH, '', 'utf8')
+        } catch {}
+      }
+      if (scope === 'toggles' || scope === 'all') {
+        clearAllSessionToggles()
+        saveSessionToggles()
+      }
+      return send(202, { ok: true, scope })
     })
   }
 
@@ -1689,6 +1917,10 @@ export function apply(ctx, config) {
         server.register({ kind: 'exact', path: `${STATUS_PATH}/config`, handler: authed(configHandler) }),
         server.register({ kind: 'exact', path: `${STATUS_PATH}/live`, handler: authed(liveHandler) }),
         server.register({ kind: 'exact', path: `${STATUS_PATH}/analytics`, handler: authed(analyticsHandler) }),
+        server.register({ kind: 'exact', path: `${STATUS_PATH}/insights`, handler: authed(insightsHandler) }),
+        server.register({ kind: 'exact', path: `${STATUS_PATH}/onboarding`, handler: authed(onboardingHandler) }),
+        server.register({ kind: 'exact', path: `${STATUS_PATH}/export`, handler: authed(exportHandler) }),
+        server.register({ kind: 'exact', path: `${STATUS_PATH}/data/reset`, handler: authed(dataResetHandler) }),
         server.register({ kind: 'exact', path: `${STATUS_PATH}/session-detail`, handler: authed(sessionDetailHandler) }),
         server.register({ kind: 'exact', path: `${STATUS_PATH}/config/preset`, handler: authed(presetHandler) }),
         server.register({ kind: 'exact', path: `${STATUS_PATH}/inventory`, handler: authed(inventoryHandler) }),

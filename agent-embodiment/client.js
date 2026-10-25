@@ -21,7 +21,7 @@ window.__ModuleLoader__.load({
 
     const NS = 'agentEmbodiment'
     /** 与 package.json 版本保持一致；宿主版本不同时提示刷新页面而不是重启 DSH。 */
-    const CLIENT_VERSION = '0.23.0'
+    const CLIENT_VERSION = '0.24.0'
     /**
      * API 路径必须相对页面 base 解析，而不是写死根路径：
      * 反向代理部署在 /app/dsh/ 这类前缀下时，根路径 /api/... 会打到网关根并 404。
@@ -45,15 +45,15 @@ window.__ModuleLoader__.load({
     const CONFIG_NAMESPACE = 'agent-embodiment'
 
     const en = {
-      nav: 'Agent Embodiment',
-      panel: 'embody',
-      ctxBrand: 'embody',
-      title: 'Agent Embodiment',
-      pageTitle: 'Agent Embodiment',
+      nav: 'Context',
+      panel: 'Context',
+      ctxBrand: 'context',
+      title: 'Context',
+      pageTitle: 'Context',
       versionLabel: 'Plugin version',
       reloadUi: 'Reload page',
       reloadHint: 'The plugin was updated; reload the page to load the new UI (no DSH restart needed).',
-      description: 'Context budgets, environment sensing, tools, and agent scaffolds for DeepSeek Harness.',
+      description: 'See where context goes, control compaction and tools, and keep the agent preset healthy.',
       budget: 'Context limit',
       budgetLimit: 'Budget cap',
       used: 'Measured',
@@ -66,8 +66,8 @@ window.__ModuleLoader__.load({
       errorAt: 'Error at',
       triggerAt: 'Trigger at',
       compressionStrategy: 'Compression strategy',
-      strategyConservative: 'Conservative — late compression, keep more',
-      strategyBalanced: 'Balanced — compress at the limit, keep 25%',
+      strategyConservative: 'Conservative — compress at 90%, keep more',
+      strategyBalanced: 'Balanced — pre-compress at 90%, keep 25%',
       strategyAggressive: 'Aggressive — early compression, keep 10%',
       triggerLabel: 'Trigger ratio',
       invalidTrigger: 'Trigger ratio must be in (0, 1].',
@@ -75,6 +75,7 @@ window.__ModuleLoader__.load({
       targetAt: 'Target at',
       targetLabel: 'Target ratio',
       invalidTarget: 'Target ratio must be in (0, 1) and below the trigger ratio.',
+      invalidAnalyticsLimit: 'Analytics session limit must be an integer from 1 to 200.',
       compacting: 'Compacting…',
       compactingHint: 'Compaction is running; the next request may wait a moment.',
       recent: 'Recent /embody measurements',
@@ -105,6 +106,8 @@ window.__ModuleLoader__.load({
       controlDisabled: 'Auto-compaction row removed from the agent preset.',
       configTitle: 'Global configuration',
       configHint: 'Writes to the profile’s config row; the plugin reloads with the new values.',
+      analyticsLimitLabel: 'Analytics session limit',
+      analyticsLimitHint: 'How many recent sessions Trend/Overview scan (1–200; default 40).',
       configUnavailable: 'This client cannot edit the Host configuration — values are read-only here.',
       save: 'Save',
       saving: 'Saving…',
@@ -167,6 +170,14 @@ window.__ModuleLoader__.load({
       confirmGlobal: 'Save globally? It affects every session and is written to the profile.',
       resetSession: 'Reset session override',
       editHint: 'Writes profile config (global). Original kept for restore.',
+      diffPreview: 'Preview changes',
+      diffDelta: '{delta} net tokens vs current text',
+      diffNoChange: 'No changes yet.',
+      toolDisabledImpact: 'Disabled — frees about {tokens} tokens of tool schema in this session (the control row must be mounted).',
+      toolDisabledImpactUnknown: 'Disabled — this session no longer offers the tool to the agent.',
+      toolDisableWarning: 'Turning a tool off removes it from the agent this session; turn it back on to restore it.',
+      alertToggle: 'Show alert strip and dock dot',
+      alertToggleHint: 'Warnings appear when context is above the warn line or the control row is inactive.',
       extraPromptAdd: 'Add prompt',
       extraPromptName: 'Prompt name',
       extraPromptText: 'Prompt text',
@@ -219,6 +230,97 @@ window.__ModuleLoader__.load({
       scaffoldCopy: 'Copy',
       scaffoldCopied: 'Copied',
       scaffoldEmpty: 'Preview to see the files this preset will create.',
+      labsTitle: 'Labs: Agent scaffold',
+      labsHint: 'Experimental and separate from the context loop. Only repo-coder and web-researcher are validated.',
+      onboardingTitle: 'Set up context control',
+      onboardingIntro: 'Three steps, about a minute. You can skip; budget and strategy stay editable in Settings.',
+      onboardingBudget: '1. Confirm the budget',
+      onboardingBudgetHint: 'This is the plugin budget used for percentages and compaction — not the model window. Check the built-in ContextMeter for the model window.',
+      onboardingStrategy: '2. Pick a compaction strategy',
+      onboardingPreset: '3. Authorize the control row',
+      onboardingPresetHint: 'The plugin can add one row to the agent preset so compaction can run. Without it, prompt/tool controls are read-only.',
+      onboardingPresetYes: 'Allow writing the control row',
+      onboardingPresetNo: 'I will mount it manually',
+      onboardingFinish: 'Finish setup',
+      onboardingLater: 'Later',
+      onboardingDone: 'Setup complete. You can change it any time in Settings.',
+      onboardingReopen: 'Reopen setup',
+      onboardingBudgetRequired: 'Confirm a positive budget first.',
+      healthTitle: 'Control health',
+      healthOk: 'All core checks pass',
+      healthIssue: 'Needs attention',
+      healthFix: 'Repair control row',
+      healthRecheck: 'Recheck',
+      healthControl: 'Control row active',
+      healthPreset: 'Control row present in the agent preset',
+      healthConfig: 'Host config is editable',
+      healthBudget: 'Budget confirmed',
+      healthMeasurement: 'At least one measurement',
+      healthManual: 'If the row is present but inactive, reload this page or restart DSH once.',
+      healthFixed: 'Repair requested. Recheck in a few seconds.',
+      insightsTitle: 'What to do next',
+      insightToolShare: '{share} of this session is tool schemas ({tokens} tokens). Review low-use tools.',
+      insightUnusedTools: '{count} tools were not called in the scanned sessions ({tokens} tokens of schema).',
+      insightRepeatedCompaction: '{sessions} sessions compacted repeatedly ({compactions} total). Consider a larger budget or a less aggressive strategy.',
+      insightCompactionFailures: '{count} compaction failures. Open Events for the error and retry command.',
+      insightUnknownPricing: '{sessions} sessions have no price ({tokens} tokens). Add a model price to include them.',
+      insightCostOutlier: '{title} costs {multiple}× the median session ({cost}). Open it to see why.',
+      insightOpen: 'Open',
+      insightsEmpty: 'No actionable issues in the scanned range.',
+      savingsTitle: 'Context reduction (est.)',
+      savingsCompactions: '{count} compactions',
+      savingsTokens: '{tokens} tokens removed',
+      savingsCost: '≈ {cost} avoided on the next request',
+      savingsMethod: 'before→after per compaction, Flash input rate; not a full billing reconciliation',
+      dataScope: 'Scope: latest {scanned}/{total} sessions (limit {limit})',
+      exportJson: 'Export JSON',
+      exportCsv: 'Export CSV',
+      clearData: 'Clear local data',
+      clearDataHint: 'Deletes local compaction logs and/or session toggles. Profile config is not touched.',
+      clearLogs: 'Clear compaction log',
+      clearToggles: 'Clear session toggles',
+      clearAllData: 'Clear logs and toggles',
+      clearDataConfirm: 'This cannot be undone. Continue?',
+      cleared: 'Local data cleared.',
+      compareTitle: 'Compare sessions',
+      compareA: 'Session A',
+      compareB: 'Session B',
+      compareTokens: 'Tokens',
+      compareRequests: 'Requests',
+      compareCost: 'Cost (est.)',
+      compareCompactions: 'Compactions',
+      compareEmpty: 'Pick two sessions to compare.',
+      topCost: 'Top cost',
+      pricingTitle: 'Model pricing',
+      pricingHint: 'CNY per 1M tokens. Rows are evaluated top-down; the first match wins. Unknown models stay blank.',
+      pricingMatch: 'Model regex',
+      pricingInput: 'Input',
+      pricingCacheRead: 'Cache read',
+      pricingCacheWrite: 'Cache write',
+      pricingOutput: 'Output',
+      pricingAdd: 'Add price row',
+      pricingRemove: 'Remove',
+      pricingSave: 'Save prices',
+      pricingSaved: 'Prices saved.',
+      pricingEmpty: 'No custom price rows. Built-in DeepSeek prices still apply.',
+      previewTitle: 'Preview change',
+      previewDelta: 'Token delta: {delta}',
+      previewNoChange: 'No text change.',
+      previewConfirm: 'Confirm save',
+      previewHint: 'Only this section is previewed; the full prompt is assembled on the next request.',
+      undo: 'Undo',
+      undoDone: 'Reverted.',
+      toolImpact: 'Disabling removes ~{tokens} tokens of schema from the next request.',
+      toolRisk: 'This looks like a high-impact tool. The agent may lose file/shell capability.',
+      promptNextHint: 'Takes effect on the next request.',
+      alertControlMissing: 'The control row is not active; budget enforcement and prompt/tool changes will not run.',
+      alertBudgetWarn: 'Context is above the warning line ({percent}).',
+      alertBudgetError: 'Context is over the error line ({percent}). Compact or raise the budget.',
+      alertCompactionFailed: 'The last compaction failed. See Events for details.',
+      notifyTitle: 'In-page alerts',
+      notifyHint: 'Show a warning strip in the panel and a dot on the dock when context is high or control is inactive.',
+      notifyEnable: 'Enable',
+      notifyDisable: 'Disable',
       range7: '7 days',
       range30: '30 days',
       rangeAll: 'All',
@@ -254,6 +356,7 @@ window.__ModuleLoader__.load({
       noSessions: 'No sessions in this range',
       sortRecent: 'Newest',
       sortTokens: 'Tokens',
+      sortCost: 'Cost',
       openSession: 'Open chat',
       trendTitle: 'Request context trend',
       trendPrompt: 'Input',
@@ -285,15 +388,15 @@ window.__ModuleLoader__.load({
     }
 
     const zh = {
-      nav: '智能体具身',
-      panel: 'embody',
-      ctxBrand: 'embody',
-      title: '智能体具身',
-      pageTitle: '智能体具身',
+      nav: '上下文',
+      panel: '上下文',
+      ctxBrand: 'context',
+      title: '上下文',
+      pageTitle: '上下文',
       versionLabel: '插件版本',
       reloadUi: '刷新页面',
       reloadHint: '插件已更新，刷新页面即可加载新界面（无需重启 DSH）。',
-      description: '为 DeepSeek Harness agent 提供上下文预算、环境感知、工具与脚手架。',
+      description: '看清上下文花在哪，控制压缩与工具，并保持 agent preset 健康。',
       budget: '上下文',
       budgetLimit: '预算上限',
       used: '实测用量',
@@ -306,8 +409,8 @@ window.__ModuleLoader__.load({
       errorAt: '超限阈值',
       triggerAt: '触发阈值',
       compressionStrategy: '压缩策略',
-      strategyConservative: '保守 —— 晚压缩，保留更多',
-      strategyBalanced: '均衡 —— 到上限压缩，保留 25%',
+      strategyConservative: '保守 —— 90% 压缩，保留更多',
+      strategyBalanced: '均衡 —— 90% 预压缩，保留 25%',
       strategyAggressive: '激进 —— 提前压缩，保留 10%',
       triggerLabel: '触发比例',
       invalidTrigger: '触发比例必须在 (0, 1] 之间。',
@@ -315,6 +418,7 @@ window.__ModuleLoader__.load({
       targetAt: '目标阈值',
       targetLabel: '目标比例',
       invalidTarget: '目标比例必须在 (0, 1) 之间，且小于触发比例。',
+      invalidAnalyticsLimit: '分析会话上限必须是 1–200 的整数。',
       compacting: '压缩中…',
       compactingHint: '正在压缩历史；下一次请求可能会等待片刻。',
       recent: '最近的 /embody 测量',
@@ -345,6 +449,8 @@ window.__ModuleLoader__.load({
       controlDisabled: '已从 agent preset 移除自动压缩行。',
       configTitle: '全局配置',
       configHint: '写入 profile 里本插件的 config 行，保存后插件会按新配置重挂。',
+      analyticsLimitLabel: '分析会话上限',
+      analyticsLimitHint: '概览/趋势最多扫描最近多少个会话（1–200，默认 40）。',
       configUnavailable: '当前客户端不能编辑宿主配置，这里只读。',
       save: '保存',
       saving: '保存中…',
@@ -407,6 +513,14 @@ window.__ModuleLoader__.load({
       confirmGlobal: '确认保存到全局？将影响所有会话并写入 profile。',
       resetSession: '清除会话覆盖',
       editHint: '写入 profile 配置（全局生效），原文保留可恢复。',
+      diffPreview: '改动预览',
+      diffDelta: '相对当前文本净增减 {delta} tokens',
+      diffNoChange: '暂未修改。',
+      toolDisabledImpact: '已禁用 — 本会话预计释放约 {tokens} tokens 工具 schema（需控制行已挂载）。',
+      toolDisabledImpactUnknown: '已禁用 — 本会话不再向 agent 提供该工具。',
+      toolDisableWarning: '关闭工具后该会话的 agent 不再拿到它；重新打开即可恢复。',
+      alertToggle: '显示告警条与底部圆点',
+      alertToggleHint: '上下文超过警告线或控制行未挂载时给出提示。',
       extraPromptAdd: '新增提示词',
       extraPromptName: '提示词名称',
       extraPromptText: '提示词内容',
@@ -459,6 +573,97 @@ window.__ModuleLoader__.load({
       scaffoldCopy: '复制',
       scaffoldCopied: '已复制',
       scaffoldEmpty: '先预览，看看这个 preset 会生成哪些文件。',
+      labsTitle: 'Labs：Agent 脚手架',
+      labsHint: '实验能力，和上下文闭环分开；只有 repo-coder 与 web-researcher 经过验证。',
+      onboardingTitle: '设置上下文控制',
+      onboardingIntro: '三步，大约一分钟；可以跳过，预算和策略之后仍可在设置里修改。',
+      onboardingBudget: '1. 确认预算',
+      onboardingBudgetHint: '这里是插件用于百分比和压缩的预算，不是模型窗口；模型窗口见内置 ContextMeter。',
+      onboardingStrategy: '2. 选择压缩策略',
+      onboardingPreset: '3. 授权控制行',
+      onboardingPresetHint: '插件可以往 agent preset 里加一行，压缩才会真正运行；不加则提示词/工具修改只读。',
+      onboardingPresetYes: '允许写入控制行',
+      onboardingPresetNo: '我自己挂载',
+      onboardingFinish: '完成设置',
+      onboardingLater: '稍后',
+      onboardingDone: '设置完成；之后可在设置里随时修改。',
+      onboardingReopen: '重新打开设置',
+      onboardingBudgetRequired: '请先确认一个正整数预算。',
+      healthTitle: '控制面健康',
+      healthOk: '核心检查全部通过',
+      healthIssue: '需要处理',
+      healthFix: '修复控制行',
+      healthRecheck: '重新检测',
+      healthControl: '控制行已生效',
+      healthPreset: '控制行已写入 agent preset',
+      healthConfig: '宿主配置可编辑',
+      healthBudget: '预算已确认',
+      healthMeasurement: '至少有一次测量',
+      healthManual: '如果控制行已存在但仍未生效，刷新页面或重启一次 DSH。',
+      healthFixed: '已请求修复，几秒后重新检测。',
+      insightsTitle: '接下来做什么',
+      insightToolShare: '本会话 {share} 是工具定义（{tokens} tokens）。检查低频工具。',
+      insightUnusedTools: '{count} 个工具在已扫描会话中没有被调用（共 {tokens} tokens schema）。',
+      insightRepeatedCompaction: '{sessions} 个会话反复压缩（共 {compactions} 次）。考虑放宽预算或降低策略强度。',
+      insightCompactionFailures: '{count} 次压缩失败。到事件页查看原因和重试命令。',
+      insightUnknownPricing: '{sessions} 个会话没有价格（{tokens} tokens）。补充模型价格后可计入费用。',
+      insightCostOutlier: '{title} 的费用是中位数的 {multiple} 倍（{cost}）。打开看看原因。',
+      insightOpen: '查看',
+      insightsEmpty: '当前范围内没有需要处理的问题。',
+      savingsTitle: '上下文减少（估算）',
+      savingsCompactions: '{count} 次压缩',
+      savingsTokens: '减少 {tokens} tokens',
+      savingsCost: '下一次请求约省 {cost}',
+      savingsMethod: '按每次压缩前→后差值、Flash 输入价估算；不是完整账单对账',
+      dataScope: '统计范围：最近 {scanned}/{total} 个会话（上限 {limit}）',
+      exportJson: '导出 JSON',
+      exportCsv: '导出 CSV',
+      clearData: '清理本地数据',
+      clearDataHint: '只删除本地压缩日志和/或会话开关，不改 profile 配置。',
+      clearLogs: '清理压缩日志',
+      clearToggles: '清理会话开关',
+      clearAllData: '清理日志和开关',
+      clearDataConfirm: '此操作不可撤销，确认继续？',
+      cleared: '本地数据已清理。',
+      compareTitle: '会话对比',
+      compareA: '会话 A',
+      compareB: '会话 B',
+      compareTokens: 'Tokens',
+      compareRequests: '请求数',
+      compareCost: '费用（估）',
+      compareCompactions: '压缩次数',
+      compareEmpty: '选择两个会话进行对比。',
+      topCost: '费用最高',
+      pricingTitle: '模型价格',
+      pricingHint: '人民币 / 每百万 tokens；自上而下匹配，第一条命中生效；未知模型保持空白。',
+      pricingMatch: '模型正则',
+      pricingInput: '输入',
+      pricingCacheRead: '缓存命中',
+      pricingCacheWrite: '缓存写入',
+      pricingOutput: '输出',
+      pricingAdd: '新增价格行',
+      pricingRemove: '删除',
+      pricingSave: '保存价格',
+      pricingSaved: '价格已保存。',
+      pricingEmpty: '没有自定义价格；内置 DeepSeek 价格仍生效。',
+      previewTitle: '预览修改',
+      previewDelta: 'Token 变化：{delta}',
+      previewNoChange: '文本没有变化。',
+      previewConfirm: '确认保存',
+      previewHint: '只预览这个 section；完整提示词会在下一次请求时装配。',
+      undo: '撤销',
+      undoDone: '已撤销。',
+      toolImpact: '禁用后下一次请求约减少 {tokens} tokens 的工具 schema。',
+      toolRisk: '这看起来是高影响工具，禁用后 agent 可能失去文件/命令能力。',
+      promptNextHint: '下一次请求生效。',
+      alertControlMissing: '控制行未生效，预算约束和提示词/工具修改都不会运行。',
+      alertBudgetWarn: '上下文已超过警告线（{percent}）。',
+      alertBudgetError: '上下文已超过超限线（{percent}）。请压缩或提高预算。',
+      alertCompactionFailed: '最近一次压缩失败，详情见事件页。',
+      notifyTitle: '页内提醒',
+      notifyHint: '上下文过高或控制行未生效时，在面板显示提示，并在 dock 上显示小圆点。',
+      notifyEnable: '开启',
+      notifyDisable: '关闭',
       range7: '近 7 天',
       range30: '近 30 天',
       rangeAll: '全部',
@@ -494,6 +699,7 @@ window.__ModuleLoader__.load({
       noSessions: '该范围内没有会话',
       sortRecent: '最近',
       sortTokens: 'Tokens',
+      sortCost: '费用',
       openSession: '打开会话',
       trendTitle: '请求上下文趋势',
       trendPrompt: '输入',
@@ -670,6 +876,49 @@ window.__ModuleLoader__.load({
       if (ratio >= errorAt) return 'var(--dsw-alias-state-error-primary)'
       if (ratio >= warnAt) return 'var(--dsw-alias-state-warn-primary)'
       return 'var(--dsw-alias-brand-primary)'
+    }
+
+    /** 提示词预览的轻量 diff：优先显示公共前后缀之间的变化，避免整段重排。 */
+    function promptDiff(before, after) {
+      const left = String(before || '').split('\n')
+      const right = String(after || '').split('\n')
+      let start = 0
+      while (start < left.length && start < right.length && left[start] === right[start]) start += 1
+      let endLeft = left.length - 1
+      let endRight = right.length - 1
+      while (endLeft >= start && endRight >= start && left[endLeft] === right[endRight]) {
+        endLeft -= 1
+        endRight -= 1
+      }
+      const rows = []
+      for (let index = start; index <= endLeft; index += 1) rows.push({ kind: 'remove', text: left[index] })
+      for (let index = start; index <= endRight; index += 1) rows.push({ kind: 'add', text: right[index] })
+      if (rows.length === 0) return { rows: [], deltaTokens: 0 }
+      const deltaTokens = Math.ceil((String(after || '').length - String(before || '').length) / 4)
+      return { rows: rows.slice(0, 80), deltaTokens }
+    }
+
+    const NOTIFY_KEY = 'agent-embodiment:alerts:v1'
+    function readAlertsEnabled() {
+      try {
+        return window.localStorage.getItem(NOTIFY_KEY) !== '0'
+      } catch {
+        return true
+      }
+    }
+    function setAlertsEnabled(value) {
+      try {
+        window.localStorage.setItem(NOTIFY_KEY, value ? '1' : '0')
+      } catch {}
+    }
+    function useAlertsEnabled() {
+      const [enabled, setEnabled] = react.useState(readAlertsEnabled)
+      react.useEffect(() => {
+        const sync = () => setEnabled(readAlertsEnabled())
+        window.addEventListener('storage', sync)
+        return () => window.removeEventListener('storage', sync)
+      }, [])
+      return [enabled, (value) => { setAlertsEnabled(value); setEnabled(value) }]
     }
 
     /** ok / warn / error —— 与 ratioColor 的阈值一致，用于状态 badge 与文字。 */
@@ -947,6 +1196,25 @@ window.__ModuleLoader__.load({
       searchInput: { width: '100%', boxSizing: 'border-box', border: '0.5px solid var(--dsw-alias-border-l2)', borderRadius: '8px', background: 'var(--dsw-alias-bg-base)', color: 'inherit', padding: '5px 9px', fontSize: '12px' },
       linkAction: { marginLeft: 'auto', fontSize: '10.5px', color: 'var(--dsw-alias-label-tertiary)', cursor: 'pointer' },
       banner: { display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap', padding: '6px 10px', borderRadius: '8px', background: 'var(--dsw-alias-bg-layer-2)', fontSize: '11.5px', color: 'var(--dsw-alias-label-secondary)' },
+      checkList: { listStyle: 'none', margin: 0, padding: 0, display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))', gap: '6px' },
+      checkItem: { display: 'flex', alignItems: 'center', gap: '6px', fontSize: '11.5px', color: 'var(--dsw-alias-label-secondary)' },
+      insightList: { listStyle: 'none', margin: 0, padding: 0, display: 'flex', flexDirection: 'column', gap: 0 },
+      insightItem: { display: 'flex', alignItems: 'flex-start', gap: '8px', padding: '8px 0', borderTop: '0.5px solid var(--dsw-alias-border-l1)' },
+      insightText: { flex: '1 1 auto', fontSize: '11.5px', lineHeight: 1.55, color: 'var(--dsw-alias-label-secondary)' },
+      alertStrip: { display: 'flex', flexDirection: 'column', gap: '4px', padding: '7px 10px', borderRadius: '9px', border: '0.5px solid var(--dsw-alias-state-warn-primary)', background: 'var(--dsw-alias-bg-layer-2)' },
+      alertRow: { display: 'flex', alignItems: 'center', gap: '7px', fontSize: '11.5px', color: 'var(--dsw-alias-label-secondary)' },
+      alertDot: { width: '6px', height: '6px', borderRadius: '999px', background: 'var(--dsw-alias-state-warn-primary)', flex: 'none' },
+      compareGrid: { display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))', gap: '8px' },
+      compareRows: { display: 'flex', flexDirection: 'column', gap: 0 },
+      compareRow: { display: 'grid', gridTemplateColumns: 'minmax(90px, 1fr) minmax(0, 1fr) minmax(0, 1fr)', gap: '8px', padding: '5px 0', borderTop: '0.5px solid var(--dsw-alias-border-l1)', fontSize: '11.5px' },
+      compareValue: { textAlign: 'right', fontVariantNumeric: 'tabular-nums', color: 'var(--dsw-alias-label-primary)' },
+      pricingRows: { display: 'flex', flexDirection: 'column', gap: '5px' },
+      pricingRow: { display: 'grid', gridTemplateColumns: 'minmax(120px, 1.6fr) repeat(4, minmax(52px, 0.7fr)) auto', gap: '5px', alignItems: 'center' },
+      detailBox: { display: 'flex', flexDirection: 'column', gap: '4px', padding: '8px 10px', borderRadius: '8px', background: 'var(--dsw-alias-bg-layer-2)' },
+      error: { margin: 0, fontSize: '11.5px', color: 'var(--dsw-alias-state-error-primary)' },
+      diffBox: { display: 'flex', flexDirection: 'column', gap: '1px', maxHeight: '220px', overflow: 'auto', border: '0.5px solid var(--dsw-alias-border-l1)', borderRadius: '8px', padding: '6px 8px', fontFamily: 'var(--dsw-font-mono, monospace)', fontSize: '10.5px', lineHeight: 1.5, whiteSpace: 'pre-wrap', wordBreak: 'break-word' },
+      diffRemove: { color: 'var(--dsw-alias-state-error-primary)' },
+      diffAdd: { color: 'var(--dsw-alias-state-success-primary)' },
     })
 
     // ── 基础视觉组件 ────────────────────────────────────────────────────────
@@ -1472,7 +1740,7 @@ window.__ModuleLoader__.load({
         const target = candidates.find((element) => {
           const label = (element.getAttribute('aria-label') || '').trim()
           const text = (element.textContent || '').replace(/\s+/g, ' ').trim()
-          return label === 'embody' || text === 'embody' || label === 'ctx' || text === 'ctx'
+          return ['embody', 'ctx', 'context', '上下文'].includes(label) || ['embody', 'ctx', 'context', '上下文'].includes(text)
         })
         if (target) {
           target.click()
@@ -1566,6 +1834,13 @@ window.__ModuleLoader__.load({
           },
           h(ContextRing, { percent: percent === null ? 0 : percent }),
           h('span', null, label),
+          props.controlActive
+            ? null
+            : h('span', {
+                'data-embodiment-dock-warning': '1',
+                title: t('controlOff'),
+                style: { marginLeft: '2px', color: 'var(--dsw-alias-state-warn-primary)', fontSize: '11px', lineHeight: 1 },
+              }, '⚠'),
         ),
         open
           ? h(
@@ -1927,6 +2202,7 @@ window.__ModuleLoader__.load({
         const key = `tool:${tool.name}`
         const schemaText = tool.parameters ? JSON.stringify(tool.parameters, null, 2) : ''
         const isOpen = Boolean(expanded[key])
+        const toolOff = !enabledToolName(tool.name)
         return h(
           'li',
           { key, style: styles.inventoryItem },
@@ -1947,6 +2223,12 @@ window.__ModuleLoader__.load({
               h('span', { style: styles.cardSub }, t('globalSwitch')), switchNode('tool', tool.name, 'global', !disabledGlobalTools.includes(tool.name)),
             ),
           ),
+          toolOff
+            ? h('p', { style: styles.cardSub, 'data-embodiment-tool-disabled-impact': tool.name, title: t('toolDisableWarning') },
+                tool.tokens !== null && tool.tokens !== undefined
+                  ? t('toolDisabledImpact').replace('{tokens}', compactTokens(tool.tokens))
+                  : t('toolDisabledImpactUnknown'))
+            : null,
           isOpen
             ? details(
                 key,
@@ -1980,6 +2262,7 @@ window.__ModuleLoader__.load({
         const hasLocal = Object.prototype.hasOwnProperty.call(localEdits, section.name)
         const effectiveText = hasLocal ? localEdits[section.name] : section.text || ''
         const dirty = isExtra || hasLocal || section.overridden || (section.originalText !== undefined && section.originalText !== section.text)
+        const unchanged = !editDraft || editDraft.text === effectiveText
         const editorNode = editing
           ? h('textarea', {
               style: styles.promptEditor,
@@ -1988,8 +2271,7 @@ window.__ModuleLoader__.load({
               'data-embodiment-prompt-editor': section.name,
               onChange: (event) => setEditDraft({ ...editDraft, text: event.target.value }),
             })
-          : h('div', { style: styles.detailBox },
-              h('div', { style: styles.detailHead },
+          : h('div', { style: styles.detailBox },              h('div', { style: styles.detailHead },
                 h('span', { style: styles.cardSub }, isExtra ? `${t('extraLabel')} · ${extraBadge}` : dirty ? (section.sessionOverridden ? t('sessionOverridden') : t('globalOverridden')) : t('editHint')),
                 h('span', { style: { ...styles.cardSub, fontFamily: 'ui-monospace, monospace', maxWidth: '46%', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }, title: sourceOf(section.name) || t('sourceUnknown') }, `${t('source')}: ${sourceOf(section.name) || t('sourceUnknown')}`),
                 h('span', { style: { display: 'inline-flex', gap: '6px' } },
@@ -2012,6 +2294,18 @@ window.__ModuleLoader__.load({
               ),
               h('pre', { style: styles.pre, 'data-embodiment-detail': key }, effectiveText),
             )
+        const diffNode = editing
+          ? (() => {
+              const diff = promptDiff(effectiveText, editDraft.text)
+              if (diff.rows.length === 0) return h('p', { style: styles.cardSub, 'data-embodiment-prompt-diff-empty': '1' }, t('diffNoChange'))
+              return h('div', { style: { display: 'flex', flexDirection: 'column', gap: '3px' } },
+                h('span', { style: styles.cardSub, 'data-embodiment-prompt-diff': section.name }, t('diffDelta').replace('{delta}', diff.deltaTokens > 0 ? `+${diff.deltaTokens}` : String(diff.deltaTokens))),
+                h('div', { style: styles.diffBox },
+                  ...diff.rows.map((row, index) => h('span', { key: index, style: row.kind === 'remove' ? styles.diffRemove : styles.diffAdd }, `${row.kind === 'remove' ? '-' : '+'} ${row.text}`)),
+                ),
+              )
+            })()
+          : null
         return h(
           'li',
           { key, style: styles.inventoryItem },
@@ -2033,18 +2327,19 @@ window.__ModuleLoader__.load({
             ),
           ),
           isOpen ? editorNode : null,
+          isOpen && editing ? diffNode : null,
           isOpen && editing
             ? h('div', { style: { display: 'flex', gap: '6px', alignItems: 'center', flexWrap: 'wrap' } },
                 isExtra
-                  ? [h('button', { key: 'save', type: 'button', style: styles.copyBtn, 'data-embodiment-extra-save': section.name, onClick: () => postExtraPrompt(displayName, editDraft.text, extraPlacement), disabled: extraBusy }, t('save')),
+                  ? [h('button', { key: 'save', type: 'button', style: styles.copyBtn, 'data-embodiment-extra-save': section.name, onClick: () => postExtraPrompt(displayName, editDraft.text, extraPlacement), disabled: extraBusy || unchanged }, t('save')),
                      h('button', { key: 'cancel', type: 'button', style: styles.copyBtn, onClick: () => { setEditDraft(null); setPromptSave(null) } }, t('cancel')),
                      h('span', { key: 'hint', style: styles.cardSub }, t('editHint'))]
                   : promptSave === section.name
                     ? [h('span', { key: 'q', style: styles.cardSub }, t('confirmGlobal')),
-                       h('button', { key: 'ok', type: 'button', style: styles.copyBtn, 'data-embodiment-prompt-confirm': section.name, onClick: () => postPrompt('', { name: section.name, text: editDraft.text }), disabled: promptBusy }, t('confirm')),
+                       h('button', { key: 'ok', type: 'button', style: styles.copyBtn, 'data-embodiment-prompt-confirm': section.name, onClick: () => postPrompt('', { name: section.name, text: editDraft.text }), disabled: promptBusy || unchanged }, t('confirm')),
                        h('button', { key: 'no', type: 'button', style: styles.copyBtn, onClick: () => setPromptSave(null) }, t('cancel'))]
-                    : [h('button', { key: 'session', type: 'button', style: styles.copyBtn, 'data-embodiment-prompt-save-session': section.name, onClick: () => postSessionPrompt(section.name, editDraft.text), disabled: promptBusy }, t('saveSession')),
-                       h('button', { key: 'save', type: 'button', style: styles.copyBtn, 'data-embodiment-prompt-save': section.name, onClick: () => setPromptSave(section.name), disabled: promptBusy }, t('saveGlobal')),
+                    : [h('button', { key: 'session', type: 'button', style: styles.copyBtn, 'data-embodiment-prompt-save-session': section.name, onClick: () => postSessionPrompt(section.name, editDraft.text), disabled: promptBusy || unchanged }, t('saveSession')),
+                       h('button', { key: 'save', type: 'button', style: styles.copyBtn, 'data-embodiment-prompt-save': section.name, onClick: () => setPromptSave(section.name), disabled: promptBusy || unchanged }, t('saveGlobal')),
                        h('button', { key: 'cancel', type: 'button', style: styles.copyBtn, onClick: () => { setEditDraft(null); setPromptSave(null) } }, t('cancel')),
                        h('span', { key: 'hint', style: styles.cardSub }, t('editHint'))],
               )
@@ -2343,7 +2638,7 @@ window.__ModuleLoader__.load({
 
     const STRATEGY_PRESETS = {
       conservative: { trigger: 0.9, target: 0.7 },
-      balanced: { trigger: 1, target: 0.6 },
+      balanced: { trigger: 0.9, target: 0.6 },
       aggressive: { trigger: 0.75, target: 0.5 },
     }
 
@@ -2351,7 +2646,7 @@ window.__ModuleLoader__.load({
       const t = props.t
       const budget = props.budget || {}
       const editable = Boolean(props.editable)
-      const [draft, setDraft] = react.useState({ tokens: '', warn: '', error: '', trigger: '', target: '', strategy: 'balanced' })
+      const [draft, setDraft] = react.useState({ tokens: '', warn: '', error: '', trigger: '', target: '', strategy: 'balanced', analyticsLimit: '' })
       const [result, setResult] = react.useState({ kind: 'idle' })
 
       react.useEffect(() => {
@@ -2362,8 +2657,9 @@ window.__ModuleLoader__.load({
           trigger: budget.triggerAt === undefined ? '' : String(budget.triggerAt),
           target: budget.targetAt === undefined ? '' : String(budget.targetAt),
           strategy: typeof budget.compressionStrategy === 'string' ? budget.compressionStrategy : 'balanced',
+          analyticsLimit: budget.analyticsLimit === undefined ? '40' : String(budget.analyticsLimit),
         })
-      }, [budget.tokens, budget.warnAt, budget.errorAt, budget.triggerAt, budget.targetAt, budget.compressionStrategy])
+      }, [budget.tokens, budget.warnAt, budget.errorAt, budget.triggerAt, budget.targetAt, budget.compressionStrategy, budget.analyticsLimit])
 
       const save = () => {
         const tokens = Number(draft.tokens)
@@ -2371,6 +2667,11 @@ window.__ModuleLoader__.load({
         const error = Number(draft.error)
         const trigger = Number(draft.trigger)
         const target = Number(draft.target)
+        const analyticsLimit = Number(draft.analyticsLimit)
+        if (!Number.isInteger(analyticsLimit) || analyticsLimit < 1 || analyticsLimit > 200) {
+          setResult({ kind: 'error', message: t('invalidAnalyticsLimit') })
+          return
+        }
         if (!Number.isInteger(tokens) || tokens <= 0) {
           setResult({ kind: 'error', message: t('invalidTokens') })
           return
@@ -2391,7 +2692,7 @@ window.__ModuleLoader__.load({
         fetch(`${STATUS_PATH}/config`, {
           method: 'POST',
           headers: { 'content-type': 'application/json' },
-          body: JSON.stringify({ contextWindowTokens: tokens, warnAt: warn, errorAt: error, triggerAt: trigger, targetAt: target, compressionStrategy: draft.strategy }),
+          body: JSON.stringify({ contextWindowTokens: tokens, warnAt: warn, errorAt: error, triggerAt: trigger, targetAt: target, compressionStrategy: draft.strategy, analyticsLimit }),
         })
           .then(async (response) => {
             const payload = await response.json().catch(() => ({}))
@@ -2449,6 +2750,17 @@ window.__ModuleLoader__.load({
                   h('option', { value: 'balanced' }, t('strategyBalanced')),
                   h('option', { value: 'aggressive' }, t('strategyAggressive')),
                 ),
+              ),
+              h(
+                'label',
+                { style: styles.field },
+                h(
+                  'span',
+                  { style: styles.fieldLabelRow },
+                  h('span', { style: styles.label }, t('analyticsLimitLabel')),
+                ),
+                h('input', { style: styles.input, type: 'number', min: 1, max: 200, step: 1, value: draft.analyticsLimit, disabled, 'data-embodiment-analytics-limit': '1', onChange: (event) => setDraft({ ...draft, analyticsLimit: event.target.value }) }),
+                h('span', { style: styles.fieldUnit }, t('analyticsLimitHint')),
               ),
               h(
                 'label',
@@ -2523,6 +2835,376 @@ window.__ModuleLoader__.load({
     }
 
     /** 共享面板：设置分区与整页都用它。 */
+    // ── 首次运行 / 健康 / 洞察 / 节省 / 数据管理 ───────────────────────────
+    function OnboardingCard(props) {
+      const t = props.t
+      const data = props.data || {}
+      const onboarding = data.onboarding || {}
+      const budget = data.budget || {}
+      const [tokens, setTokens] = react.useState(String(budget.tokens || 128000))
+      const [strategy, setStrategy] = react.useState(budget.compressionStrategy || 'balanced')
+      const [consent, setConsent] = react.useState(false)
+      const [busy, setBusy] = react.useState(false)
+      const [error, setError] = react.useState('')
+      if (onboarding.completed || onboarding.dismissed) return null
+      const post = (path, body) => fetch(`${STATUS_PATH}${path}`, {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify(body),
+      }).then(async (response) => {
+        const payload = await response.json().catch(() => ({}))
+        if (!response.ok) throw new Error(payload.error || `HTTP ${response.status}`)
+        return payload
+      })
+      const finish = async (dismiss) => {
+        if (dismiss) {
+          setBusy(true)
+          try {
+            await post('/onboarding', { dismissed: true })
+            if (typeof props.onDone === 'function') props.onDone()
+          } catch (failure) {
+            setError(String(failure?.message || failure))
+          } finally {
+            setBusy(false)
+          }
+          return
+        }
+        const number = Number(tokens)
+        if (!Number.isInteger(number) || number <= 0) {
+          setError(t('onboardingBudgetRequired'))
+          return
+        }
+        setBusy(true)
+        setError('')
+        try {
+          await post('/onboarding', {
+            completed: true,
+            dismissed: false,
+            budgetConfirmed: true,
+            budgetTokens: number,
+            presetConsent: consent,
+          })
+          if (consent) {
+            try { await post('/config/preset', { enable: true }) } catch {}
+          }
+          if (number !== Number(budget.tokens) || strategy !== budget.compressionStrategy) {
+            const preset = STRATEGY_PRESETS[strategy] || STRATEGY_PRESETS.balanced
+            try {
+              await post('/config', { contextWindowTokens: number, compressionStrategy: strategy, triggerAt: preset.trigger, targetAt: preset.target })
+            } catch {}
+          }
+          if (typeof props.onDone === 'function') props.onDone()
+        } catch (failure) {
+          setError(String(failure?.message || failure))
+        } finally {
+          setBusy(false)
+        }
+      }
+      return h('div', { style: styles.card, 'data-embodiment-onboarding': '1' },
+        h('div', { style: styles.cardHead }, h('h3', { style: styles.cardTitle }, t('onboardingTitle')), h('span', { style: styles.cardSub }, t('onboardingIntro'))),
+        h('div', { style: styles.configGrid },
+          h('label', { style: styles.field }, h('span', { style: styles.label }, t('onboardingBudget')),
+            h('input', { style: styles.input, type: 'number', min: 1, step: 1000, value: tokens, disabled: busy, onChange: (event) => setTokens(event.target.value), 'data-embodiment-onboarding-budget': '1' }),
+            h('span', { style: styles.fieldUnit }, t('onboardingBudgetHint')),
+          ),
+          h('label', { style: styles.field }, h('span', { style: styles.label }, t('onboardingStrategy')),
+            h('select', { style: styles.input, value: strategy, disabled: busy, onChange: (event) => setStrategy(event.target.value), 'data-embodiment-onboarding-strategy': '1' },
+              h('option', { value: 'conservative' }, t('strategyConservative')),
+              h('option', { value: 'balanced' }, t('strategyBalanced')),
+              h('option', { value: 'aggressive' }, t('strategyAggressive')),
+            ),
+          ),
+        ),
+        h('div', { style: styles.detailBox },
+          h('strong', { style: styles.cardTitle }, t('onboardingPreset')),
+          h('p', { style: styles.text }, t('onboardingPresetHint')),
+          h('label', { style: { display: 'flex', gap: '6px', alignItems: 'flex-start', fontSize: '12px' } },
+            h('input', { type: 'checkbox', checked: consent, disabled: busy, onChange: (event) => setConsent(event.target.checked), 'data-embodiment-onboarding-consent': '1' }),
+            h('span', null, t('onboardingPresetYes')),
+          ),
+        ),
+        error ? h('p', { style: styles.error }, error) : null,
+        h('div', { style: styles.actionRow },
+          h('button', { type: 'button', style: { ...styles.button, ...styles.buttonPrimary }, disabled: busy, onClick: () => finish(false), 'data-embodiment-onboarding-finish': '1' }, busy ? t('saving') : t('onboardingFinish')),
+          h('button', { type: 'button', style: styles.button, disabled: busy, onClick: () => finish(true), 'data-embodiment-onboarding-later': '1' }, t('onboardingLater')),
+        ),
+      )
+    }
+
+    function HealthCard(props) {
+      const t = props.t
+      const health = props.health
+      const control = props.control || {}
+      const [busy, setBusy] = react.useState(false)
+      const [notice, setNotice] = react.useState('')
+      if (!health || !Array.isArray(health.checks)) return null
+      const labels = {
+        control: t('healthControl'),
+        preset: t('healthPreset'),
+        config: t('healthConfig'),
+        budget: t('healthBudget'),
+        measurement: t('healthMeasurement'),
+      }
+      const repair = () => {
+        setBusy(true)
+        setNotice('')
+        fetch(`${STATUS_PATH}/config/preset`, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ enable: true }) })
+          .then((response) => response.json().catch(() => ({})).then((payload) => {
+            if (!response.ok) throw new Error(payload.error || `HTTP ${response.status}`)
+            setNotice(t('healthFixed'))
+            if (typeof props.onDone === 'function') setTimeout(props.onDone, 1200)
+          }))
+          .catch((failure) => setNotice(String(failure?.message || failure)))
+          .finally(() => setBusy(false))
+      }
+      return h('div', { style: styles.card, 'data-embodiment-health': health.healthy ? 'ok' : 'issue' },
+        h('div', { style: styles.cardHead },
+          h('h3', { style: styles.cardTitle }, t('healthTitle')),
+          h(StatusBadge, { t, state: health.healthy ? 'ok' : 'warn', label: health.healthy ? t('healthOk') : t('healthIssue') }),
+        ),
+        h('ul', { style: styles.checkList }, health.checks.map((check) => h('li', { key: check.id, style: styles.checkItem, 'data-embodiment-health-check': check.id },
+          h('span', { style: { color: check.ok ? 'var(--dsw-alias-state-success-primary)' : 'var(--dsw-alias-state-warn-primary)' } }, check.ok ? '✓' : '!'),
+          h('span', null, labels[check.id] || check.id),
+        ))),
+        !health.healthy && control.presetMountable && !control.presetMounted
+          ? h('button', { type: 'button', style: { ...styles.button, ...styles.buttonPrimary }, disabled: busy, onClick: repair, 'data-embodiment-health-fix': '1' }, busy ? t('saving') : t('healthFix'))
+          : null,
+        !health.healthy && control.presetMounted && !control.active ? h('p', { style: styles.cardSub }, t('healthManual')) : null,
+        notice ? h('p', { style: styles.cardSub }, notice) : null,
+      )
+    }
+
+    function insightText(t, insight) {
+      const values = (insight && insight.values) || {}
+      const share = formatPercent(values.share, 0)
+      const tokens = compactTokens(values.tokens || values.toolsTokens || 0)
+      const count = values.count ?? values.sessions ?? 0
+      if (insight.id === 'tool-schema-share') return t('insightToolShare').replace('{share}', share).replace('{tokens}', tokens)
+      if (insight.id === 'unused-tools') return t('insightUnusedTools').replace('{count}', String(count)).replace('{tokens}', tokens)
+      if (insight.id === 'repeated-compaction') return t('insightRepeatedCompaction').replace('{sessions}', String(values.sessions || 0)).replace('{compactions}', String(values.compactions || 0))
+      if (insight.id === 'compaction-failures') return t('insightCompactionFailures').replace('{count}', String(count))
+      if (insight.id === 'unknown-pricing') return t('insightUnknownPricing').replace('{sessions}', String(values.sessions || 0)).replace('{tokens}', tokens)
+      if (insight.id === 'cost-outlier') return t('insightCostOutlier').replace('{title}', values.title || shortSessionId(values.sessionId || '')).replace('{multiple}', (Number(values.multiple) || 0).toFixed(1)).replace('{cost}', formatCost(values.cost))
+      return ''
+    }
+
+    function InsightCards(props) {
+      const t = props.t
+      const insights = Array.isArray(props.insights) ? props.insights : []
+      if (insights.length === 0) return h('div', { style: styles.card, 'data-embodiment-insights': 'empty' }, h('h3', { style: styles.cardTitle }, t('insightsTitle')), h('p', { style: styles.emptyText }, t('insightsEmpty')))
+      return h('div', { style: styles.card, 'data-embodiment-insights': '1' },
+        h('div', { style: styles.cardHead }, h('h3', { style: styles.cardTitle }, t('insightsTitle')), h('span', { style: styles.cardSub }, String(insights.length))),
+        h('ul', { style: styles.insightList }, insights.map((insight) => h('li', { key: insight.id, style: styles.insightItem, 'data-embodiment-insight': insight.id },
+          h('span', { style: { ...styles.badge, ...(insight.severity === 'warn' ? styles.badgeWarn : styles.badgeOk) } }, insight.severity === 'warn' ? '!' : 'i'),
+          h('span', { style: styles.insightText }, insightText(t, insight)),
+          h('button', { type: 'button', style: styles.copyBtn, onClick: () => props.onOpen && props.onOpen(insight.action || {}) }, t('insightOpen')),
+        ))),
+      )
+    }
+
+    function SavingsCard(props) {
+      const t = props.t
+      const savings = props.savings
+      if (!savings || (!savings.compactions && !savings.tokens)) return null
+      return h('div', { style: styles.card, 'data-embodiment-savings': '1' },
+        h('div', { style: styles.cardHead }, h('h3', { style: styles.cardTitle }, t('savingsTitle')), h('span', { style: styles.cardSub }, t('costEstimateLabel'))),
+        h('div', { style: styles.kpiBand },
+          h('div', { style: styles.kpiCard }, h('span', { style: styles.kpiCardLabel }, t('savingsCompactions')), h('strong', { style: styles.kpiCardValue }, formatTokens(savings.compactions))),
+          h('div', { style: { ...styles.kpiCard, ...styles.kpiCardDivider } }, h('span', { style: styles.kpiCardLabel }, t('savingsTokens')), h('strong', { style: styles.kpiCardValue }, compactTokens(savings.tokens))),
+          h('div', { style: { ...styles.kpiCard, ...styles.kpiCardDivider } }, h('span', { style: styles.kpiCardLabel }, t('savingsCost')), h('strong', { style: styles.kpiCardValue }, formatCost(savings.estimatedCost))),
+        ),
+        h('p', { style: styles.billingNote }, t('savingsMethod')),
+      )
+    }
+
+    function AlertStrip(props) {
+      const t = props.t
+      const live = props.live || {}
+      const control = props.control || {}
+      const alerts = []
+      if (!control.active) alerts.push({ id: 'control', text: t('alertControlMissing') })
+      const ratio = typeof live.ratio === 'number' ? live.ratio : null
+      const warnAt = typeof live.warnAt === 'number' ? live.warnAt : 0.75
+      const errorAt = typeof live.errorAt === 'number' ? live.errorAt : 0.9
+      if (ratio !== null && ratio >= errorAt) alerts.push({ id: 'budget-error', text: t('alertBudgetError').replace('{percent}', formatPercent(ratio, 0)) })
+      else if (ratio !== null && ratio >= warnAt) alerts.push({ id: 'budget-warn', text: t('alertBudgetWarn').replace('{percent}', formatPercent(ratio, 0)) })
+      const failure = Array.isArray(control.log) ? control.log.slice().reverse().find((entry) => entry && entry.outcome === 'failure') : null
+      if (failure) alerts.push({ id: 'compaction', text: t('alertCompactionFailed') })
+      if (alerts.length === 0) return null
+      return h('div', { style: styles.alertStrip, 'data-embodiment-alert': alerts.map((alert) => alert.id).join(',') },
+        alerts.map((alert) => h('div', { key: alert.id, style: styles.alertRow },
+          h('span', { style: styles.alertDot }),
+          h('span', null, alert.text),
+          alert.id === 'control' ? h('button', { type: 'button', style: styles.copyBtn, onClick: () => props.onOpen && props.onOpen('settings') }, t('healthFix')) : null,
+        )),
+      )
+    }
+
+    function SessionCompare(props) {
+      const t = props.t
+      const sessions = Array.isArray(props.sessions) ? props.sessions : []
+      const ranked = sessions.slice().sort((left, right) => (right.tokens || 0) - (left.tokens || 0))
+      const [leftId, setLeftId] = react.useState(ranked[0]?.id || '')
+      const [rightId, setRightId] = react.useState(ranked[1]?.id || '')
+      if (sessions.length < 2) return null
+      const left = sessions.find((session) => session.id === leftId) || ranked[0]
+      const right = sessions.find((session) => session.id === rightId) || ranked[1]
+      const select = (value, onChange) => h('select', { style: styles.input, value, onChange: (event) => onChange(event.target.value), 'data-embodiment-compare-select': '1' },
+        sessions.map((session) => h('option', { key: session.id, value: session.id }, `${session.title || shortSessionId(session.id)} · ${compactTokens(session.tokens)}`)),
+      )
+      const rows = [
+        ['compareTokens', (session) => compactTokens(session.tokens)],
+        ['compareRequests', (session) => formatTokens(session.requests)],
+        ['compareCost', (session) => formatCost(session.cost)],
+        ['compareCompactions', (session) => formatTokens(session.compactions)],
+      ]
+      return h('div', { style: styles.card, 'data-embodiment-compare': '1' },
+        h('div', { style: styles.cardHead }, h('h3', { style: styles.cardTitle }, t('compareTitle')), h('span', { style: styles.cardSub }, t('compareEmpty'))),
+        h('div', { style: styles.compareGrid },
+          h('label', { style: styles.field }, h('span', { style: styles.label }, t('compareA')), select(left.id, setLeftId)),
+          h('label', { style: styles.field }, h('span', { style: styles.label }, t('compareB')), select(right.id, setRightId)),
+        ),
+        h('div', { style: styles.compareRows }, rows.map(([key, read]) => h('div', { key, style: styles.compareRow },
+          h('span', { style: styles.billingRowLabel }, t(key)),
+          h('span', { style: styles.compareValue }, read(left)),
+          h('span', { style: styles.compareValue }, read(right)),
+        ))),
+      )
+    }
+
+    function PricingSection(props) {
+      const t = props.t
+      const pricing = props.pricing || {}
+      const editable = Boolean(props.editable)
+      const [rows, setRows] = react.useState([])
+      const [busy, setBusy] = react.useState(false)
+      const [notice, setNotice] = react.useState('')
+      react.useEffect(() => {
+        const incoming = Array.isArray(pricing.rows) ? pricing.rows : []
+        setRows(incoming.map((row) => ({
+          match: String(row.match || ''),
+          input: String(row.input ?? ''),
+          cacheRead: String(row.cacheRead ?? ''),
+          cacheWrite: String(row.cacheWrite ?? ''),
+          output: String(row.output ?? ''),
+        })))
+      }, [pricing.rows])
+      const update = (index, key, value) => setRows((current) => current.map((row, at) => at === index ? { ...row, [key]: value } : row))
+      const save = () => {
+        setBusy(true)
+        setNotice('')
+        const payload = rows
+          .filter((row) => row.match.trim().length > 0)
+          .map((row) => ({
+            match: row.match.trim(),
+            input: Number(row.input) || 0,
+            cacheRead: Number(row.cacheRead) || 0,
+            cacheWrite: Number(row.cacheWrite) || 0,
+            output: Number(row.output) || 0,
+          }))
+        fetch(`${STATUS_PATH}/config`, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ modelPricing: payload }) })
+          .then(async (response) => {
+            const data = await response.json().catch(() => ({}))
+            if (response.status !== 202) throw new Error(data.error || `HTTP ${response.status}`)
+            setNotice(t('pricingSaved'))
+            if (typeof props.onSaved === 'function') setTimeout(props.onSaved, 1200)
+          })
+          .catch((failure) => setNotice(String(failure?.message || failure)))
+          .finally(() => setBusy(false))
+      }
+      const cell = (row, index, key, label) => h('input', {
+        style: styles.input,
+        value: row[key],
+        placeholder: label,
+        disabled: !editable || busy,
+        onChange: (event) => update(index, key, event.target.value),
+        'data-embodiment-pricing-field': key,
+      })
+      return h('div', { style: styles.card, 'data-embodiment-pricing': '1', 'data-embodiment-card': 'pricing' },
+        h('div', { style: styles.cardHead }, h('h3', { style: styles.cardTitle }, t('pricingTitle')), h('span', { style: styles.cardSub }, t('costCustom'))),
+        h('p', { style: styles.text }, t('pricingHint')),
+        rows.length === 0 ? h('p', { style: styles.emptyText }, t('pricingEmpty')) : h('div', { style: styles.pricingRows },
+          rows.map((row, index) => h('div', { key: index, style: styles.pricingRow },
+            cell(row, index, 'match', t('pricingMatch')),
+            cell(row, index, 'input', t('pricingInput')),
+            cell(row, index, 'cacheRead', t('pricingCacheRead')),
+            cell(row, index, 'cacheWrite', t('pricingCacheWrite')),
+            cell(row, index, 'output', t('pricingOutput')),
+            h('button', { type: 'button', style: styles.copyBtn, disabled: busy, onClick: () => setRows((current) => current.filter((_, at) => at !== index)) }, t('pricingRemove')),
+          )),
+        ),
+        h('div', { style: styles.actionRow },
+          h('button', { type: 'button', style: styles.button, disabled: !editable || busy, onClick: () => setRows((current) => [...current, { match: '', input: '', cacheRead: '', cacheWrite: '', output: '' }]), 'data-embodiment-pricing-add': '1' }, t('pricingAdd')),
+          h('button', { type: 'button', style: styles.button, disabled: !editable || busy, onClick: save, 'data-embodiment-pricing-save': '1' }, busy ? t('saving') : t('pricingSave')),
+          notice ? h('span', { style: styles.cardSub }, notice) : null,
+        ),
+      )
+    }
+
+    function DataCard(props) {
+      const t = props.t
+      const range = props.range || '7d'
+      const coverage = props.coverage || {}
+      const [confirm, setConfirm] = react.useState('')
+      const [busy, setBusy] = react.useState(false)
+      const [notice, setNotice] = react.useState('')
+      const clear = (scope) => {
+        if (confirm !== scope) {
+          setConfirm(scope)
+          return
+        }
+        setBusy(true)
+        fetch(`${STATUS_PATH}/data/reset`, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ scope }) })
+          .then(async (response) => {
+            const data = await response.json().catch(() => ({}))
+            if (!response.ok) throw new Error(data.error || `HTTP ${response.status}`)
+            setNotice(t('cleared'))
+            setConfirm('')
+            if (typeof props.onDone === 'function') props.onDone()
+          })
+          .catch((failure) => setNotice(String(failure?.message || failure)))
+          .finally(() => setBusy(false))
+      }
+      return h('div', { style: styles.card, 'data-embodiment-data': '1' },
+        h('div', { style: styles.cardHead }, h('h3', { style: styles.cardTitle }, t('clearData')), h('span', { style: styles.cardSub }, t('dataScope').replace('{scanned}', String(coverage.scanned ?? '—')).replace('{total}', String(coverage.total ?? '—')).replace('{limit}', String(coverage.limit ?? '—')))),
+        h('p', { style: styles.text }, t('clearDataHint')),
+        h('label', { style: { display: 'flex', gap: '8px', alignItems: 'center', fontSize: '12px', margin: '2px 0 6px' }, title: t('alertToggleHint') },
+          h('input', {
+            type: 'checkbox',
+            checked: props.alertsEnabled !== false,
+            'data-embodiment-alerts-toggle': '1',
+            onChange: (event) => { if (typeof props.onAlertsChange === 'function') props.onAlertsChange(event.target.checked) },
+          }),
+          h('span', null, t('alertToggle')),
+        ),
+        h('p', { style: styles.cardSub }, t('alertToggleHint')),
+        h('div', { style: styles.actionRow },
+          h('a', { href: `${STATUS_PATH}/export?format=json&range=${encodeURIComponent(range)}`, download: '', style: styles.button, 'data-embodiment-export': 'json' }, t('exportJson')),
+          h('a', { href: `${STATUS_PATH}/export?format=csv&range=${encodeURIComponent(range)}`, download: '', style: styles.button, 'data-embodiment-export': 'csv' }, t('exportCsv')),
+        ),
+        h('div', { style: styles.actionRow },
+          ['logs', 'toggles', 'all'].map((scope) => h('button', { key: scope, type: 'button', style: styles.button, disabled: busy, onClick: () => clear(scope), 'data-embodiment-data-clear': scope }, scope === 'logs' ? t('clearLogs') : scope === 'toggles' ? t('clearToggles') : t('clearAllData'))),
+        ),
+        confirm ? h('p', { style: styles.error }, t('clearDataConfirm')) : null,
+        notice ? h('p', { style: styles.cardSub }, notice) : null,
+      )
+    }
+
+    function LabsCard(props) {
+      const t = props.t
+      const [open, setOpen] = react.useState(false)
+      return h('div', { style: styles.card, 'data-embodiment-labs': '1' },
+        h('div', { style: styles.cardHead },
+          h('h3', { style: styles.cardTitle }, t('labsTitle')),
+          h('button', { type: 'button', style: styles.copyBtn, onClick: () => setOpen(!open), 'data-embodiment-labs-toggle': '1' }, open ? t('collapse') : t('expand')),
+        ),
+        h('p', { style: styles.text }, t('labsHint')),
+        open ? h(ScaffoldPanel, { t }) : null,
+      )
+    }
+
+    /** 共享面板：设置分区与整页都用它。 */
+
     // ── 会话洞察：KPI / 每日图 / 会话卡 / 趋势 / 事件 ───────────────────────
     function KpiBand(props) {
       const t = props.t
@@ -2645,13 +3327,16 @@ window.__ModuleLoader__.load({
       const [sort, setSort] = react.useState('recent')
       const [expanded, setExpanded] = react.useState(false)
       const needle = query.trim().toLowerCase()
+      const totalCost = sessions.reduce((sum, item) => sum + (typeof item.cost === 'number' ? item.cost : 0), 0)
+      const maxCost = sessions.reduce((max, item) => Math.max(max, typeof item.cost === 'number' ? item.cost : 0), 0)
+      const sortKey = (item) => (sort === 'tokens' ? (item.tokens || 0) : sort === 'cost' ? (item.cost || 0) : (item.lastActivityAt || 0))
       const filtered = sessions
         .filter((item) => {
           if (!needle) return true
           return [item.title, item.cwd, item.id, item.model].some((value) => String(value || '').toLowerCase().includes(needle))
         })
         .slice()
-        .sort((a, b) => (sort === 'tokens' ? (b.tokens || 0) - (a.tokens || 0) : (b.lastActivityAt || 0) - (a.lastActivityAt || 0)))
+        .sort((a, b) => sortKey(b) - sortKey(a))
       const visible = expanded ? filtered : filtered.slice(0, 12)
       const base = (item) => (String(item || '').split(/[\\/]/).filter(Boolean).pop() || '—')
       return h('div', { style: styles.card, 'data-embodiment-sessions': '1' },
@@ -2660,6 +3345,7 @@ window.__ModuleLoader__.load({
           h('input', { style: styles.searchInput, value: query, placeholder: t('searchSessions'), onChange: (event) => setQuery(event.target.value), 'data-embodiment-session-search': '1' }),
           h('button', { type: 'button', style: { ...styles.filterToggle, ...(sort === 'recent' ? styles.filterToggleOn : null) }, onClick: () => setSort('recent') }, t('sortRecent')),
           h('button', { type: 'button', style: { ...styles.filterToggle, ...(sort === 'tokens' ? styles.filterToggleOn : null) }, onClick: () => setSort('tokens') }, t('sortTokens')),
+          totalCost > 0 ? h('button', { type: 'button', style: { ...styles.filterToggle, ...(sort === 'cost' ? styles.filterToggleOn : null) }, onClick: () => setSort('cost'), 'data-embodiment-sort': 'cost' }, t('sortCost')) : null,
         ),
         filtered.length === 0 ? h('p', { style: styles.emptyText }, t('noSessions')) : h('div', { style: styles.sessionList }, visible.map((item) =>
           h('div', {
@@ -2678,7 +3364,7 @@ window.__ModuleLoader__.load({
               h('span', null, `${compactTokens(item.tokens)} tok`),
               h('span', null, `${formatTokens(item.turns)} ${t('turnsLabel')}`),
               h('span', null, `${formatTokens(item.requests)} ${t('requestsLabel')}`),
-              item.cost !== null && item.cost !== undefined ? h('span', null, `${t('costEstimateLabel')} ${formatCost(item.cost)}`) : null,
+              item.cost !== null && item.cost !== undefined ? h('span', { style: item.cost > 0 && item.cost === maxCost ? { color: 'var(--dsw-alias-state-warn-primary)' } : null, title: totalCost > 0 ? `${Math.round(((item.cost || 0) / totalCost) * 100)}%` : '' }, `${t('costEstimateLabel')} ${formatCost(item.cost)}`) : null,
               item.compactions > 0 ? h('span', null, `${formatTokens(item.compactions)}×` ) : null,
             ),
             h('button', {
@@ -2995,13 +3681,17 @@ window.__ModuleLoader__.load({
       const usageTick = useUsageActivity()
       const livePath = activeSession ? `${STATUS_PATH}/live?sessionId=${encodeURIComponent(activeSession)}` : `${STATUS_PATH}/live`
       const inventoryPath = activeSession ? `${STATUS_PATH}/inventory?sessionId=${encodeURIComponent(activeSession)}` : `${STATUS_PATH}/inventory`
-      const analyticsPath = `${STATUS_PATH}/analytics?range=${encodeURIComponent(range)}&limit=40`
+      const analyticsLimit = Number(budget.analyticsLimit) > 0 ? Number(budget.analyticsLimit) : 40
+      const analyticsPath = `${STATUS_PATH}/analytics?range=${encodeURIComponent(range)}&limit=${analyticsLimit}`
+      const insightsPath = `${STATUS_PATH}/insights?range=${encodeURIComponent(range)}&limit=${analyticsLimit}`
       const detailSession = selected || activeSession
       const detailPath = detailSession ? `${STATUS_PATH}/session-detail?sessionId=${encodeURIComponent(detailSession)}` : `${STATUS_PATH}/session-detail`
       const [liveState, reloadLive] = useLive(livePath, usageTick, Boolean(activeSession))
       const [invState, reloadInv] = useLive(inventoryPath, usageTick, tab === 'settings')
-      const [analyticsState, reloadAnalytics] = useLive(analyticsPath, activeSession, tab === 'overview')
+      const [analyticsState, reloadAnalytics] = useLive(analyticsPath, activeSession, tab === 'overview' || tab === 'trend' || tab === 'settings')
+      const [insightsState, reloadInsights] = useLive(insightsPath, activeSession, tab === 'overview')
       const [detailState, reloadDetail] = useLive(detailPath, detailSession || activeSession, tab === 'trend' || tab === 'events')
+      const [alertsEnabled, setAlerts] = useAlertsEnabled()
       // 切换主视图会话时清掉手动选中的历史会话，避免详情停在旧会话而头部显示新会话。
       react.useEffect(() => {
         setSelected(null)
@@ -3019,7 +3709,8 @@ window.__ModuleLoader__.load({
         load()
         reloadLive()
         if (tab === 'settings') reloadInv()
-        if (tab === 'overview') reloadAnalytics()
+        if (tab === 'overview' || tab === 'trend' || tab === 'settings') reloadAnalytics()
+        if (tab === 'overview') reloadInsights()
         if (tab === 'trend' || tab === 'events') reloadDetail()
       }
 
@@ -3027,9 +3718,19 @@ window.__ModuleLoader__.load({
         ['overview', t('tabsOverview')],
         ['trend', t('tabsTrend')],
         ['events', t('tabsEvents')],
-        ['scaffold', t('tabsScaffold')],
         ['settings', t('tabsSettings')],
       ]
+
+      const openAction = (action) => {
+        if (!action) return
+        if (action.sessionId) setSelected(action.sessionId)
+        setTab(action.tab === 'settings' ? 'settings' : action.tab === 'events' ? 'events' : 'trend')
+        if (action.anchor) {
+          setTimeout(() => {
+            try { document.querySelector(`[data-embodiment-card="${action.anchor}"]`)?.scrollIntoView({ block: 'start' }) } catch {}
+          }, 80)
+        }
+      }
 
       const headerSessionId = activeSession || (liveForHeader && liveForHeader.sessionId) || null
       const headerSession = headerSessionId
@@ -3091,6 +3792,23 @@ window.__ModuleLoader__.load({
         ),
       ]
 
+      if (alertsEnabled) {
+        children.push(h(AlertStrip, {
+          key: 'alerts',
+          t,
+          live: liveForHeader,
+          control,
+          onOpen: (target) => {
+            if (typeof target === 'string') setTab(target)
+            else openAction(target)
+          },
+        }))
+      }
+
+      if (data && data.onboarding && !data.onboarding.completed && !data.onboarding.dismissed && tab === 'overview') {
+        children.push(h(OnboardingCard, { key: 'onboarding', t, data, onDone: reloadAll }))
+      }
+
       // 宿主已更新但当前页面还是旧客户端 bundle：提示刷新页面。DSH 的客户端模块
       // 图不会替换已加载的包代码；刷新页面即可，不需要重启整个 DSH。
       if (data && data.version && data.version !== CLIENT_VERSION) {
@@ -3133,6 +3851,10 @@ window.__ModuleLoader__.load({
       if (tab === 'overview') {
         children.push(h(KpiBand, { key: 'kpis', t, kpi: analytics ? analytics.kpi : {}, coverage: analytics ? analytics.coverage : null }))
         if (analytics) children.push(h(BillingCard, { key: 'billing', t, kpi: analytics.kpi, pricing: data ? data.pricing : null }))
+        if (analytics && analytics.savings) children.push(h(SavingsCard, { key: 'savings', t, savings: analytics.savings }))
+        if (insightsState.data && Array.isArray(insightsState.data.insights)) {
+          children.push(h(InsightCards, { key: 'insights', t, insights: insightsState.data.insights, onOpen: openAction }))
+        }
         if (analyticsState.error && !analytics) {
           children.push(h('div', { key: 'analyticsError', style: styles.emptyState },
             h('p', { style: styles.error }, `${t('analyticsError')}: ${analyticsState.error}`),
@@ -3150,18 +3872,21 @@ window.__ModuleLoader__.load({
         }
       } else if (tab === 'trend') {
         children.push(h(TrendCard, { key: 'trend', t, detail, error: detailState.error, budget: (liveForHeader && liveForHeader.budget && liveForHeader.budget.tokens) || (latestForSession && latestForSession.budget && latestForSession.budget.tokens) || budget.tokens }))
+        if (analytics && Array.isArray(analytics.sessions)) children.push(h(SessionCompare, { key: 'compare', t, sessions: analytics.sessions }))
         if (selected) children.push(h('button', { key: 'back', type: 'button', style: styles.button, onClick: () => setSelected(null) }, t('tabsOverview')))
       } else if (tab === 'events') {
         children.push(h(EventsCard, { key: 'events', t, logs: control.log || [], detail }))
-      } else if (tab === 'scaffold') {
-        children.push(h(ScaffoldPanel, { key: 'scaffold', t }))
       } else {
+        if (data && data.health) children.push(h(HealthCard, { key: 'health', t, health: data.health, control, onDone: reloadAll }))
         children.push(h('div', { key: 'settings', style: styles.cols },
           h(ControlSection, { t, control, onToggled: load }),
           h(ConfigSection, { t, budget, editable: Boolean(data.configEditable), onSaved: load }),
           h(BalanceDisplayCard, { key: 'balance-display', t }),
         ))
         children.push(h(InventoryCard, { key: 'inventory', t, data: invState.data, loading: invState.data === null && invState.error === null, error: invState.data === null ? invState.error : null, reload: reloadInv, sessionId: activeSession, controlActive: Boolean(control.active) }))
+        children.push(h(PricingSection, { key: 'pricing', t, pricing: data ? data.pricing : null, editable: Boolean(data.configEditable), onSaved: load }))
+        children.push(h(DataCard, { key: 'data', t, range, coverage: analytics ? analytics.coverage : null, alertsEnabled, onAlertsChange: setAlerts, onDone: reloadAll }))
+        children.push(h(LabsCard, { key: 'labs', t }))
       }
       return h('div', { style: styles.root, 'data-embodiment-panel': '1' }, children)
     }
@@ -3278,7 +4003,7 @@ window.__ModuleLoader__.load({
         timezoneOffsetSeconds: -new Date().getTimezoneOffset() * 60,
       })
 
-      // 1) 设置 → 智能体具身
+      // 1) 设置 → 上下文
       ctx.slots.inject('settings.section', () =>
         ctx.slots.register(
           { name: 'settings.section', id: CONFIG_NAMESPACE, order: 40, locale: NS, label: () => t('nav'), inject: face },

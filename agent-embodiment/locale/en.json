@@ -1,6 +1,6 @@
 {
   "meta": {
     "title": "Agent Embodiment",
-    "description": "Context budgets, compaction, environment sensing, tool/prompt control, and agent scaffolds for DeepSeek Harness."
+    "description": "Context budgets and compaction, cross-session usage and cost analytics, compaction insights and savings estimates, tool/prompt control, and optional agent scaffolds for DeepSeek Harness."
   }
 }

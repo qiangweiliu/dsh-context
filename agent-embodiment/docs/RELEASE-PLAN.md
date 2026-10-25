@@ -2,9 +2,9 @@
 
 本文是插件的版本路线图与发布门禁。目标：**每个版本只承诺有证据的能力**，并让升级过程可回滚、可复现。
 
-- 当前工作区版本：`0.23.0`（尚未发布）
-- 上一发布版本：`0.21.0`（`0.22.0` 未发布，直接进入 0.23.0）
-- 日期：2026-10-24
+- 当前工作区版本：`0.24.0`（尚未发布）
+- 上一发布版本：`0.21.0`（`0.22.0` / `0.23.0` / `0.24.0` 均未单独发布，目标是一次性发布 0.24.0）
+- 日期：2026-10-25
 - 相关文档：[README](../README.md)、[IMPLEMENTATION](IMPLEMENTATION.md)、[LIMITATIONS](LIMITATIONS.md)、[EVIDENCE](EVIDENCE.md)、[Tier B 结果](../../eval/deep/RESULTS.md)
 
 > 时间均为目标窗口，不是承诺；版本能否发布只看门禁是否通过。
@@ -54,19 +54,19 @@ Tier B 证据（50 题）：
 
 ## 2. 路线图
 
-| 版本 | 类型 | 目标窗口 | 主题 | 关键交付 |
+| 版本 | 类型 | 状态 | 主题 | 关键交付 |
 |---|---|---|---|---|
-| `0.22.0` | 发布当前工作区 | 2026-10-24 ~ 10-28 | 安全 + 定位调整 | 发布门禁、CHANGELOG、市场 PR |
-| `0.22.1` | patch | 2026-10-29 ~ 11-04 | 发布后修复 | 只修 0.22.0 暴露的问题；无 API 变化 |
-| `0.23.0` | minor | 2026-11-05 ~ 11-20 | 证据与压缩控制 | 3 reps base vs compact、压缩策略 preset、scaffold 全量复核、rc.3 兼容 |
-| `0.24.0` | minor | 2026-11-21 ~ 12-05 | 分发与 UX | 市场/Desktop 验收、控制未挂载 UI、analytics 限额、client 测试 |
-| `1.0.0` | major | 2026-12-06 起，按门禁 | 稳定承诺 | 移除 `/ctx` 别名与旧状态迁移、冻结配置面、安全审查、兼容矩阵 |
+| `0.22.0` | 安全 + 定位调整 | 已并入工作区 | 安全加固 | 路由认证、scaffold 路径保护、process skills opt-in、4 个模板标 experimental |
+| `0.23.0` | 证据与压缩控制 | 已并入工作区 | 压缩可控 | 3 reps 对照、三档 preset、控制未挂载提示、analytics 限额、rc.3 兼容、费用估算 |
+| `0.24.0` | 产品补齐 | **当前工作区版本** | 可解释与可信任 | 首次运行引导、洞察/健康检查、节省估算、数据导出与清理、4 tab IA、会话对比、自定义价格 |
+| `0.24.1` | patch | 待定 | 发布后修复 | 只修 0.24.0 暴露的问题；无新配置 |
+| `1.0.0` | major | 2026-12 起，按门禁 | 稳定承诺 | 移除 `/ctx` 别名与旧状态迁移、冻结配置面、安全审查、兼容矩阵 |
 
 ---
 
 ## 3. 各版本范围
 
-### 3.1 0.22.0（当前，先发布）
+### 3.1 0.22.0（历史基线，已并入当前工作区）
 
 **范围冻结**：只做发布，不再加功能。
 
@@ -79,9 +79,9 @@ npm run test:integration
 npm pack --dry-run
 ```
 
-- 单元：static / metrics / state / scaffold 全绿（当前 77/24/16/146）。
-- 集成：control / smoke / prompt-state 全绿（当前 54/66/11）。
-- 包内容：17 个文件，`npm pack --dry-run` 无缺文件。
+- 单元：static / metrics / state / scaffold 全绿（当时 77/24/16/146；当前基线见 [IMPLEMENTATION](IMPLEMENTATION.md)）。
+- 集成：control / smoke / prompt-state 全绿（当时 54/66/11）。
+- 包内容：`npm pack --dry-run` 无缺文件（当前 20 个文件）。
 - Tier B 子集：scaffold 默认 10 题（当前 10/10，工具调用 4.7）已记录。
 - 文档/版本同步：`package.json`、`client.js` 的 `CLIENT_VERSION`、README、IMPLEMENTATION、EVIDENCE、市场申请文件。
 - 市场文案：不再承诺“更准/更强”；scaffold 标注 optional/experimental。
@@ -99,7 +99,7 @@ npm pack --dry-run
 
 **不包含**：scaffold 功能改动、压缩策略调整、兼容矩阵扩容。
 
-### 3.3 0.23.0（minor，“证据与压缩控制”）
+### 3.3 0.23.0（minor，“证据与压缩控制”，已实现）
 
 1. **3 reps 正式对照**：base vs compact，50 题 × 3 次；逐题配对统计，输出 `eval/deep/RESULTS-3REP.md`。
 2. **压缩策略 preset**：把 `maxContextTokens` / `keepTokens` / `targetAt` 组合成 2-3 个有名字的策略（conservative / balanced / aggressive），在面板/配置中可选，并写清每档的 token/召回取舍。
@@ -111,13 +111,35 @@ npm pack --dry-run
 
 发布门禁：3 reps 结果 + rc.3 证据 + 全量测试 + 无准确率承诺。
 
-### 3.4 0.24.0（minor，“分发与 UX”）
+### 3.4 0.24.0（minor，“产品补齐”，已实现）
 
-1. **市场/Desktop 验收**：WSL web + Desktop 各做一次安装/启停/面板/余额胶囊验收；截图与 E22 证据。
-2. **提示词/工具控制 UX**：控制未挂载状态、错误提示、恢复默认、会话级覆盖的可见性。
-3. **`extraPrompts` user 放置**：评估改用官方 `agent.inject()`；如果改，必须保留迁移说明与行为差异。
-4. **client 结构**：把 `client.js` 中独立逻辑拆出可测试模块（不要求引入构建链）。
-5. **可选**：把脚手架生成器拆成独立包，避免主包继续膨胀。
+原计划是“分发与 UX”（市场验收、提示词/工具控制 UX、client 拆模块）。实际执行时按产品复盘重排了优先级：先补“用户能不能看懂、能不能信任、能不能行动”，分发验收留到发布前单独做。
+
+已交付：
+
+1. **首次运行引导**：`onboarding.json` + 三步引导（预算校准 / 压缩策略 / 控制行挂载授权），可跳过，设置里可改；授权不等于已挂载。
+2. **控制行默认不自动挂载**：`autoMountControl` 改默认 `false`；`/status/config/preset` 记录同意并回读校验。
+3. **洞察与健康检查**：新增 `insights.js`（6 条规则）和 `/status/insights`；每条洞察带跳转动作。
+4. **节省估算**：跨会话汇总成功压缩的前后差值，按 V4.1 Flash 输入价折算，明确标注不是账单退款。
+5. **数据边界可见**：`coverage { total, scanned, withData, limit }`、`GET /status/export`、`POST /status/data/reset`。
+6. **信息架构**：侧栏改名 `Context` / `上下文`；4 个 tab（Overview / Trend / Events / Settings）；脚手架下沉到 Settings → Labs。
+7. **对比与费用**：会话对比、会话详情费用拆分、自定义 `modelPricing` 编辑、告警提示条。
+8. **默认值**：`triggerAt` 0.9、`targetAt` 0.6、`balanced` = 0.9 / 0.6 / keep 25%。
+
+本轮执行记录（2026-10-25）：
+
+- 单元：static 95/95、metrics 35/35、state 18/18、scaffold 146/146、insights 12/12。
+- 集成：control 54/54、smoke 72/72、prompt-state 11/11。
+- 语法：`node --check index.js control.js client.js` 通过。
+- 包：`npm pack --dry-run` 20 个文件、约 163 kB、退出码 0。
+
+**未包含**（明确延后）：
+
+- 团队/云端汇总分析、AI 自动建议、更多图表模板、DeepSeek 以外的价格表。
+- `client.js` 拆成独立可测试模块、脚手架生成器拆包。
+- `extraPrompts` 改用官方 `agent.inject()`：行为差异需要单独验证，不在本版改动。
+
+发布门禁沿用第 4 节；本轮在门禁之外**没有**重做 Desktop/Web 端到端点击，发布前需补一次 E22 式验收。
 
 ### 3.5 1.0.0（major，按门禁）
 
@@ -187,7 +209,7 @@ npm pack --dry-run
 
 | 层级 | 内容 | 频率 |
 |---|---|---|
-| 单元 | static / metrics / state / scaffold | 每次提交 |
+| 单元 | static / metrics / state / scaffold / insights | 每次提交 |
 | 集成 | control / smoke / prompt-state | 每次发布 |
 | Tier B | 50 题 × 条件 × reps | 每个 minor |
 | UI | WSL web + Desktop 安装/面板/设置 | 每个 minor |
@@ -212,7 +234,7 @@ node eval/deep/compare.mjs --markdown
 | 压缩策略伤召回 | 长会话答案变差 | 3 reps + 逐题配对；提供 conservative/balanced 策略；不默认激进 |
 | Scaffold 成本 | 工具调用/输出膨胀 | process skills 默认关闭；只保留角色 skill；全量复核后再决定 |
 | 版本兼容误报 | 安装被 semver 拒绝或运行失败 | 只在实测后写入 `dshReleases`；保留回滚 |
-| client.js 单文件过大 | UI 回归难定位 | 0.23.0 起补行为测试；0.24.0 拆模块 |
+| client.js 单文件过大 | UI 回归难定位 | 0.23.0 起补行为测试；拆模块已延后到 1.0.0 前（0.24.0 未改，避免回归面扩大） |
 | 市场文案过度承诺 | 审核/口碑风险 | 只写 token/控制/可观测性；不写“更准” |
 
 ---
@@ -249,10 +271,27 @@ https://github.com/awesome-dsh-plugin/awesome-dsh-plugin/compare/main...qiangwei
 | 全量 3 reps base vs compact | ✅ | base 121/150（80.7%）、compact 129/150（86.0%）；McNemar p=0.200；input −363（CI 跨 0）；无显著差异 |
 | rc.3 Web/Desktop | 🟡 Web ✅ / Desktop ⬜ | headless + Cordis + Web 已通过；Desktop Electron 未测 |
 
-## 9. 立即可执行（本周）
+## 9. 0.24.0 执行记录（2026-10-25）
 
-1. 冻结 0.22.0，跑完发布门禁并打 tag。
-2. 新增 `agent-embodiment/CHANGELOG.md`，回填 0.22.0。
-3. 提交/更新市场申请 PR（文案已改为 optional scaffold）。
-4. 启动 base vs compact 的 3 reps（先跑 10 多轮 + 5 长上下文子集，再决定是否全量）。
-5. 在隔离 profile 试装 DSH `0.2.1-rc.3`，记录结果，不通过就不改矩阵。
+| 项目 | 状态 | 结果 |
+|---|---|---|
+| 源码恢复 | ✅ | `client.js` 被命令行文本改写写坏后，按会话日志的 183 次 `edit` 重放 59 次未提交改动恢复；`node --check client.js` 通过 |
+| 首次运行引导 | ✅ | `onboarding.json` + `GET/POST status/onboarding`；三步引导可跳过，设置里可改 |
+| 控制行默认值 | ✅ | `autoMountControl` 默认 `false`；授权 ≠ 已挂载，回读 `control.active` |
+| 洞察与健康检查 | ✅ | `insights.js`（6 条规则）+ `GET status/insights`；`buildHealth` 覆盖 control/preset/config/budget/measurement |
+| 节省估算 | ✅ | `savings { compactions, tokens, estimatedCost, currency, method }`；= 成功压缩前后差值 × V4.1 Flash 输入价，非退款 |
+| 数据导出/清理 | ✅ | `GET status/export`（JSON / CSV）、`POST status/data/reset`（`logs` / `toggles` / `all`） |
+| 信息架构 | ✅ | 侧栏 `Context` / `上下文`；Overview / Trend / Events / Settings；脚手架移到 Settings → Labs |
+| 默认值 | ✅ | `triggerAt 0.9`、`targetAt 0.6`、`balanced = 0.9/0.6/keep 25%` |
+| 测试 | ✅ | static 95 / metrics 35 / state 18 / scaffold 146 / insights 12 / control 54 / smoke 72 / prompt-state 11 |
+| 打包 | ✅ | `npm pack --dry-run` 20 个文件、约 163 kB、退出码 0 |
+| Desktop/Web 端到端 | ⬜ 未做 | 本轮只有源码/静态/集成验证，发布前需补一次真实安装与面板验收 |
+
+## 10. 发布 0.24.0 前的待办
+
+1. 在隔离 `DSH_HOME` 与 Desktop 各做一次安装，确认面板 4 个 tab、`Context` 命名、Settings → Labs、首次引导都出现。
+2. 走一遍首次运行引导的三种出口（确认预算 / 跳过 / 授予挂载），确认 `onboarding.json` 与 `control.active` 一致。
+3. 触发一次真实压缩，确认事件页、节省卡、洞察卡读的是同一份日志。
+4. 用 `GET status/export` 拉一次 CSV，核对列与 `metrics.js` 口径一致。
+5. 跑完整发布门禁（第 4 节），再 `npm publish` + tag `v0.24.0`。
+6. 市场 PR 描述同步到 0.24.0：写清 analytics 范围、节省是估算、scaffold 仍是 optional/experimental。

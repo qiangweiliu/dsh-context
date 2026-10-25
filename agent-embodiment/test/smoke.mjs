@@ -178,7 +178,7 @@ statusRoute?.handler({ method: 'GET' }, statusResponse)
 const statusPayload = statusResponse.body ? JSON.parse(statusResponse.body) : {}
 check('状态路由 200 + JSON', statusResponse.statusCode === 200 && String(statusResponse.headers['content-type']).includes('application/json'), statusResponse.statusCode)
 check('状态含上下文', statusPayload.budget?.tokens === 128000, JSON.stringify(statusPayload.budget))
-check('状态含触发/目标阈值', statusPayload.budget?.triggerAt === 1 && statusPayload.budget?.targetAt === 0.6, JSON.stringify(statusPayload.budget))
+check('状态含触发/目标阈值', statusPayload.budget?.triggerAt === 0.9 && statusPayload.budget?.targetAt === 0.6, JSON.stringify(statusPayload.budget))
 check('状态含宿主 keepTokens', statusPayload.budget?.keepTokens === 0, JSON.stringify(statusPayload.budget))
 check('状态含最近测量', statusPayload.measurements?.[0]?.id === 'smoke-session', JSON.stringify(statusPayload.measurements))
 check('状态含会话上下文列表（reset 后为空）', Array.isArray(statusPayload.sessionBudgets) && statusPayload.sessionBudgets.length === 0, JSON.stringify(statusPayload.sessionBudgets))
@@ -374,7 +374,7 @@ client.slotInjects[0]?.callback()
 const section = client.slotRegistrations[0]?.definition ?? {}
 check('client 注册 settings.section', section.name === 'settings.section', JSON.stringify(section))
 check('settings.section id/order/locale', section.id === 'agent-embodiment' && typeof section.order === 'number' && section.locale === 'agentEmbodiment', JSON.stringify(section))
-check('settings.section label 走中文词典', section.label?.() === '智能体具身', section.label?.())
+check('settings.section label 走中文词典', section.label?.() === '上下文', section.label?.())
 check('settings.section 组件是函数', typeof client.slotRegistrations[0]?.component === 'function', typeof client.slotRegistrations[0]?.component)
 
 try {

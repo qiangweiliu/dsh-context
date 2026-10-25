@@ -168,7 +168,7 @@ const bySlot = (name) => client.slotRegistrations.find((entry) => entry.definiti
 const section = bySlot('settings.section').definition ?? {}
 check('client 注册 settings.section', section.name === 'settings.section', JSON.stringify(section))
 check('settings.section id/order/locale', section.id === 'agent-embodiment' && typeof section.order === 'number' && section.locale === 'agentEmbodiment', JSON.stringify(section))
-check('settings.section label 走中文词典', section.label?.() === '智能体具身', section.label?.())
+check('settings.section label 走中文词典', section.label?.() === '上下文', section.label?.())
 check('settings.section 组件是函数', typeof bySlot('settings.section').component === 'function', typeof bySlot('settings.section').component)
 
 const mainEntry = bySlot('main').definition ?? {}
@@ -177,7 +177,7 @@ check('main 页组件是函数', typeof bySlot('main').component === 'function',
 
 const panelEntry = bySlot('sidebar.panellist').definition ?? {}
 check('client 注册 sidebar.panellist', panelEntry.name === 'sidebar.panellist' && panelEntry.id === 'embody', JSON.stringify(panelEntry))
-check('sidebar.panellist 标题是 embody', panelEntry.label?.() === 'embody', panelEntry.label?.())
+check('sidebar.panellist 标题是上下文', panelEntry.label?.() === '上下文', panelEntry.label?.())
 const dockEntry = bySlot('conversation.composer.dock').definition ?? {}
 check('client 注册 composer dock 指示器', dockEntry.name === 'conversation.composer.dock' && dockEntry.id === 'embody-usage', JSON.stringify(dockEntry))
 check('dock 指示器组件是函数', typeof bySlot('conversation.composer.dock').component === 'function', typeof bySlot('conversation.composer.dock').component)
@@ -202,7 +202,7 @@ check('client API 路径相对 document.baseURI 解析（兼容反代前缀）',
 const clientVersion = clientSource.match(/CLIENT_VERSION\s*=\s*'([^']+)'/)?.[1]
 check('client CLIENT_VERSION 与 package.json 一致', clientVersion === manifest.version, `${clientVersion} vs ${manifest.version}`)
 check('client 宿主/客户端版本不一致时提示刷新页面', clientSource.includes('data-embodiment-version-mismatch') && clientSource.includes('data-embodiment-reload') && clientSource.includes('CLIENT_VERSION'))
-check('client 注册 Agent 脚手架 tab 与面板', clientSource.includes("tabsScaffold") && clientSource.includes('data-embodiment-scaffold') && clientSource.includes('ScaffoldPanel'))
+check('client 把脚手架降级到设置页 Labs 且不再占顶层 tab', clientSource.includes('data-embodiment-labs') && !clientSource.includes("tab === 'scaffold'") && clientSource.includes('ScaffoldPanel'))
 check('client 脚手架面板调用宿主路由', clientSource.includes('/scaffold/templates') && clientSource.includes("post('preview'") && clientSource.includes("post('generate'"))
 check('client 脚手架支持 MCP/AGENTS 选项', clientSource.includes('data-embodiment-scaffold-mcp') && clientSource.includes('writeAgents'))
 check('client 暴露压缩策略选择', clientSource.includes('data-embodiment-strategy') && clientSource.includes('compressionStrategy'))

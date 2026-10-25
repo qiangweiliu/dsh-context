@@ -57,17 +57,24 @@ DSH 默认启用 HMR（`dsh-hmr` + `dsh-client-hmr`），因此：
 Web 形态下，宿主自带的 `auto` 压缩行被 `dsh-web-app` 置为 disabled，bundle 层无法按 id 命中。因此：
 
 - 控制半侧必须挂进 agent preset；
-- 自动挂载只写已知 preset id（优先 `preset-standard`）；找不到已知 id 时只告警，不会猜一个非标准 preset；
+- 自动挂载默认关闭（`autoMountControl: false`），首次运行需显式授权；授权后也只写已知 preset id（优先 `preset-standard`），找不到已知 id 时只告警，不会猜一个非标准 preset；
 - DSH 升级 preset 后，需要重新启用或手工同步；
 - 控制行是否生效以面板「控制」卡状态为准。
 
-## 6. 扫描与统计范围
+## 6. 扫描、洞察与数据管理范围
 
-- 跨会话分析默认只扫描最近 40 个会话，不是全量。
-- 会话排序优先使用 `updatedAt`/`lastActivityAt`；provider 只提供 `createdAt` 时退化为创建时间，因此“最近 N 个”在恢复旧会话的场景下可能不是严格按最后活动时间。
-- 费用只对内置价格表覆盖的 DeepSeek 模型估算；未知 provider/模型显示 `—`。
-- 缓存命中、工具调用、压缩次数来自会话事件折叠，可能受日志完整度影响。
+- 跨会话分析默认只扫描最近 40 个会话（`analyticsLimit`，可配 1..200），不是全量；面板的 `coverage.total / scanned / withData` 会把截断情况直接显示出来。`?limit=` 只能临时覆盖，不会写回配置。
+- 会话排序优先使用 `updatedAt`/`lastActivityAt`；provider 只提供 `createdAt` 时退化为创建时间，因此“最近 N 个”在恢复旧会话的场景下可能不是严格按最后活动时间，界面把它标为近似值。
+- 费用只对内置价格表覆盖的 DeepSeek 模型估算；未知 provider/模型显示 `—`。自定义价格行按全天同价，不会自动跟随官方峰谷调整。
+- 缓存命中、工具调用、压缩次数来自会话事件折叠，可能受日志完整度影响；工具“从未使用”只在已扫描会话里成立，不代表全局从未调用。
+- `unknown-pricing` 只说明“有 token 但算不出费用”，不推断模型一定收费；`cost-outlier` 用中位数 2.5 倍作阈值，只是提示，不是账单异常判定。
+- `tool-schema-share` 的 50% 与 `repeated-compaction` 的 2 次都是启发式阈值；洞察卡不证明因果，也不自动执行禁用/改配置。
+- 节省估算只累加成功压缩的 `before - after`，再按 V4.1 Flash 输入价折算；它不是账单退款，不包含缓存命中差异，也不代表实际少付了同样的钱。
 - 趋势和事件页依赖历史会话日志；缺少日志的会话不会出现在统计中。
+- `/status/export` 只导出当前 `range` / `limit` 下的分析结果（JSON 含汇总与每日桶；CSV 为会话级字段，含 `title`/`cwd`），不导出消息正文；文件由浏览器下载到本机，插件不上传。
+- `/status/data/reset` 只清插件状态：`logs` 清压缩日志，`toggles` 清全部会话工具/提示词开关与会话提示词文本；不清 profile 配置、不清全局工具禁用、不删会话历史。
+- 首次运行状态写在 `~/.dsh/agent-embodiment/onboarding.json`（完成/跳过、预算确认、preset 授权、版本），不写 profile 配置；删掉该文件会重新出现首次运行卡。
+- 勾选“允许写入控制行”只表示授权；实际是否生效仍以控制行是否挂载、`control.active` 为准。跳过向导不会自动挂载。
 
 ## 7. 平台与安装
 

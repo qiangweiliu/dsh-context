@@ -6,5 +6,5 @@ url: https://github.com/qiangweiliu/dsh-context/tree/main/agent-embodiment
 name: qiangweiliu/dsh-context#agent-embodiment
 category: session
 description:
-  en: 'Context observability and control for DeepSeek Harness: cross-session token analytics, session-level budget/prompt/tool controls, and optional agent scaffolds. It reuses the official tokenMeter, compaction, systemPrompt, and tools.restrict seams; monitoring is read-only.'
-  zh: '为 DeepSeek Harness 提供上下文可观测性与控制：跨会话 token 分析、会话级预算/提示词/工具控制，以及可选的 Agent 脚手架。复用官方 tokenMeter、compaction、systemPrompt、tools.restrict seam；监控只读。'
+  en: 'Context observability and control for DeepSeek Harness: cross-session token and cost analytics, compaction insights and savings estimates, session-level budget/prompt/tool controls, and optional agent scaffolds. It reuses the official tokenMeter, compaction, systemPrompt, and tools.restrict seams; monitoring is read-only, and writing a control row into an agent preset requires explicit consent.'
+  zh: '为 DeepSeek Harness 提供上下文可观测性与控制：跨会话 token 与费用分析、压缩洞察与节省估算、会话级预算/提示词/工具控制，以及可选的 Agent 脚手架。复用官方 tokenMeter、compaction、systemPrompt、tools.restrict seam；监控只读，往 agent preset 写控制行前会先征得授权。'

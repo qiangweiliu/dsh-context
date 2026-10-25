@@ -114,6 +114,19 @@ const costBreakdownOf = (model, usage, pricing, time) => {
   return { input, cacheRead, cacheWrite, output, total: input + cacheRead + cacheWrite + output, peak, model }
 }
 
+/**
+ * 把「减少的 token」按某个模型的输入价折算成人民币。
+ * 只用于面板的节省估算，调用方必须标注口径；未知模型返回 null，不猜价格。
+ */
+export function estimateInputCost(tokens, model, pricingRows = DEFAULT_MODEL_PRICING, time = Date.now()) {
+  const amount = Number(tokens)
+  if (!Number.isFinite(amount) || amount <= 0) return 0
+  const price = priceOf(model, normalizePricing(pricingRows))
+  if (!price) return null
+  const rates = isPeakTime(time) ? price.peak : price.offPeak
+  return (amount / 1e6) * rates.input
+}
+
 const addCostParts = (target, parts) => {
   if (!parts) return
   target.input += parts.input
@@ -162,6 +175,7 @@ export function foldSession(header, events, pricingRows = DEFAULT_MODEL_PRICING)
     costParts: { input: 0, cacheRead: 0, cacheWrite: 0, output: 0 },
     compactions: [],
     timeline: [],
+    tools: {},
     events: list.length,
   }
   if (list.length === 0) return base
@@ -194,6 +208,7 @@ export function foldSession(header, events, pricingRows = DEFAULT_MODEL_PRICING)
         costParts: { input: 0, cacheRead: 0, cacheWrite: 0, output: 0 },
         requests: 0,
         toolCalls: 0,
+        tools: {},
         compactions: 0,
         injections: 0,
         activeMs: 0,
@@ -242,6 +257,12 @@ export function foldSession(header, events, pricingRows = DEFAULT_MODEL_PRICING)
     }
     if (event.type === 'tool/call') {
       base.counts.toolCalls += 1
+      const name = typeof event.data?.name === 'string' && event.data.name.length > 0 ? event.data.name : null
+      if (name) {
+        base.tools[name] = (base.tools[name] || 0) + 1
+        const bucket = bucketOf(event.time)
+        bucket.tools[name] = (bucket.tools[name] || 0) + 1
+      }
       bucketOf(event.time).toolCalls += 1
       continue
     }
@@ -393,6 +414,7 @@ export function summarizeFolds(folds, options = {}) {
     activeMs: 0,
     cost: null,
     costParts: { input: 0, cacheRead: 0, cacheWrite: 0, output: 0 },
+    tools: {},
   }
   const daily = new Map()
   const bucketDays = Math.min(days, 90)
@@ -415,6 +437,7 @@ export function summarizeFolds(folds, options = {}) {
       totals.compactions += fold.counts.compactions
       totals.injections += fold.counts.injections
       totals.activeMs += fold.activeMs
+      for (const [name, count] of Object.entries(fold.tools || {})) totals.tools[name] = (totals.tools[name] || 0) + number(count)
       if (fold.cost !== null) totals.cost = (totals.cost ?? 0) + fold.cost
       addCostParts(totals.costParts, fold.costParts)
       continue
@@ -430,6 +453,7 @@ export function summarizeFolds(folds, options = {}) {
       totals.compactions += number(bucket.compactions)
       totals.injections += number(bucket.injections)
       totals.activeMs += number(bucket.activeMs)
+      for (const [name, count] of Object.entries(bucket.tools || {})) totals.tools[name] = (totals.tools[name] || 0) + number(count)
       if (typeof bucket.cost === 'number') totals.cost = (totals.cost ?? 0) + bucket.cost
       addCostParts(totals.costParts, bucket.costParts)
       const chartBucket = daily.get(bucket.date)
@@ -460,6 +484,7 @@ export function summarizeFolds(folds, options = {}) {
       costParts: totals.costParts,
       currency: PRICING_CURRENCY,
     },
+    toolUsage: totals.tools,
     daily: [...daily.values()],
     sessions: sessions.map((fold) => ({
       id: fold.id,
@@ -480,6 +505,7 @@ export function summarizeFolds(folds, options = {}) {
       activeMs: fold.activeMs,
       cost: fold.cost,
       costParts: fold.costParts,
+      tools: fold.tools || {},
     })),
   }
 }

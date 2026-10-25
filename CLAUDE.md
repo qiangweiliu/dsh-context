@@ -4,7 +4,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## 项目概览
 
-DeepSeek Harness（DSH）的 agent 具身与上下文管理插件仓库。市场显示名 `Agent Embodiment` / `智能体具身`；包名/目录 `agent-embodiment`；短品牌 `embody`。旧名 `ctx-mon-and-con` 仅用于历史记录和兼容别名。可发布的主体是 `agent-embodiment/`（npm 包名 `agent-embodiment`，当前 `package.json` 版本 `0.23.0`），其余目录是配套资产：
+DeepSeek Harness（DSH）的 agent 具身与上下文管理插件仓库。市场显示名 `Agent Embodiment` / `智能体具身`；包名/目录 `agent-embodiment`；短品牌 `embody`。旧名 `ctx-mon-and-con` 仅用于历史记录和兼容别名。可发布的主体是 `agent-embodiment/`（npm 包名 `agent-embodiment`，当前 `package.json` 版本 `0.24.0`），其余目录是配套资产：
 
 - `eval/`：提示词 / 推理档位对照评测（GSM8K、MATH Level 5），以及 Tier B 50 题深度套件与结果报告。
 - `research/`、`explore/`：对 DSH 插件机制、compaction、UI 的逆向调研与设计笔记。
@@ -21,14 +21,15 @@ DeepSeek Harness（DSH）的 agent 具身与上下文管理插件仓库。市场
 
 ```bash
 cd agent-embodiment
-npm test                    # static + metrics + state + scaffold
+npm test                    # static + metrics + state + scaffold + insights
 node test/static.mjs        # manifest/exports/Config/client 形状与文本断言
 node test/metrics.mjs       # 会话日志折叠统计
 node test/state.mjs         # 会话开关/提示词文本持久化往返
 node test/scaffold.mjs      # 脚手架生成计划、YAML 与 AGENTS 合并
+node test/insights.mjs      # 健康检查与洞察规则
 ```
 
-当前基线（0.23.0）：static 95/95、metrics 31/31、state 17/17、scaffold 146/146。
+当前基线（0.24.0）：static 95/95、metrics 35/35、state 18/18、scaffold 146/146、insights 12/12。
 
 CI 在 `.github/workflows/test.yml`：Node 20/22/24 三档，先 `node --check index.js control.js client.js`，再 `npm test`，最后 `npm pack --dry-run`（提前暴露 `files`/`exports` 缺文件）。
 
@@ -102,22 +103,23 @@ UI 脚本通过 Windows Edge 的 CDP 连接（`scripts/lib/cdp.mjs`，默认 Edg
 - `index.js`（宿主平面，`inject: ['commands', 'tokenMeter']`）：注册 `/embody`、`/embody <tokens>`、`/embody reset`（并保留 `/ctx` 别名）；注册 `/api/agent-embodiment/status` 及其全部子路由；负责全局配置写入、会话开关与压缩日志落盘、全局工具禁用（`tools.restrict`）和自动挂载控制行。**它不做提示词装配**。
 - `control.js`（preset 平面，`inject: ['tokenMeter']`）：在 `system-prompt/assemble` waterfall 里按会话重建 `result.sections`、应用 `promptOverrides` / `extraPrompts` / 禁用项并写 inventory；在 `agent/pre-step` 测量并调用 `compaction.compactIfNeeded` / `compactRegion`；`notify` 模式在 `agent/status === 'idle'` 时只记录；通过 `agent.ctx.tools.restrict({ deny })` 应用会话级工具禁用；注册 `/embody-compact`。`mode` 为 `idle`（默认，含范围压缩兜底）/ `pre-step` / `notify` / `off`。
 - `state.js`：两个半侧共享的进程内状态。Cordis realm 隔离使二者互相 `import` 服务不可行，但同一包内 `./state.js` 的 ESM 模块缓存是同一份实例。
-- `metrics.js`：把会话事件日志折叠成 turn/step/usage/费用统计，供宿主状态路由消费。
-- `client.js`：浏览器半侧，经 `window.__ModuleLoader__.load` 注册 5 个 slot 条目（4 类 slot）：`settings.section`、`main`（`key='embody'`）、`sidebar.panellist`、`conversation.composer.dock` 两次（用量指示器 + 余额胶囊）。面板有 Overview / Trend / Events / Agent / Settings 五个 tab。只用内联样式和 `--dsw-alias-*` token，不引 CSS/Tailwind。
+- `metrics.js`：把会话事件日志折叠成 turn/step/usage/费用/工具调用统计，供宿主状态路由消费。
+- `insights.js`：纯函数规则层，`buildInsights()` 生成可执行洞察、`buildHealth()` 生成健康检查；不依赖 Cordis、文件系统或 npm 包。
+- `client.js`：浏览器半侧，经 `window.__ModuleLoader__.load` 注册 5 个 slot 条目（4 类 slot）：`settings.section`、`main`（`key='embody'`）、`sidebar.panellist`、`conversation.composer.dock` 两次（用量指示器 + 余额胶囊）。侧栏名称是 `Context` / `上下文`；面板固定 Overview / Trend / Events / Settings 四个 tab，脚手架在 Settings → Labs。只用内联样式和 `--dsw-alias-*` token，不引 CSS/Tailwind。
 - `scaffold.js`：Agent Embodiment Scaffold 的纯函数生成器。把模板变成可安装的 DSH preset bundle（`.dsh/scaffolds/<slug>/`）、`.agents/skills/*/SKILL.md`（`sense-environment`、`verify-change`、角色/delegation skill，全部使用 DSH 原生工具）、SENSES/HANDS/LOOP、AGENTS 片段、MCP rows 和 eval cases/runner；不读写磁盘、不 import npm 包。合并 AGENTS.md 用 `mergeAgentsContent`（marker 幂等）。
 - `locale/{en,zh}.json`：市场 `meta.title` / `meta.description`。
 - `dsh.bundle.patch.yml`：只 `insert` 一行宿主插件行，不覆盖任何宿主行。
 
-控制半侧必须挂进 agent preset（设置 → Agent preset → compaction 组），原因：Web 形态下 `dsh-web-app` 把宿主平面的 compaction 行全部 disabled，真正的 `compaction` 服务在 `preset-standard` 的 isolate group 里，宿主上下文拿不到。插件启动时会自动往 `preset-standard` 补挂一行（受 `autoMountControl` 控制），写入后回读校验，失败写 warning。
+控制半侧必须挂进 agent preset（设置 → Agent preset → compaction 组），原因：Web 形态下 `dsh-web-app` 把宿主平面的 compaction 行全部 disabled，真正的 `compaction` 服务在 `preset-standard` 的 isolate group 里，宿主上下文拿不到。`autoMountControl` 默认 `false`，只有首次运行显式授权或用户在设置里启用自动压缩后，插件才会往 `preset-standard` 补挂一行，写入后回读校验，失败写 warning。
 
-**关键约束：运行时代码（`index.js` / `control.js` / `state.js` / `metrics.js` / `scaffold.js`）不 import 任何 npm 包**（只用 Node 内置模块）。本地 `link:` 安装时插件目录没有宿主依赖，裸导入会解析失败。配置校验是手写的同步 Standard Schema（`Config['~standard'].validate`），因为 Cordis 不支持 async 校验。`test/static.mjs` 会断言无运行依赖、无安装生命周期脚本。
+**关键约束：运行时代码（`index.js` / `control.js` / `state.js` / `metrics.js` / `insights.js` / `scaffold.js`）不 import 任何 npm 包**（只用 Node 内置模块）。本地 `link:` 安装时插件目录没有宿主依赖，裸导入会解析失败。配置校验是手写的同步 Standard Schema（`Config['~standard'].validate`），因为 Cordis 不支持 async 校验。`test/static.mjs` 会断言无运行依赖、无安装生命周期脚本。
 
 ### 数据流
 
 1. `tokenMeter.measure(agent.session)` 得到用量。
 2. `budgetFor(sessionId, fallback)`：会话覆盖（`/embody <tokens>`，兼容 `/ctx`）> 宿主全局 `contextWindowTokens` > control 行自己的 `maxContextTokens` > 100000。
 3. `control.js` 按 `triggerAt` / `targetAt` / `keepTokens` 压缩，并把结果写入 `state.js`。触发线 = 预算 × `triggerAt`，目标线 = 预算 × `targetAt`；`warnAt` / `errorAt` 只影响 UI 标记。
-4. `compressionStrategy` 提供三档 preset：`conservative`（0.9 / 0.7 / keep 35%）、`balanced`（1 / 0.6 / 25%）、`aggressive`（0.75 / 0.5 / 10%）。只有显式 `triggerAt` / `targetAt` / `keepTokens` 缺省时才套用 preset；显式值优先。
+4. `compressionStrategy` 提供三档 preset：`conservative`（0.9 / 0.7 / keep 35%）、`balanced`（0.9 / 0.6 / 25%）、`aggressive`（0.75 / 0.5 / 10%）。只有显式 `triggerAt` / `targetAt` / `keepTokens` 缺省时才套用 preset；显式值优先。
 5. 状态路由把测量、inventory、压缩日志、控制状态返回给 `client.js`；面板用 MutationObserver 监听会话区域 DOM 变化，2 秒节流刷新，空闲不轮询。
 
 `promptOverrides` 只能覆盖已有 section；`extraPrompts` 才新增 section。新增提示词 `extraPromptPlacements[name] === 'user'` 时不插 system section，而是在 `agent/pre-step` 的 `next()` 之后，把文本追加到本轮新用户消息末尾（`role === 'user'` 且 `source.kind === 'user'`），每个新用户提问都会追加一次，内容进入会话日志、UI 可见；同名 section 不重复插入，空文本跳过。
@@ -130,14 +132,15 @@ UI 脚本通过 Windows Edge 的 CDP 连接（`scripts/lib/cdp.mjs`，默认 Edg
 
 所有路由都挂在 `/api/agent-embodiment/status` 下，注册时统一套 `authed`：先调用 `ctx.connection.requestRejection`（Host/Origin + 浏览器/API 认证），拒绝返回 401/403；没有 `connection` 服务（如 headless）时放行。POST 只接受 `application/json`，其他 content-type 返回 415。
 
-- 读取（GET）：`status`、`status/live`、`status/analytics`、`status/session-detail`、`status/inventory`、`status/scaffold/templates`。
-- 写入（POST）：`status/config`（全局配置补丁，16KB 上限）、`status/config/preset`（控制行启停）、`status/inventory/{toggle,reset,prompt,prompt/reset,prompt/session,prompt/session/reset,extra-prompt,extra-prompt/reset}`、`status/scaffold/{preview,generate}`。
+- 读取（GET）：`status`、`status/live`、`status/analytics`、`status/session-detail`、`status/insights`、`status/onboarding`、`status/export`、`status/inventory`、`status/scaffold/templates`。
+- 写入（POST）：`status/config`（全局配置补丁，16KB 上限）、`status/config/preset`（控制行启停）、`status/onboarding`（确认/跳过/授权）、`status/data/reset`（清日志/开关）、`status/inventory/{toggle,reset,prompt,prompt/reset,prompt/session,prompt/session/reset,extra-prompt,extra-prompt/reset}`、`status/scaffold/{preview,generate}`。
 - 默认请求体上限 256KB（`readJson` 可传更小值）；配置补丁 16KB，脚手架 spec 64KB。
 - `scaffold/generate` 要求绝对 `targetDir`，拒绝文件系统根、home 及其祖先、系统目录、`$DSH_HOME` 与常见凭据目录；逐文件校验路径不逃逸 `targetDir`；默认拒绝覆盖（409），`overwrite:true` 才覆盖。
 
 ### 持久化与配置写入
 
 - `~/.dsh/agent-embodiment/session-toggles.json`：会话级工具/提示词开关、提示词文本覆盖、`autoMountControl`。
+- `~/.dsh/agent-embodiment/onboarding.json`：首次运行引导状态（`completed`、`dismissed`、`budgetConfirmed`、`budgetTokens`、`presetConsent`、`at`、`version`）。授权记录不等于控制行已挂载，仍需回读 `control.active`。
 - `~/.dsh/agent-embodiment/compaction-log.jsonl`：压缩记录，内存最多 200 条；磁盘超过 512KB 时截到最近 400 行；面板展示最近 50 条。
 - `~/.dsh/agent-embodiment/backups/`：每次写配置前的自动备份，保留最近 30 份。
 - 全局配置、提示词覆盖、新增提示词都经 `ctx.configEditor` 写 profile 的 `cordis.patch.yml`；写入会触发 Loader 重挂插件。**patch 的 `config` 是整段替换，不做深合并**，改 preset 时务必保留要保留的字段。
@@ -166,7 +169,7 @@ UI 脚本通过 Windows Edge 的 CDP 连接（`scripts/lib/cdp.mjs`，默认 Edg
 - 追加到用户消息末尾的提示词不是隐藏指令，会在会话历史里可见；不要把它当作秘密注入机制。
 - 控制行未挂载时，工具/提示词开关不会生效：0.23.0 起面板会显示 `controlRequired` 提示并拒绝执行，但会话级开关仍会落盘。排查“开关没反应”先看 `control.active`。
 - `compressionStrategy` 与显式 `triggerAt`/`targetAt`/`keepTokens` 同时出现时以显式值为准；在 `cordis.patch.yml` 里改 preset 要保留不想丢的字段（整段替换）。
-- 文档存在少量滞后：`docs/IMPLEMENTATION.md` 的兼容范围未列 `0.2.1-rc.3`，`docs/security-audit.md` 停留在 0.21.0；以 `package.json` 的 `engines.dsh` / `dsh.compatibility` 为准。
+- 文档存在少量滞后：`docs/security-audit.md` 停留在 0.21.0；以 `package.json` 的 `engines.dsh` / `dsh.compatibility` 为准。
 - `.probe/` 是本地调试残留，不要提交；`test/deps/` 由 `prepare-deps.mjs` 生成。
 
 ## 文档地图
@@ -174,7 +177,7 @@ UI 脚本通过 Windows Edge 的 CDP 连接（`scripts/lib/cdp.mjs`，默认 Edg
 - `agent-embodiment/README.md`：用户功能与入口。
 - `agent-embodiment/docs/IMPLEMENTATION.md`：实现细节、路由清单、测试结果（最接近架构总览）。
 - `agent-embodiment/docs/LIMITATIONS.md`：行为边界与已知限制。
-- `agent-embodiment/docs/EVIDENCE.md`：逐版本 UI/运行证据（E16–E30 覆盖 0.19–0.23）。
+- `agent-embodiment/docs/EVIDENCE.md`：逐版本 UI/运行证据（E16–E31 覆盖 0.19–0.24）。
 - `agent-embodiment/docs/CORE-FUNCTION-AUDIT.md`：核心功能冲突、实现一致性与 P1/P2 审计结论。
 - `agent-embodiment/docs/RELEASE-PLAN.md`：0.22.0 → 1.0.0 的版本路线图、发布门禁、兼容矩阵与回滚步骤。
 - `agent-embodiment/docs/UI-PROPOSAL.md`：面板信息架构与视觉提案。

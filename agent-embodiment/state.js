@@ -23,8 +23,8 @@ const MAX_SESSION_STATES = 200
 /** 全局默认预算（token）；宿主半侧 apply 时写入。 */
 let defaultBudget
 
-/** 自动压缩触发比例（0–1；1 = 到上下限才触发）；宿主半侧 apply 时写入。 */
-let defaultTriggerAt = 1
+/** 自动压缩触发比例（0–1；0.9 = 到 90% 预压缩）；宿主半侧 apply 时写入。 */
+let defaultTriggerAt = 0.9
 
 /** 自动压缩的目标比例（0–1；压到该比例以下就停）；宿主半侧 apply 时写入。 */
 let defaultTargetAt = 0.6
@@ -391,6 +391,15 @@ export function hydrateSessionToggles(data) {
   if (data && typeof data.autoMountControl === 'boolean') autoMountControl = data.autoMountControl
 }
 
+/** 清除全部会话开关与提示词文本；返回清除的会话数。 */
+export function clearAllSessionToggles() {
+  const count = new Set([...sessionTools.keys(), ...sessionPrompts.keys(), ...sessionPromptText.keys()]).size
+  sessionTools.clear()
+  sessionPrompts.clear()
+  sessionPromptText.clear()
+  return count
+}
+
 export function setSessionPromptText(sessionId, name, text) {
   let map = sessionPromptText.get(sessionId)
   if (!map) {
@@ -413,11 +422,11 @@ export function getSessionPromptTextMap(sessionId) {
   return sessionPromptText.get(sessionId) ?? null
 }
 
-/** 是否自动把控制行补挂进 agent preset（面板手动停用后置 false，存 session-toggles.json）。 */
-let autoMountControl = true
+/** 是否自动把控制行补挂进 agent preset（默认 false；首次运行必须由用户显式同意）。 */
+let autoMountControl = false
 
 export function setAutoMountControl(value) {
-  autoMountControl = value !== false
+  autoMountControl = value === true
 }
 
 export function getAutoMountControl() {

@@ -2,7 +2,7 @@
 
 本文描述 `agent-embodiment` 的内部结构、集成点和验证方式。面向用户的功能说明见 [README.md](../README.md)；约束与已知限制见 [LIMITATIONS.md](LIMITATIONS.md)。
 
-当前版本：`0.23.0`
+当前版本：`0.24.0`
 
 ## 1. 两个半侧
 
@@ -13,7 +13,9 @@
 | `index.js` | 宿主平面 | 读取 token 用量、注册 `/embody` 与状态路由、保存全局配置 |
 | `control.js` | agent preset 内 | 执行自动压缩、工具/提示词开关、`/embody-compact` |
 | `state.js` | 共享状态 | 两个半侧共享默认预算、会话覆盖、控制状态 |
-| `client.js` | 浏览器平面 | 注册整页面板、设置分区、侧栏 `embody` 和 composer dock |
+| `metrics.js` | 统计层 | 把会话事件折叠成 usage、费用、工具调用与压缩统计 |
+| `insights.js` | 规则层 | 纯函数生成健康检查与可执行洞察（不依赖 Cordis/文件系统） |
+| `client.js` | 浏览器平面 | 注册整页面板、设置分区、侧栏 `Context` 和 composer dock |
 | `dsh.bundle.patch.yml` | bundle 层 | 向 profile boot graph 插入插件行 |
 | `locale/{en,zh}.json` | 插件市场 | `meta.title` / `meta.description` |
 
@@ -27,13 +29,13 @@
 - `compressionStrategy`（conservative / balanced / aggressive）
 - `analyticsLimit`（1..200，默认 40）
 - `warnAt` / `errorAt`
-- `triggerAt` / `targetAt`
+- `triggerAt` / `targetAt`（默认 0.9 / 0.6）
 - `keepTokens`
 - `disabledTools`
 - `promptOverrides`
 - `extraPrompts`
 - `extraPromptPlacements`
-- `autoMountControl`
+- `autoMountControl`（默认 `false`，必须显式同意才写 preset）
 - `modelPricing`（用户价格表，补充/覆盖内置模型）
 
 注册内容：
@@ -41,12 +43,17 @@
 - `/embody`、`/embody <tokens>`、`/embody reset`；`/ctx` 为兼容别名；
 - `GET /api/agent-embodiment/status`；
 - `/status/live`、`/status/analytics`、`/status/session-detail`；
+- `/status/insights`（可执行洞察）；
+- `/status/onboarding`（GET 读、POST 记录预算确认/跳过/preset 授权）；
+- `/status/export`（`?format=json|csv`，按当前扫描范围导出）；
+- `/status/data/reset`（清压缩日志 / 会话开关）；
 - `/status/inventory`；
 - `/status/inventory/toggle`、`/status/inventory/reset`；
 - `/status/inventory/prompt`、`/status/inventory/prompt/reset`；
 - `/status/inventory/prompt/session`、`/status/inventory/prompt/session/reset`；
 - `/status/inventory/extra-prompt`、`/status/inventory/extra-prompt/reset`；
-- `POST /api/agent-embodiment/status/config`（经 `ctx.configEditor` 写入 profile patch）。
+- `POST /api/agent-embodiment/status/config`（经 `ctx.configEditor` 写入 profile patch）；
+- `POST /api/agent-embodiment/status/config/preset`（启停控制行，保留已有字段）。
 
 全局配置写入后会触发 Loader 重挂插件。写入对象是 profile 的插件 config 行，不直接改会话历史。
 
@@ -83,7 +90,7 @@
 
 触发线 = 预算 × `triggerAt`；目标线 = 预算 × `targetAt`。`warnAt` / `errorAt` 只用于 UI 标记。
 
-`compressionStrategy` 提供三档 preset：`conservative`（0.9 / 0.7 / keep 35%）、`balanced`（1 / 0.6 / 25%）、`aggressive`（0.75 / 0.5 / 10%）。只有在配置里没有显式写 `triggerAt` / `targetAt` / `keepTokens` 时，preset 才会填入默认；显式值优先。
+`compressionStrategy` 提供三档 preset：`conservative`（0.9 / 0.7 / keep 35%）、`balanced`（0.9 / 0.6 / 25%）、`aggressive`（0.75 / 0.5 / 10%）。只有在配置里没有显式写 `triggerAt` / `targetAt` / `keepTokens` 时，preset 才会填入默认；显式值优先。默认 `triggerAt` 为 0.9，不再等到窗口 100% 才压缩。
 
 ## 4. 工具与提示词
 
@@ -138,6 +145,27 @@ inventory 属于进程内存，只反映最近一次装配；新会话需要先�
 
 `isPeakTime()` 按北京时间工作日 09:00–12:00、14:00–18:00 判定；每条 `assistant/message` / `compaction/summary` 用事件时间算 `costParts`（input=缓存未命中、cacheRead=命中、cacheWrite 按未命中价、output），再汇总到 `fold.cost`、`fold.costParts`、日桶和 `summarizeFolds().kpi.costParts`。状态接口下发 `pricing` 元数据（models、peakNow、source），面板的计费卡、KPI、页头、会话卡和趋势 tooltip 都读这份数据；`modelPricing` 自定义行仍按全天同价覆盖。
 
+### 洞察、健康检查与节省估算（0.24.0）
+
+`insights.js` 是纯函数层，输入是已折叠的 analytics、当前会话 inventory、压缩日志、价格状态和 onboarding 状态，输出固定 `id + values`：
+
+| id | 触发条件 | 跳转 |
+| --- | --- | --- |
+| `tool-schema-share` | 当前会话工具定义 ≥ 总 tokens 的 50% | 设置 → 工具 |
+| `unused-tools` | ≥ 3 个有 token 但扫描会话中从未调用的工具 | 设置 → 工具 |
+| `repeated-compaction` | 单会话压缩 ≥ 2 次 | 设置 → 控制 |
+| `compaction-failures` | 压缩日志存在失败记录 | 事件 |
+| `unknown-pricing` | 有 tokens 但费用为 `null` 的会话 | 设置 → 模型价格 |
+| `cost-outlier` | ≥ 4 个有价会话，最高费用 ≥ 中位数 2.5 倍 | 趋势 |
+
+最多返回 6 条，文案由客户端按中英文渲染；规则本身不执行副作用，也不把 onboarding 重复成洞察卡。
+
+`buildHealth()` 检查控制行是否生效、preset 是否已挂载（仅当可挂载）、配置是否可写、预算是否已确认、是否已有测量；除“测量”外任一失败即 `healthy=false`，设置页据此展示修复入口。
+
+节省估算 `savingsFromLogs()` 只统计 `outcome === 'success'` 的压缩，累加 `before - after`，再用 `estimateInputCost(tokens, 'deepseek-v4.1-flash', pricingRows)` 按 Flash 输入价折算。它回答“少读了多少上下文”，不声称账单退款，也不包含缓存命中差异。
+
+`analyticsPayload()` 返回 `coverage: { total, scanned, withData, limit }`；`limit` 取 `?limit=` 或 `config.analyticsLimit`，夹在 1..200。面板把 `total` 与 `scanned` 分开显示，避免把截断样本当全量。`/status/insights` 复用同一批 analytics 数据，`/status/export` 按当前 `range` / `limit` 导出 JSON 或 CSV，`/status/data/reset` 只清插件状态文件。
+
 ## 5. 配置写入与备份
 
 全局配置、全局提示词、新增提示词都经 `ctx.configEditor` 写 profile `cordis.patch.yml`。
@@ -158,7 +186,7 @@ inventory 属于进程内存，只反映最近一次装配；新会话需要先�
 
 ## 6. 自动挂载控制行
 
-插件启动时检查已知 preset id（优先 `preset-standard`，以及 `preset-desktop`、`desktop` 等兼容 id）的 compaction 组；如果没有 `agent-embodiment/control` 行，就通过 `ctx.configEditor` 写入一行。找不到已知 preset 时只记录 warning，不会猜一个非标准 preset 写入。
+插件启动时读取 `autoMountControl`（默认 `false`）。只有用户首次运行勾选“允许写入控制行”，或在设置里启用自动压缩后，才会检查已知 preset id（优先 `preset-standard`，以及 `preset-desktop`、`desktop` 等兼容 id）的 compaction 组；如果没有 `agent-embodiment/control` 行，才通过 `ctx.configEditor` 写入。找不到已知 preset 时只记录 warning，不会猜一个非标准 preset 写入。
 
 面板停用自动压缩时会：
 
@@ -174,12 +202,26 @@ inventory 属于进程内存，只反映最近一次装配；新会话需要先�
 
 `client.js` 在 `apply(ctx)` 中注册：
 
-- `sidebar.panellist`：左侧 `embody` 图标；
+- `sidebar.panellist`：左侧 `Context` / `上下文` 图标；
 - `main`：整页「上下文监控」；
 - `settings.section`：设置 → 上下文；
 - `conversation.composer.dock`：输入框下方指示器，环形 + 插件预算已用百分比；弹层显示已用/上限/剩余。
 
-面板头部合并为一行实时摘要：会话标题 + 已用/预算（或历史会话的累计 tokens）+ 请求数 + 费用；下方复用分段构成条与图例，空会话不渲染四个 0% 构成。概览只保留 KPI 带、计费卡、每日 tokens 图与最近会话；原先重复的上下文大卡、活跃度热力图与费用 KPI 已移除。计费卡按缓存命中/未命中/输出拆分 token 与人民币；趋势图用纵轴刻度 + 预算线 + 输入/输出色块，X 轴按请求序号 `#n` 标注，压缩点用橙色竖线标记，tooltip 含单次费用。
+面板固定为 **概览 / 趋势 / 事件 / 设置** 四个 tab；原 Agent 脚手架移入设置页底部的 **Labs**，不再占顶层导航。概览依次是首次运行/健康提示、提醒条、KPI 带、可执行洞察、节省估算、计费卡、每日 tokens 图与最近会话；设置页包含控制、策略、工具、提示词、模型价格、数据管理与 Labs。
+
+0.24.0 新增的客户端模块：
+
+- `OnboardingCard`：三步确认预算/策略/控制行；`budgetConfirmed` 与 `presetConsent` 写 `onboarding.json`；
+- `HealthCard`：消费 `health.checks`，控制行缺失时可一键修复；
+- `InsightCards`：消费 `/status/insights`，按 `action.tab/anchor` 跳转；
+- `SavingsCard`：显示成功压缩次数、减少 tokens 与按 Flash 输入价折算的估算；
+- `AlertStrip`：控制行缺失、预算超限/警告、最近压缩失败；dock 同步 `⚠`；
+- `SessionCompare`：两个会话并排比较 tokens/请求/费用/压缩；
+- `PricingSection`：自定义价格行增删；
+- `DataCard`：导出 JSON/CSV、清空日志/开关、提醒开关；
+- `LabsCard`：脚手架入口与 experimental 说明。
+
+面板头部合并为一行实时摘要：会话标题 + 已用/预算（或历史会话的累计 tokens）+ 请求数 + 费用；下方复用分段构成条与图例，空会话不渲染四个 0% 构成。计费卡按缓存命中/未命中/输出拆分 token 与人民币；趋势图用纵轴刻度 + 预算线 + 输入/输出色块，X 轴按请求序号 `#n` 标注，压缩点用橙色竖线标记，tooltip 含单次费用。会话排序支持最近活动 / tokens / 费用，费用最高会话高亮。
 
 会话切换时客户端做四层保护：`useLive` 在 path 变化时立即清空旧 payload 并用请求路径守卫丢弃迟到响应；`CtxDock` 按 sessionId 守卫；`CtxPanel` 清空 `selected` 历史选择；`InventoryCard` 清空上一会话的草稿/展开/确认态。`sessions` 服务晚注入时通过 `sessionServiceSubscribers` 补订阅。会话卡“打开会话”优先调用 `uiWorkspace.openSession(sessionId)`，找不到服务时回退到 `role=treeitem` 侧栏行的 pointer 序列点击。
 
@@ -235,9 +277,10 @@ node --check client.js
 
 ```text
 static       95/95
-metrics      31/31
-state        17/17
+metrics      35/35
+state        18/18
 scaffold    146/146
+insights     12/12
 control      54/54
 smoke        72/72
 prompt-state 11/11
@@ -253,9 +296,9 @@ manifest 声明：
 - DSH `>=0.2.0-rc.2 <0.3.0 || 0.2.1-rc.2`
 - profiles：`web`、`desktop`
 
-已实测 WSL `dsh 0.2.0-rc.2` 和 Windows Desktop `0.2.1-rc.2`。其他版本保持 `unknown`。
+已实测 WSL `dsh 0.2.0-rc.2`、Windows Desktop `0.2.1-rc.2`，以及 `0.2.1-rc.3` 的 headless + Web 启动/路由/面板加载；Desktop 0.2.1-rc.3 未单独验收。其他版本保持 `unknown`。
 
-## 11. Agent 脚手架（0.23.0，experimental 可选）
+## 11. Agent 脚手架（0.24.0 起位于 Labs，experimental 可选）
 
 `scaffold.js` 是纯函数生成器（不读写磁盘、不 import npm 包），把 `EmbodimentSpec` 变成一份可安装的 Embodiment Pack：
 

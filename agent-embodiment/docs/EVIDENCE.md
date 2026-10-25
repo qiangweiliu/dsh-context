@@ -1,8 +1,8 @@
 # 验收证据（agent-embodiment）
 
 - 仓库：<https://github.com/qiangweiliu/dsh-context>（插件目录 `agent-embodiment/`）
-- 版本：`0.23.0`（本文件随 manifest 兼容性声明一起提交）
-- 采集日期：2026-10-18
+- 版本：`0.24.0`（本文件随 manifest 兼容性声明一起提交）
+- 采集日期：2026-10-18（E1–E15）；后续条目按各自标题日期增补，最新到 E31（2026-10-25）
 - 证据层级说明：`verified` = 本次固定源码上实际执行并记录结果；`partial` = 只在明确边界内验证；`unknown` = 未取得证据。**这些证据不构成独立安全审计，也不替代商城的专项审阅。**
 
 ## 环境
@@ -374,6 +374,19 @@ npm 运行依赖：无；生命周期脚本：无
 - 费用标签：header 与会话卡统一显示“费用（估）”。
 - 测试：`static 95/95`、`metrics 31/31`、`state 17/17`、`scaffold 146/146`、`control 54/54`、`smoke 72/72`、`prompt-state 11/11`。
 - 边界：本轮是静态/集成测试验证，未重新做 Desktop/Web 端到端点击；P1-1 的排序在 provider 仅有 `createdAt` 时仍以创建时间近似“最近活动”。
+
+## E31. v0.24.0 产品补齐与源码恢复（2026-10-25，静态/集成测试）
+
+- 背景：0.24.0 的开发过程中，一次命令行文本改写把 `client.js` 的 UTF-8 内容写坏。恢复方式是从会话日志里取出 183 次 `edit` 调用，跳过已提交的 119 次，按顺序把 59 次未提交改动重放到 `git show HEAD:agent-embodiment/client.js` 上，最终文件通过 `node --check client.js`；不是从备份或构建产物还原。
+- 首次运行引导：新增 `~/.dsh/agent-embodiment/onboarding.json` 与 `GET/POST status/onboarding`。引导三步为预算校准、压缩策略、控制行挂载授权；可跳过，之后仍能在设置里改。授权只记录同意，不等于控制行已挂载，面板与健康检查仍以 `control.active` 为准。
+- 控制行默认不自动挂载：`autoMountControl` 默认 `false`，只有显式授权或用户在设置里启用自动压缩才补挂，写入后回读校验，失败写 warning 并在顶部提示条给出修复入口。
+- 洞察与健康检查：新增纯函数 `insights.js`（`buildInsights` / `buildHealth`）和 `GET status/insights`；六条洞察规则 `tool-schema-share`、`unused-tools`、`repeated-compaction`、`compaction-failures`、`unknown-pricing`、`cost-outlier`，每条带可执行操作，直接跳到对应 tab 或设置项。
+- 节省估算：`status/analytics` 增加 `savings { compactions, tokens, estimatedCost, currency, method }` 和 `coverage { total, scanned, withData, limit }`；节省 = 成功压缩的 `before - after`，按 DeepSeek V4.1 Flash 输入价折算，**不是账单退款**，未知模型不给估值。
+- 数据管理：`GET status/export`（JSON 全量 / CSV 会话表，列含 tokens、缓存读写、工具调用、压缩次数、活跃时长、估算费用）与 `POST status/data/reset`（`logs` / `toggles` / `all`）；跨会话扫描默认 40 个会话，最大 200。
+- 信息架构：侧栏从“智能体具身”改为 `Context` / `上下文`；面板固定 Overview / Trend / Events / Settings 四个 tab；脚手架从顶层 tab 下沉到 Settings → Labs；新增会话对比、会话详情费用拆分、自定义 `modelPricing` 编辑、告警提示条（设置 → 数据里可关）。
+- 默认值调整：`triggerAt` 从 `0.75` 改到 `0.9`，`targetAt` 从 `0.5` 改到 `0.6`；`balanced` preset 同步为 `0.9 / 0.6 / keep 25%`。显式配置仍优先于 preset。
+- 测试：`static 95/95`、`metrics 35/35`、`state 18/18`、`scaffold 146/146`、`insights 12/12`、`control 54/54`、`smoke 72/72`、`prompt-state 11/11`；`node --check index.js control.js client.js` 通过；`npm pack --dry-run` 20 个文件、约 163 kB（unpacked 约 564 kB），退出码 0。
+- 边界：本轮是静态/集成测试与源码级验证，没有重新做 Desktop/Web 的端到端点击回归，也没有新的长时间压缩实测；`client.js` 恢复后的外观只在静态断言与语法层面确认。节省估算依赖日志里的压缩前后 token，缺记录时显示 `—` 而不是 0。
 
 ## 已知限制（unknown）
 

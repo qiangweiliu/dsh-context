@@ -1,14 +1,14 @@
 # 核心功能冲突与实现一致性审计
 
-日期：2026-10-25  
-版本：`agent-embodiment@0.23.0`  
-范围：`index.js`、`control.js`、`state.js`、`metrics.js`、`scaffold.js`、`client.js` 及对应文档/测试。
+日期：2026-10-25（初版 0.23.0 审计，同日按 0.24.0 产品补齐复核）  
+版本：`agent-embodiment@0.24.0`  
+范围：`index.js`、`control.js`、`state.js`、`metrics.js`、`insights.js`、`scaffold.js`、`client.js` 及对应文档/测试。
 
 ## 0. 结论摘要
 
-- **没有发现会让插件整体失效的 P0 问题**；当前 `static 95/95`、`metrics 31/31`、`state 17/17`、`scaffold 146/146` 仍通过。
+- **没有发现会让插件整体失效的 P0 问题**；当前 `static 95/95`、`metrics 35/35`、`state 18/18`、`scaffold 146/146`、`insights 12/12` 通过。
 - 插件的主体实现是“在 DSH 原生 tokenMeter / compaction / system-prompt / tools 之上做观测和控制”，**没有另造压缩模型或 tokenizer**，这一点与 README 的 native-first 定位基本一致。
-- 但有 **4 个 P1 级一致性问题**，会让“最近会话”“控制行只影响当前 preset”“重置后真正解除限制”“脚手架只写工作区”这些核心承诺在特定条件下失真：
+- 有 **4 个 P1 级一致性问题**（0.23.0 已修），会让“最近会话”“控制行只影响当前 preset”“重置后真正解除限制”“脚手架只写工作区”这些核心承诺在特定条件下失真：
   1. 跨会话分析对 `listSessions()` 的顺序做隐式假设；
   2. 自动挂载控制行会选“任意一个带 plugins 的 preset”，并可能重置该行配置；
   3. 全局工具“恢复全部”只改运行时副本/配置文件，没有同步共享状态；
@@ -29,6 +29,28 @@
 | P2-6 | 部分修复 | 路由文档已修正；测试基线更新，边界测试补入 static/state |
 
 > P1-1 的排序字段优先取 `updatedAt`/`lastActivityAt`，provider 只提供 `createdAt` 时退化为 createdAt；这与“最近活动”仍有细微差异，已在 LIMITATIONS/本报告注明。
+
+## 0.2 0.24.0 产品补齐后的复核（2026-10-25）
+
+0.24.0 不做新的架构改动，重点是把“观测”“控制”“信任”三件事在 UI 和接口上说清楚。以下按本报告的冲突项逐条复核：
+
+| 冲突/编号 | 0.24.0 状态 | 依据 |
+| --- | --- | --- |
+| 2.1 观测者 vs 控制者 | 已缓解 | `autoMountControl` 默认 `false`；首次运行引导显式征求挂载授权，授权只记录同意，实际挂载仍回读 `control.active` |
+| 2.1 控制行未挂载导致“开关没反应” | 已缓解 | 健康检查 `buildHealth()` 单列 `control` 项；面板顶部 `AlertStrip` 与 dock 警告直接指向修复入口 |
+| 2.2 双口径百分比 | 已缓解 | 面板同时给出插件预算线与原生窗口读数，文案区分“插件预算”和“模型窗口”，不再暗示二者等价 |
+| 2.3 自动压缩与手动压缩 | 未改 | 仍走同一个 `compaction` 服务；`idle` 模式保留范围压缩兜底 |
+| 2.4 跨会话分析范围 | 已显式化 | `status/analytics` 返回 `coverage { total, scanned, withData, limit }`，默认 40 / 最大 200，面板显示覆盖范围而不是“全部会话” |
+| P2-1 重复的预算来源 | 未改 | 预算优先级仍是 会话覆盖 > 宿主全局 > control 行 > 100000；已在 LIMITATIONS 固定表述 |
+| P2-2 工具禁用两层实现 | 未改 | 宿主 `tools.restrict` + control `syncGates` 仍并存；叠加语义仍未做运行时验证，列在未覆盖项 |
+| P2-3 状态目录跨 profile | 未改 | `~/.dsh/agent-embodiment` 仍不按 profile 分目录；0.24.0 只把“扫描范围/覆盖数”暴露出来，没有改变存储布局 |
+| P2-6 文档与测试滞后 | 已修 | 路由、默认值、测试基线、兼容范围同步到 0.24.0；新增 `insights` 测试文件 |
+
+新增能力也带来新的边界，均已写入 LIMITATIONS：
+
+- 节省估算 = 成功压缩的 `before - after` × DeepSeek V4.1 Flash 输入价，**不是账单退款**；未知模型不给估值，缺记录显示 `—`。
+- 六条洞察规则是启发式阈值（如工具 schema 占比、重复压缩次数），不是异常检测模型。
+- 数据导出/清理只覆盖插件自己的压缩日志和会话开关；不删除 DSH 会话日志。
 
 ## 1. 核心功能定义
 
@@ -52,7 +74,8 @@
 ### 2.1 观测者 vs 控制者
 
 F1/F2 要求尽量“只读、可比、稳定”；F3/F4/F5 会改变请求、提示词和工具。  
-**现状**：默认 `autoMountControl: true`，安装后插件会主动往 agent preset 写控制行；这不是纯观测行为。  
+**现状（0.23.0）**：默认 `autoMountControl: true`，安装后插件会主动往 agent preset 写控制行；这不是纯观测行为。  
+**现状（0.24.0）**：默认改为 `false`，只有首次运行显式授权或用户主动启用自动压缩才挂载，未挂载时健康检查和提示条会明说。  
 **判断**：属于有意的产品选择，但“监控插件”标签会误导；控制卡和 `autoMountControl` 开关缓解了冲突。
 
 ### 2.2 DSH 原生上下文 vs 插件预算
@@ -205,7 +228,7 @@ README 声称不重复实现引擎；`control.js` 确实调用官方 `compactIfN
 | `metrics.js` | 事件折叠、成本、日桶、趋势 | 纯函数、测试较完整；成本假设已在 LIMITATIONS 说明 |
 | `scaffold.js` | 生成 preset/skills/MCP/eval 文件 | 生成内容自洽；路径保护和“默认 preset”说明需修正 |
 | `client.js` | 面板、header、dock、设置、会话切换 | 会话切换隔离已补齐；P2-5 成本标签需统一 |
-| 测试 | 回归保障 | 89/31/16/146 通过；缺少 P1 边界的行为测试 |
+| 测试 | 回归保障 | static 95 / metrics 35 / state 18 / scaffold 146 / insights 12 通过；P1 边界已有静态断言，仍缺真实 provider 顺序的运行时测试 |
 
 ## 5. 建议处理顺序
 

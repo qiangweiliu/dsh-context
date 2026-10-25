@@ -46,7 +46,7 @@
 - `/status/inventory/prompt`、`/status/inventory/prompt/reset`；
 - `/status/inventory/prompt/session`、`/status/inventory/prompt/session/reset`；
 - `/status/inventory/extra-prompt`、`/status/inventory/extra-prompt/reset`；
-- `POST /api/agent-embodiment/config`（经 `ctx.configEditor` 写入 profile patch）。
+- `POST /api/agent-embodiment/status/config`（经 `ctx.configEditor` 写入 profile patch）。
 
 全局配置写入后会触发 Loader 重挂插件。写入对象是 profile 的插件 config 行，不直接改会话历史。
 

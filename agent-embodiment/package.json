@@ -33,6 +33,7 @@
     "docs/EVIDENCE.md",
     "docs/IMPLEMENTATION.md",
     "docs/LIMITATIONS.md",
+    "docs/CORE-FUNCTION-AUDIT.md",
     "CHANGELOG.md"
   ],
   "engines": {

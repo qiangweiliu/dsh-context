@@ -100,6 +100,7 @@
 ## 更多文档
 
 - 实现细节：[docs/IMPLEMENTATION.md](docs/IMPLEMENTATION.md)
+- 核心功能冲突与实现审计：[docs/CORE-FUNCTION-AUDIT.md](docs/CORE-FUNCTION-AUDIT.md)
 - 约束与已知限制：[docs/LIMITATIONS.md](docs/LIMITATIONS.md)
 - 权限说明：[PERMISSIONS.md](PERMISSIONS.md)
 - 验证证据：[docs/EVIDENCE.md](docs/EVIDENCE.md)

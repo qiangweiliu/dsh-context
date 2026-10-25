@@ -277,6 +277,7 @@ export function getSessionDisabledPrompts(sessionId) {
 export function clearSessionToggles(sessionId) {
   sessionTools.delete(sessionId)
   sessionPrompts.delete(sessionId)
+  sessionPromptText.delete(sessionId)
 }
 
 export function recordInventory(sessionId, inventory) {

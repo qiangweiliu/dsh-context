@@ -364,6 +364,17 @@ npm 运行依赖：无；生命周期脚本：无
 - 移除设置页这份副本；事件页保留筛选（全部/成功/失败）、成功/失败状态、前→后 token、目标、轮次/触发方式、耗时和注入计数。
 - 静态断言改为“压缩记录只在事件页展示，设置页不重复”；`static 89/89`、`metrics 31/31`、`state 16/16`、`scaffold 146/146`。
 
+## E30. 核心功能审计 P1 修复（2026-10-25，静态/集成测试）
+
+- 会话排序：`index.js` 新增 `sessionsNewestFirst()`，analytics / `latestSession` / `/live` fallback 统一显式排序，不再依赖 `sessionQuery.listSessions()` / `sessions.list()` 的数组顺序。
+- 自动挂载：只写已知 preset id（优先 `preset-standard`）；找不到时只告警；`mutatePreset` 保留已有控制行 config，停用再启用不会把 `mode` 等字段重置为默认。
+- 全局工具状态：toggle / “恢复全部”同步 `setGlobalDisabledTools`，修复重置后 control 半侧仍读旧值的问题。
+- 脚手架路径：拒绝任意盘符根，并把 Windows `SystemRoot` / `ProgramFiles` / `ProgramData` 纳入系统目录判断。
+- 恢复全部：`clearSessionToggles` 同时清除会话提示词文本覆盖；面板确认文案同步。
+- 费用标签：header 与会话卡统一显示“费用（估）”。
+- 测试：`static 95/95`、`metrics 31/31`、`state 17/17`、`scaffold 146/146`、`control 54/54`、`smoke 72/72`、`prompt-state 11/11`。
+- 边界：本轮是静态/集成测试验证，未重新做 Desktop/Web 端到端点击；P1-1 的排序在 provider 仅有 `createdAt` 时仍以创建时间近似“最近活动”。
+
 ## 已知限制（unknown）
 
 - 未进行独立安全审计；本文件不声称“安全通过”。

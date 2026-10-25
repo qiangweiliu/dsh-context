@@ -6,6 +6,12 @@
 
 ### Fixed
 
+- 会话列表不再依赖 `sessionQuery.listSessions()` / `sessions.list()` 的隐式顺序：显式按活动时间倒序后再取“最近 N 个”/latest。
+- 自动挂载只写已知 preset id；找不到标准 preset 时只告警，不再猜一个任意 preset；重新启用时保留控制行原有 `mode` / `cooldownMs` / `maxAttempts` / `keepTokens`。
+- 全局工具 toggle / “恢复全部”现在同步 `setGlobalDisabledTools`，重置后控制半侧不再沿用旧的全局禁用。
+- 脚手架拒绝任意盘符根和 Windows `SystemRoot` / `ProgramFiles` / `ProgramData` 等系统目录。
+- “恢复全部”同时清除会话提示词文本覆盖。
+- 页头与会话卡的费用统一标注为“费用（估）”。
 - 会话切换时清空上一会话的 `selected` 历史选择，趋势/详情不再停留在旧会话。
 - `useLive` 在 path 变化时立即清空旧 payload，并用请求路径守卫丢弃迟到的旧响应；dock 同样按 sessionId 守卫。
 - 补上 `sessions` 服务晚注入时的订阅；头部请求数只在 detail 属于当前会话时使用。
@@ -21,7 +27,8 @@
 
 ### Added
 
-- 静态断言：会话切换丢弃旧响应、清空历史选择、概览去重、`uiWorkspace.openSession`。
+- 静态断言：会话切换丢弃旧响应、清空历史选择、概览去重、`uiWorkspace.openSession`；新增会话排序、自动挂载目标、全局工具同步、Windows 路径、费用标签和恢复全部文案断言。
+- 状态测试：`clearSessionToggles` 同时清工具 / 提示词开关和会话提示词文本。
 
 ## [0.23.0] - 2026-10-24
 

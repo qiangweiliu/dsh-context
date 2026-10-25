@@ -150,14 +150,15 @@ inventory 属于进程内存，只反映最近一次装配；新会话需要先�
 
 面板「恢复全部」会清空：
 
-- 会话开关；
+- 会话开关（工具/提示词）；
+- 会话提示词文本覆盖；
 - 全局工具禁用；
 - 全局提示词覆盖；
 - 新增提示词。
 
 ## 6. 自动挂载控制行
 
-插件启动时检查 `preset-standard` 的 compaction 组；如果没有 `agent-embodiment/control` 行，就通过 `ctx.configEditor` 写入一行。
+插件启动时检查已知 preset id（优先 `preset-standard`，以及 `preset-desktop`、`desktop` 等兼容 id）的 compaction 组；如果没有 `agent-embodiment/control` 行，就通过 `ctx.configEditor` 写入一行。找不到已知 preset 时只记录 warning，不会猜一个非标准 preset 写入。
 
 面板停用自动压缩时会：
 
@@ -165,7 +166,7 @@ inventory 属于进程内存，只反映最近一次装配；新会话需要先�
 - 把 `autoMountControl: false` 写入会话开关状态文件；
 - 此后启动不会自动加回。
 
-启用时反向恢复。
+启用时反向恢复，并保留该控制行原有的 `mode` / `cooldownMs` / `maxAttempts` / `keepTokens` 配置，只补缺失字段。
 
 注意：写入的是 `preset-standard` 的配置快照；DSH 升级 preset 后需要按新默认重新启用或手工同步。
 
@@ -233,9 +234,9 @@ node --check client.js
 当前结果：
 
 ```text
-static       89/89
+static       95/95
 metrics      31/31
-state        16/16
+state        17/17
 scaffold    146/146
 control      54/54
 smoke        72/72

@@ -57,13 +57,14 @@ DSH 默认启用 HMR（`dsh-hmr` + `dsh-client-hmr`），因此：
 Web 形态下，宿主自带的 `auto` 压缩行被 `dsh-web-app` 置为 disabled，bundle 层无法按 id 命中。因此：
 
 - 控制半侧必须挂进 agent preset；
-- 自动挂载会写入 `preset-standard` 的配置快照；
+- 自动挂载只写已知 preset id（优先 `preset-standard`）；找不到已知 id 时只告警，不会猜一个非标准 preset；
 - DSH 升级 preset 后，需要重新启用或手工同步；
 - 控制行是否生效以面板「控制」卡状态为准。
 
 ## 6. 扫描与统计范围
 
 - 跨会话分析默认只扫描最近 40 个会话，不是全量。
+- 会话排序优先使用 `updatedAt`/`lastActivityAt`；provider 只提供 `createdAt` 时退化为创建时间，因此“最近 N 个”在恢复旧会话的场景下可能不是严格按最后活动时间。
 - 费用只对内置价格表覆盖的 DeepSeek 模型估算；未知 provider/模型显示 `—`。
 - 缓存命中、工具调用、压缩次数来自会话事件折叠，可能受日志完整度影响。
 - 趋势和事件页依赖历史会话日志；缺少日志的会话不会出现在统计中。

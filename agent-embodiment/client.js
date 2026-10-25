@@ -148,7 +148,7 @@ window.__ModuleLoader__.load({
       confirm: 'Confirm',
       cancel: 'Cancel',
       restoreAll: 'Restore all',
-      restoreConfirm: 'Clears session toggles, global prompt edits and global tool disables. Continue?',
+      restoreConfirm: 'Clears session toggles and session prompt text, global prompt edits and global tool disables. Continue?',
       tokensShort: 'tok',
       copy: 'Copy',
       copied: 'Copied',
@@ -232,6 +232,7 @@ window.__ModuleLoader__.load({
       costEstimated: 'estimated from official peak/off-peak rates',
       billingTitle: 'Billing (est.)',
       costLabel: 'Cost',
+      costEstimateLabel: 'Cost (est.)',
       costTotal: 'Total',
       costCacheHit: 'Cache hit input',
       costCacheMiss: 'Cache miss input',
@@ -387,7 +388,7 @@ window.__ModuleLoader__.load({
       confirm: '确认',
       cancel: '取消',
       restoreAll: '恢复全部',
-      restoreConfirm: '将清除：会话开关、全局提示词覆盖、全局工具禁用。确认？',
+      restoreConfirm: '将清除：会话开关、会话提示词文本覆盖、全局提示词覆盖、全局工具禁用。确认？',
       tokensShort: 'tok',
       copy: '复制',
       copied: '已复制',
@@ -471,6 +472,7 @@ window.__ModuleLoader__.load({
       costEstimated: '按官方峰谷价估算',
       billingTitle: '计费（估算）',
       costLabel: '费用',
+      costEstimateLabel: '费用（估）',
       costTotal: '合计',
       costCacheHit: '输入（缓存命中）',
       costCacheMiss: '输入（缓存未命中）',
@@ -2676,7 +2678,7 @@ window.__ModuleLoader__.load({
               h('span', null, `${compactTokens(item.tokens)} tok`),
               h('span', null, `${formatTokens(item.turns)} ${t('turnsLabel')}`),
               h('span', null, `${formatTokens(item.requests)} ${t('requestsLabel')}`),
-              item.cost !== null && item.cost !== undefined ? h('span', null, formatCost(item.cost)) : null,
+              item.cost !== null && item.cost !== undefined ? h('span', null, `${t('costEstimateLabel')} ${formatCost(item.cost)}`) : null,
               item.compactions > 0 ? h('span', null, `${formatTokens(item.compactions)}×` ) : null,
             ),
             h('button', {
@@ -3061,7 +3063,7 @@ window.__ModuleLoader__.load({
         headerParts.push(`${t('kpiTokens')} ${compactTokens(headerMeta.tokens)}`)
       }
       if (headerRequests !== null) headerParts.push(`${headerRequests} ${t('requestsUnit')}`)
-      if (headerCost !== null) headerParts.push(`${t('costLabel')} ${formatCost(headerCost)}`)
+      if (headerCost !== null) headerParts.push(`${t('costEstimateLabel')} ${formatCost(headerCost)}`)
       const headerLine = headerParts.length > 0 ? headerParts.join(' · ') : t('description')
 
       const children = [

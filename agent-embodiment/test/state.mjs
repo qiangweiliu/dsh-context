@@ -9,6 +9,7 @@
  * ReferenceError 并被吞掉，会话开关实际上从未落盘。
  */
 import {
+  clearSessionToggles,
   getAutoMountControl,
   getSessionDisabledPrompts,
   getSessionDisabledTools,
@@ -62,6 +63,9 @@ check('恢复工具开关', same(getSessionDisabledTools('s1').sort(), ['read', 
 check('恢复提示词开关', same(getSessionDisabledPrompts('s1'), ['harness:identity']), getSessionDisabledPrompts('s1'))
 check('恢复会话提示词文本', getSessionPromptTextMap('s1')?.get('tools:fs') === 'SESSION TEXT', getSessionPromptTextMap('s1')?.get('tools:fs'))
 check('恢复 autoMountControl', getAutoMountControl() === false, getAutoMountControl())
+
+clearSessionToggles('s1')
+check('clearSessionToggles 同时清工具、提示词开关与文本覆盖', getSessionDisabledTools('s1').length === 0 && getSessionDisabledPrompts('s1').length === 0 && getSessionPromptTextMap('s1') === null, { tools: getSessionDisabledTools('s1'), prompts: getSessionDisabledPrompts('s1'), text: getSessionPromptTextMap('s1') })
 
 // ── 4. 非法数据不抛错，且不会留下脏状态 ────────────────────────────────────
 let malformed = null

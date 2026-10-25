@@ -215,6 +215,12 @@ check('面板有计费卡并显示人民币费用', clientSource.includes('data-
 check('会话切换丢弃旧响应并清空历史选择', clientSource.includes('lastPathRef') && clientSource.includes('setSelected(null)') && clientSource.includes('sessionRef.current !== requestedSession') && clientSource.includes('detailSession || activeSession'))
 check('头部合并上下文构成、概览去掉重复图表与费用 KPI', clientSource.includes('headerCategories') && clientSource.includes('h(SegmentedBar') && clientSource.includes('h(LegendGrid') && !clientSource.includes('data-embodiment-heatmap') && !clientSource.includes('kpiCost'))
 check('打开会话优先用 uiWorkspace.openSession', clientSource.includes("ctx.inject(['uiWorkspace']") && clientSource.includes('workspaceService.openSession') && clientSource.includes('role="treeitem"'))
+check('跨会话分析显式按活动时间排序', indexSource.includes('sessionsNewestFirst') && indexSource.includes('const picked = list.slice(0, limit)') && indexSource.includes('sessionsNewestFirst(sessions.list())'))
+check('自动挂载只改已知 preset 并保留控制行配置', indexSource.includes('findKnownPresetEntry') && indexSource.includes('auto-mount skipped: no known agent preset id') && indexSource.includes('config: existingControl.config ?? CONTROL_ROW.config'))
+check('全局工具重置同步共享状态', indexSource.includes('setGlobalDisabledTools(next)') && indexSource.includes('setGlobalDisabledTools([])'))
+check('Windows 脚手架路径拒绝盘符根与系统目录', indexSource.includes('dirname(root) === root') && indexSource.includes('SystemRoot') && indexSource.includes('ProgramFiles'))
+check('成本标签统一标注估算', clientSource.includes('costEstimateLabel') && clientSource.includes("t('costEstimateLabel')"))
+check('恢复全部提示包含会话提示词文本覆盖', clientSource.includes('session prompt text') && clientSource.includes('会话提示词文本覆盖'))
 check('scaffold 中英文词典齐全', Boolean(client.dictionaries.agentEmbodiment?.en?.scaffoldTitle) && Boolean(client.dictionaries.agentEmbodiment?.zh?.scaffoldTitle))
 
 // 同一个 window 下加载两次：第二次 apply 必须被挂载守卫挡住，不能重复注册槽位。

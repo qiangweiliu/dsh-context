@@ -6,7 +6,7 @@
 
 ## 0. 结论摘要
 
-- **没有发现会让插件整体失效的 P0 问题**；当前 `static 89/89`、`metrics 31/31`、`state 16/16`、`scaffold 146/146` 仍通过。
+- **没有发现会让插件整体失效的 P0 问题**；当前 `static 95/95`、`metrics 31/31`、`state 17/17`、`scaffold 146/146` 仍通过。
 - 插件的主体实现是“在 DSH 原生 tokenMeter / compaction / system-prompt / tools 之上做观测和控制”，**没有另造压缩模型或 tokenizer**，这一点与 README 的 native-first 定位基本一致。
 - 但有 **4 个 P1 级一致性问题**，会让“最近会话”“控制行只影响当前 preset”“重置后真正解除限制”“脚手架只写工作区”这些核心承诺在特定条件下失真：
   1. 跨会话分析对 `listSessions()` 的顺序做隐式假设；
@@ -14,6 +14,21 @@
   3. 全局工具“恢复全部”只改运行时副本/配置文件，没有同步共享状态；
   4. Windows 下脚手架的系统目录/盘符根保护不完整。
 - 另有若干 P2 级重复职责、跨 profile 状态、计费标签和文档不一致；不影响主流程，但会造成“看到的状态”和“实际生效”不一致。
+
+## 0.1 修复状态（2026-10-25 本轮）
+
+| 编号 | 状态 | 修复内容 |
+| --- | --- | --- |
+| P1-1 | 已修复 | `sessionsNewestFirst()` 显式排序；analytics、`latestSession`、`/live` fallback 统一走同一口径 |
+| P1-2 | 已修复 | 自动挂载只接受已知 preset id；`mutatePreset` 保留已有控制行 config；找不到标准 preset 只告警 |
+| P1-3 | 已修复 | 全局工具 toggle/reset 同步 `setGlobalDisabledTools` |
+| P1-4 | 已修复 | 任意盘符根 + Windows `SystemRoot`/`ProgramFiles`/`ProgramData` 纳入拒绝范围 |
+| P2-4 | 已修复 | `clearSessionToggles` 同时清 `sessionPromptText`，恢复全部提示同步更新 |
+| P2-5 | 已修复 | header/会话卡统一使用“费用（估）” |
+| P2-1/P2-2/P2-3 | 保留 | 属于设计边界或需要更大范围的运行时验证，见下方说明 |
+| P2-6 | 部分修复 | 路由文档已修正；测试基线更新，边界测试补入 static/state |
+
+> P1-1 的排序字段优先取 `updatedAt`/`lastActivityAt`，provider 只提供 `createdAt` 时退化为 createdAt；这与“最近活动”仍有细微差异，已在 LIMITATIONS/本报告注明。
 
 ## 1. 核心功能定义
 
@@ -77,7 +92,7 @@ README 声称不重复实现引擎；`control.js` 确实调用官方 `compactIfN
 
 ## 3. 实现审计发现
 
-### P1-1 跨会话分析的“最近 N 个”依赖未声明顺序
+### P1-1 跨会话分析的“最近 N 个”依赖未声明顺序（已修复）
 
 **证据**：
 
@@ -91,7 +106,7 @@ README 声称不重复实现引擎；`control.js` 确实调用官方 `compactIfN
 **结论**：核心 F2 的“最近 N 个”目前依赖未声明顺序；应以 `lastActivityAt`/`updatedAt` 显式降序排序后再取前 N/第 0 个。  
 **建议**：在插件侧统一 `sort`，不要依赖 provider 的隐式顺序；增加一个「乱序 provider」单测。
 
-### P1-2 自动挂载可能写入非目标 preset，并重置控制行配置
+### P1-2 自动挂载可能写入非目标 preset，并重置控制行配置（已修复）
 
 **证据**：
 
@@ -108,7 +123,7 @@ README 声称不重复实现引擎；`control.js` 确实调用官方 `compactIfN
 **影响**：核心 F3“控制行只影响当前 agent preset”和“用户配置可保留”不成立；在 Desktop/多 preset 环境中很难排查。  
 **建议**：只修改 `preset-standard` 或显式配置的 preset id；写入前保留已有控制行的 config，只补缺失字段；如果找不到标准 preset，应在 UI 报错而不是随便选一个。
 
-### P1-3 “恢复全部”没有同步全局工具共享状态
+### P1-3 “恢复全部”没有同步全局工具共享状态（已修复）
 
 **证据**：
 
@@ -119,7 +134,7 @@ README 声称不重复实现引擎；`control.js` 确实调用官方 `compactIfN
 **影响**：重置后面板可能显示“已清空”，但控制半侧的 gate 仍带旧全局禁用，直到配置文件重挂/插件重载；如果 `configEditor.edit` 失败，旧限制会一直保留。  
 **建议**：在重置/全局 toggle 成功后立即调用 `setGlobalDisabledTools(next)`，并让 `runtimeDisabledTools` 只作为 UI 快照。
 
-### P1-4 Windows 下脚手架路径保护不完整
+### P1-4 Windows 下脚手架路径保护不完整（已修复）
 
 **证据**：`protectedScaffoldPath()`（`index.js:1559-1574`）的 `systemPrefixes` 只有 `/etc`、`/usr`、`/var` 等 Unix 路径；`root === resolve('/')` 只覆盖当前盘符根。  
 **问题**：在 Windows 上：
@@ -159,13 +174,13 @@ README 声称不重复实现引擎；`control.js` 确实调用官方 `compactIfN
 **判断**：文档说“跨 profile 共享”，但对“当前会话控制”来说容易造成误解；session id 通常不会冲突，但历史视图会混。  
 **建议**：至少给压缩日志加 profile 标识/过滤，或把状态目录移到 profile 下。
 
-### P2-4 重置不清会话提示词文本覆盖
+### P2-4 重置不清会话提示词文本覆盖（已修复）
 
 **证据**：`clearSessionToggles()` 只删 `sessionTools` / `sessionPrompts`（`state.js:277-280`）；`sessionPromptText` 由独立 API 清除（`state.js:393-409`），但 `snapshotSessionToggles()` 会把 `promptText` 一起持久化（`state.js:371-376`）。  
 **影响**：`/inventory/reset?layer=session` 后，提示词文本覆盖仍存在；如果用户在 UI 里把“重置”理解为“本会话全部恢复”，会看到提示词仍被改过。  
 **建议**：明确 UI 文案为“清空开关（不含文本覆盖）”，或在 `clearSessionToggles` 中一并清 `sessionPromptText`。
 
-### P2-5 成本标签不统一
+### P2-5 成本标签不统一（已修复）
 
 **证据**：计费卡标题是“计费（估算）”（`client.js:472`），header 使用“费用”（`client.js:473`、`client.js:3064`），会话卡也直接显示金额。  
 **影响**：用户可能把 header/session 金额当成实际扣费；尤其 header 是当前会话累计估算，计费卡是区间估算。  

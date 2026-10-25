@@ -503,6 +503,20 @@ export function apply(ctx, config) {
   const measurements = new Map()
 
   const sessionIdOf = (agent) => agent?.session?.id ?? agent?.sessionId
+
+  /**
+   * 会话列表的排序键。sessionQuery 的 header 只有 createdAt；如果宿主/未来版本
+   * 提供 updatedAt/lastActivityAt，优先用更接近“最近活动”的字段。
+   */
+  const sessionTimestamp = (record) => {
+    const header = record?.header ?? record?.session?.header ?? record
+    const value = header?.lastActivityAt ?? header?.updatedAt ?? header?.createdAt ?? record?.updatedAt ?? record?.createdAt
+    return Number.isFinite(value) ? value : 0
+  }
+
+  /** 不依赖 provider 的数组顺序：显式按活动时间倒序。 */
+  const sessionsNewestFirst = (records) => (Array.isArray(records) ? records.slice().sort((left, right) => sessionTimestamp(right) - sessionTimestamp(left)) : [])
+
   const budgetOf = (agent) => budgetFor(sessionIdOf(agent), config.contextWindowTokens)
 
   /** 把一次测量压进内存表，供浏览器设置面板读取。 */
@@ -780,8 +794,8 @@ export function apply(ctx, config) {
       if (requested) {
         session = sessions.get(requested)
       } else if (typeof sessions.list === 'function') {
-        const all = sessions.list()
-        const latest = Array.isArray(all) && all.length > 0 ? all[all.length - 1] : undefined
+        const all = sessionsNewestFirst(sessions.list())
+        const latest = all[0]
         if (latest) {
           session = latest
           sessionId = latest.id
@@ -825,15 +839,22 @@ export function apply(ctx, config) {
     return editor.entries().filter((entry) => entry && Array.isArray(entry.options?.config?.plugins))
   }
 
-  /** 找到 agent preset 行；desktop profile 用非标准 id 时也能命中。 */
-  const findPresetEntry = () => {
+  /** 找到已知 id 的 preset；自动挂载只允许改这些，避免猜错 preset。 */
+  const findKnownPresetEntry = () => {
     const entries = listPresetEntries()
-    if (entries.length === 0) return null
     for (const id of PRESET_IDS) {
       const hit = entries.find((entry) => entry.options?.id === id)
       if (hit) return hit
     }
-    return entries.find((entry) => typeof entry.options?.id === 'string' && entry.options.id.includes('preset')) ?? entries[0]
+    return null
+  }
+
+  /** 面板/状态展示用：已知 id 找不到时允许退到第一个候选。 */
+  const findPresetEntry = () => {
+    const known = findKnownPresetEntry()
+    if (known) return known
+    const entries = listPresetEntries()
+    return entries.find((entry) => typeof entry.options?.id === 'string' && entry.options.id.includes('preset')) ?? entries[0] ?? null
   }
 
   const CONTROL_ROW_ID = 'agent-embodiment-control'
@@ -841,8 +862,7 @@ export function apply(ctx, config) {
   const CONTROL_ROW = Object.freeze({ id: CONTROL_ROW_ID, name: 'agent-embodiment/control', config: { mode: 'idle' } })
 
   /** 读取 preset 里压缩组是否已经挂了我们的控制行。 */
-  const presetMountState = () => {
-    const entry = findPresetEntry()
+  const presetMountState = (entry = findPresetEntry()) => {
     if (!entry) return { presetMountable: false, presetMounted: false }
     const plugins = Array.isArray(entry.options?.config?.plugins) ? entry.options.config.plugins : []
     const group = plugins.find((row) => row && row.id === 'compaction' && Array.isArray(row.config))
@@ -859,8 +879,8 @@ export function apply(ctx, config) {
   }
 
   /** 写完 preset 后回读，避免静默失败（DSH 升级改了 preset 结构时尤其重要）。 */
-  const verifyPresetMount = (expected, label) => {
-    const state = presetMountState()
+  const verifyPresetMount = (expected, label, entry = findPresetEntry()) => {
+    const state = presetMountState(entry)
     if (state.presetMounted !== expected) {
       presetWarn(`${label}: preset mount is ${state.presetMounted}, expected ${expected}`)
       return false
@@ -885,8 +905,15 @@ export function apply(ctx, config) {
       index = plugins.length - 1
     }
     const group = plugins[index] && typeof plugins[index] === 'object' ? plugins[index] : {}
-    const children = Array.isArray(group.config) ? group.config.filter((row) => !(row && (row.id === CONTROL_ROW_ID || row.id === LEGACY_CONTROL_ROW_ID))) : []
-    if (enable) children.push(CONTROL_ROW)
+    const previousRows = Array.isArray(group.config) ? group.config : []
+    const existingControl = previousRows.find((row) => row && row.id === CONTROL_ROW_ID)
+    const children = previousRows.filter((row) => !(row && (row.id === CONTROL_ROW_ID || row.id === LEGACY_CONTROL_ROW_ID)))
+    if (enable) {
+      // 保留用户改过的 mode/cooldownMs 等字段；只在缺失时补默认 config。
+      children.push(existingControl
+        ? { ...existingControl, name: typeof existingControl.name === 'string' && existingControl.name.length > 0 ? existingControl.name : CONTROL_ROW.name, config: existingControl.config ?? CONTROL_ROW.config }
+        : CONTROL_ROW)
+    }
     plugins[index] = { ...group, config: children }
     return { ...base, plugins }
   }
@@ -904,9 +931,12 @@ export function apply(ctx, config) {
   function autoMountControl() {
     if (!getAutoMountControl()) return
     const editor = configEditor
-    const entry = findPresetEntry()
-    if (!editor || typeof editor.edit !== 'function' || !entry) return
-    if (presetMountState().presetMounted) return
+    const entry = findKnownPresetEntry()
+    if (!editor || typeof editor.edit !== 'function' || !entry) {
+      if (editor && typeof editor.edit === 'function' && !entry) presetWarn('auto-mount skipped: no known agent preset id')
+      return
+    }
+    if (presetMountState(entry).presetMounted) return
     void editor
       .edit(entry, (current) => mutatePreset(current, true))
       .then(() => verifyPresetMount(true, 'auto-mount'))
@@ -1025,7 +1055,7 @@ export function apply(ctx, config) {
     const limit = Math.min(200, Math.max(1, Number(url.searchParams.get('limit')) || config.analyticsLimit))
     try {
       const records = await withTimeout(sessionQuery.listSessions(), 8000, 'listSessions')
-      const list = Array.isArray(records) ? records : []
+      const list = sessionsNewestFirst(records)
       const picked = list.slice(0, limit)
       const warnings = []
       const folds = await mapLimit(picked, 4, async (record) => {
@@ -1247,8 +1277,7 @@ export function apply(ctx, config) {
   /** 最近一个会话（与 /live 同一口径）。 */
   const latestSession = () => {
     if (!sessions || typeof sessions.list !== 'function') return undefined
-    const all = sessions.list()
-    return Array.isArray(all) && all.length > 0 ? all[all.length - 1] : undefined
+    return sessionsNewestFirst(sessions.list())[0]
   }
 
   /**
@@ -1333,6 +1362,7 @@ export function apply(ctx, config) {
       const current = [...runtimeDisabledTools]
       const next = enabled ? current.filter((item) => item !== name) : current.includes(name) ? current : [...current, name]
       runtimeDisabledTools = next
+      setGlobalDisabledTools(next)
       send(202, { ok: true, layer, kind, name, enabled, note: 'writes profile config; plugin reloads' })
       void editor
         .edit(entry, (value) => ({ ...(value ?? {}), disabledTools: next }))
@@ -1368,6 +1398,7 @@ export function apply(ctx, config) {
         setGlobalPromptOverrides({})
         setGlobalExtraPrompts({})
         setGlobalExtraPromptPlacements({})
+        setGlobalDisabledTools([])
         send(202, { ok: true, layer })
         void queuePromptWrite(() => editor.edit(entry, (value) => ({
           ...(value ?? {}),
@@ -1561,7 +1592,22 @@ export function apply(ctx, config) {
     const dshHome = resolve(process.env.DSH_HOME || join(home, '.dsh'))
     const systemPrefixes = ['/etc', '/usr', '/bin', '/sbin', '/boot', '/dev', '/proc', '/sys', '/var', '/root']
     const privateDirs = ['.ssh', '.gnupg', '.aws', '.kube', '.config', '.local'].map((name) => join(home, name))
-    if (root === resolve('/') || root === home) return true
+    // Windows 没有 /etc、/usr；用盘符根 + 系统目录环境变量覆盖 C:\Windows、Program Files 等。
+    if (dirname(root) === root) return true
+    if (process.platform === 'win32') {
+      const windowsDirs = [
+        process.env.SystemRoot,
+        process.env.windir,
+        process.env.ProgramFiles,
+        process.env['ProgramFiles(x86)'],
+        process.env.ProgramData,
+      ].filter((dir) => typeof dir === 'string' && dir.length > 0)
+      if (windowsDirs.some((dir) => {
+        const resolved = resolve(dir)
+        return root === resolved || root.startsWith(resolved + sep)
+      })) return true
+    }
+    if (root === home) return true
     // home 的任意祖先（/home、C:\Users、C:\ 等）都不允许。
     let cursor = home
     while (dirname(cursor) !== cursor) {

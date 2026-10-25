@@ -197,7 +197,7 @@ check('sidebar.panellist 图标组件是函数', typeof bySlot('sidebar.panellis
 
 const stateModule = await import(new URL('../state.js', import.meta.url).href)
 check('state 导出压缩记录接口', ['recordCompactionEvent', 'listCompactionLog', 'hydrateCompactionLog', 'subscribeCompactionLog'].every((name) => typeof stateModule[name] === 'function'))
-check('client 含可折叠压缩记录容器', clientSource.includes('data-embodiment-compact-log') && clientSource.includes('data-embodiment-log-toggle'))
+check('压缩记录只在事件页展示，设置页不重复', !clientSource.includes('data-embodiment-compact-log') && clientSource.includes('data-embodiment-events') && clientSource.includes("t('eventsTitle')"))
 check('client API 路径相对 document.baseURI 解析（兼容反代前缀）', clientSource.includes('document.baseURI') && clientSource.includes("new URL('api/agent-embodiment/status'"), null)
 const clientVersion = clientSource.match(/CLIENT_VERSION\s*=\s*'([^']+)'/)?.[1]
 check('client CLIENT_VERSION 与 package.json 一致', clientVersion === manifest.version, `${clientVersion} vs ${manifest.version}`)

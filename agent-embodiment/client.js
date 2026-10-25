@@ -93,10 +93,6 @@ window.__ModuleLoader__.load({
       controlMissing: 'Not active yet — mount agent-embodiment/control inside the agent preset (Settings → Agent preset → compaction group).',
       controlRequired: 'Prompt and tool changes need the control row. Mount agent-embodiment/control in the agent preset first.',
       controlLast: 'Last compaction',
-      compactLog: 'Compaction log',
-      compactSuccess: 'success',
-      compactFailure: 'failed',
-      compactNoLogs: 'No compaction records yet.',
       roundsUnit: 'round(s)',
       controlEnable: 'Enable auto-compaction (writes the agent preset)',
       controlDisable: 'Disable auto-compaction (removes the preset row)',
@@ -336,10 +332,6 @@ window.__ModuleLoader__.load({
       controlMissing: '尚未生效 —— 需要把 agent-embodiment/control 加到 agent preset 的 compaction 组里（设置 → Agent preset → compaction group）。',
       controlRequired: '提示词与工具修改需要控制行生效。请先把 agent-embodiment/control 挂进 agent preset。',
       controlLast: '最近一次压缩',
-      compactLog: '压缩记录',
-      compactSuccess: '成功',
-      compactFailure: '失败',
-      compactNoLogs: '还没有压缩记录。',
       roundsUnit: '轮',
       controlEnable: '启用自动压缩（写入 agent preset）',
       controlDisable: '停用自动压缩（移除 preset 行）',
@@ -2244,9 +2236,7 @@ window.__ModuleLoader__.load({
     function ControlSection(props) {
       const t = props.t
       const control = props.control || {}
-      const logs = Array.isArray(control.log) ? control.log : []
       const [state, setState] = react.useState({ kind: 'idle' })
-      const [logOpen, setLogOpen] = react.useState(false)
 
       const toggle = (enable) => {
         setState({ kind: 'saving' })
@@ -2318,61 +2308,6 @@ window.__ModuleLoader__.load({
             : null,
           state.kind === 'error' ? h('p', { style: styles.error }, state.message) : null,
           state.kind === 'notice' ? h('p', { style: styles.successText }, state.message) : null,
-        ),
-        h(
-          'div',
-          { style: styles.logBox, 'data-embodiment-compact-log': '1' },
-          h(
-            'button',
-            {
-              type: 'button',
-              style: styles.logToggle,
-              'aria-expanded': logOpen,
-              'data-embodiment-log-toggle': '1',
-              onClick: () => setLogOpen(!logOpen),
-            },
-            h('span', { style: { display: 'inline-block', transform: logOpen ? 'rotate(90deg)' : 'none', transition: 'transform .15s ease' } }, '›'),
-            h('span', null, t('compactLog')),
-            h('span', { style: styles.cardSub }, String(logs.length)),
-          ),
-          logOpen
-            ? logs.length === 0
-              ? h('p', { style: styles.emptyText, 'data-embodiment-log-empty': '1' }, t('compactNoLogs'))
-              : h(
-                  'ul',
-                  { style: styles.logList, 'data-embodiment-log-list': '1' },
-                  logs
-                    .slice()
-                    .reverse()
-                    .map((entry) => {
-                      const ok = entry && entry.outcome === 'success'
-                      const statusStyle = ok ? styles.badgeOk : styles.badgeError
-                      const meta = []
-                      if (entry.rounds) meta.push(`${entry.rounds} ${t('roundsUnit')}`)
-                      if (entry.trigger) meta.push(entry.trigger)
-                      return h(
-                        'li',
-                        { key: entry.id || `${entry.at}-${entry.outcome}`, style: styles.logItem, 'data-embodiment-log-item': entry.id || undefined, 'data-embodiment-log-outcome': ok ? 'success' : 'failure' },
-                        h(
-                          'div',
-                          { style: styles.logLine },
-                          h('span', { style: { ...styles.badge, ...statusStyle } }, ok ? t('compactSuccess') : t('compactFailure')),
-                          h('span', { style: styles.logTime }, formatTime(entry.at)),
-                          h(
-                            'span',
-                            {
-                              style: styles.logMain,
-                              title: entry.before !== null && entry.after !== null ? `${formatTokens(entry.before)} → ${formatTokens(entry.after)} ${t('tokens')}` : undefined,
-                            },
-                            `${compactTokens(entry.before)} → ${compactTokens(entry.after)} ${t('tokens')}${meta.length > 0 ? ` · ${meta.join(' · ')}` : ''}`,
-                          ),
-                          entry.sessionId ? h('span', { style: styles.logSession, title: entry.sessionId }, shortSessionId(entry.sessionId)) : null,
-                        ),
-                        entry.message ? h('p', { style: styles.logMessage, 'data-embodiment-log-message': '1' }, entry.message) : null,
-                      )
-                    }),
-                )
-            : null,
         ),
       )
     }

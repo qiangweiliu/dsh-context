@@ -75,7 +75,7 @@
 
 - `engines.node`：`>=20`
 - `engines.dsh`：`>=0.2.0-rc.2 <0.3.0 || 0.2.1-rc.2 || 0.2.1-rc.3`
-- `dsh.compatibility.dshReleases`：`0.2.0-rc.2`、`0.2.1-rc.2`、`0.2.1-rc.3` 标为 `compatible`（均为真实安装/启动验证过的宿主版本）；`0.2.2-rc.1` 标为 `unknown`（集成测试通过，待 WSL/Desktop 端到端验收）
+- `dsh.compatibility.dshReleases`：`0.2.0-rc.2`、`0.2.1-rc.2`、`0.2.1-rc.3`、`0.2.1-rc.5` 标为 `compatible`（均为真实安装/启动验证过的宿主版本）；`0.2.2-rc.1` 标为 `unknown`（集成测试通过，待 Desktop 端到端验收）
 - `dsh.compatibility.profiles`：`web`、`desktop`
 
 其他宿主版本未做运行验证，保持 `unknown`，不以范围声明代替真实验收。

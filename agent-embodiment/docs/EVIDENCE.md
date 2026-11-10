@@ -388,6 +388,21 @@ npm 运行依赖：无；生命周期脚本：无
 - 测试：`static 95/95`、`metrics 35/35`、`state 18/18`、`scaffold 146/146`、`insights 12/12`、`control 54/54`、`smoke 72/72`、`prompt-state 11/11`；`node --check index.js control.js client.js` 通过；`npm pack --dry-run` 20 个文件、约 163 kB（unpacked 约 564 kB），退出码 0。
 - 边界：本轮是静态/集成测试与源码级验证，没有重新做 Desktop/Web 的端到端点击回归，也没有新的长时间压缩实测；`client.js` 恢复后的外观只在静态断言与语法层面确认。节省估算依赖日志里的压缩前后 token，缺记录时显示 `—` 而不是 0。
 
+## E32. v0.24.1 WSL 端到端安装验收（2026-11-10，真实宿主）
+
+- 环境：WSL `Ubuntu 24.04.4 LTS`（用户 `wu`），`node v26.10.0`，`dsh 0.2.1-rc.5`（`~/.local/bin/dsh`），`web` profile；插件 `0.24.1`，以 `link:/home/wu/dsh-plugins/agent-embodiment` 安装。
+- 命令：`wsl.exe -d Ubuntu-24.04 -e bash scripts/wsl-verify.sh web` → 输出 `RESULT=PASS`；日志 `/tmp/embody-unit.log`、`/tmp/embody-int.log`、`/tmp/embody-install.log`、`/tmp/embody-web.log`。
+- 单元：`static 98/98`、`metrics 42/42`、`state 18/18`、`persist 7/7`、`scaffold 146/146`、`insights 12/12`（共 323），在仓库检出目录跑。
+- 集成：`control 54/54`、`smoke 72/72`、`prompt-state 11/11`（共 137），Cordis 由 `/mnt/e/tool/dsh/resources/app.asar`（desktop-runtime `0.2.2-rc.1`，Cordis 4.1.0）解出；**宿主是 0.2.1-rc.5，运行库是 4.1.0 交叉验证**，见下方边界。
+- 安装：`dsh plugin --profile web remove agent-embodiment` + `add /home/wu/dsh-plugins/agent-embodiment` 成功；profile 清单登记为 `link:/home/wu/dsh-plugins/agent-embodiment`（原为 `link:/home/wu/dsh-context/agent-embodiment` 的 0.23.0；回滚命令 `dsh plugin --profile web add /home/wu/dsh-context/agent-embodiment`）。
+- 真实启动：`dsh --profile web` 启动成功并打印 token；带 token 取 cookie 后 `GET /api/agent-embodiment/status` 返回 `version:"0.24.1"`、`control.active=true`；脚本随后停掉该实例（验收后 `pgrep` 无残留）。
+- 首跑暴露并修复的脚本缺陷（`scripts/wsl-verify.sh`）：
+  1. `set -u` 下引用未绑定的 `$LOCALAPPDATA`，脚本在第 3 步直接退出 → 改为 `DSH_ASAR` 优先 + `/mnt/c/Users/*/...` 路径通配；
+  2. 单元套件在独立安装副本里跑会 `ENOENT .../README.md`（`static.mjs` 读 `../../README.md` 断言版本副本一致）→ 单元套件改在仓库检出目录跑，`node --check` 仍在安装副本跑；
+  3. 安装后打印实际链接目标与回滚命令，避免“装到哪个路径”不可见。
+- 矩阵：`0.2.1-rc.5` 加入 `dshReleases` 为 `compatible`；`0.2.2-rc.1` 仍为 `unknown`（Desktop 端到端未做）。
+- 边界：本轮是“安装 + 启动 + 状态接口”级验收，**没有**在 WSL 面板里做点击/截图回归（引导三出口、真实压缩、CSV 导出仍未验）；集成测试的运行库（Cordis 4.1.0）与宿主（0.2.1-rc.5 自带 4.0.x）不同代，属交叉验证而非同宿主同库。
+
 ## 已知限制（unknown）
 
 - 未进行独立安全审计；本文件不声称“安全通过”。

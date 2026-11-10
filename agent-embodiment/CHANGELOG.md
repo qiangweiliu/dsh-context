@@ -20,6 +20,8 @@
 ### Changed
 
 - `PERMISSIONS.md` 与实现对齐：补充 `sessionQuery.observeSession` 读取的派生字段（标题/cwd/模型/工具/用量）、数据导出字段与公式注入处理；修正 `process.env` 的表述；兼容矩阵补上 `0.2.1-rc.3`。
+- 兼容矩阵补 `0.2.1-rc.5`：在 WSL `web` profile 做真实安装 + 启动 + `GET /status` 校验（`version 0.24.1`、`control.active=true`），见 [EVIDENCE E32](docs/EVIDENCE.md)。`0.2.2-rc.1` 仍为 `unknown`（Desktop 端到端未做）。
+- `scripts/wsl-verify.sh` 修复首跑暴露的三处缺陷：`LOCALAPPDATA` 未绑定导致中途退出、单元套件在独立安装副本里因缺 `../../README.md` 失败（改为在仓库检出目录跑）、asar 探测改用 Windows 用户目录通配 + `DSH_ASAR` 优先；安装后打印实际链接目标与回滚命令。
 - 插件 README 增加安装 / 升级 / 回滚章节（npm 发布前使用源码路径安装）。
 
 ## [0.24.0] - 2026-10-25

@@ -46,8 +46,9 @@ Tier B 证据（50 题）：
 ### 1.2 DSH 兼容矩阵
 
 - 当前声明：`>=0.2.0-rc.2 <0.3.0 || 0.2.1-rc.2 || 0.2.1-rc.3`
-- 已实测：`0.2.0-rc.2`（WSL web）、`0.2.1-rc.2`（Desktop）。
+- 已实测：`0.2.0-rc.2`（WSL web）、`0.2.1-rc.2`（Desktop）、`0.2.1-rc.5`（WSL web，2026-11-10：`scripts/wsl-verify.sh` 真实安装 + 启动 + 状态接口 0.24.1 / `control.active=true`）。
 - `0.2.1-rc.3`（npm `next`）已完成 headless + Web 实测并加入矩阵；Desktop 未验收。
+- `0.2.2-rc.1`：集成 137 项在 Cordis 4.1.0 下通过，但 Desktop 端到端验收未做，保持 `unknown`。
 - **规则**：未跑通 smoke/control/prompt-state + 一次真实安装之前，不把版本写进 `dshReleases`。
 
 ---

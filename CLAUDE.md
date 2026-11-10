@@ -4,7 +4,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## 项目概览
 
-DeepSeek Harness（DSH）的 agent 具身与上下文管理插件仓库。市场显示名 `Agent Embodiment` / `智能体具身`；包名/目录 `agent-embodiment`；短品牌 `embody`。旧名 `ctx-mon-and-con` 仅用于历史记录和兼容别名。可发布的主体是 `agent-embodiment/`（npm 包名 `agent-embodiment`，当前 `package.json` 版本 `0.24.0`），其余目录是配套资产：
+DeepSeek Harness（DSH）的 agent 具身与上下文管理插件仓库。市场显示名 `Agent Embodiment` / `智能体具身`；包名/目录 `agent-embodiment`；短品牌 `embody`。旧名 `ctx-mon-and-con` 仅用于历史记录和兼容别名。可发布的主体是 `agent-embodiment/`（npm 包名 `agent-embodiment`，当前 `package.json` 版本 `0.24.1`），其余目录是配套资产：
 
 - `eval/`：提示词 / 推理档位对照评测（GSM8K、MATH Level 5），以及 Tier B 50 题深度套件与结果报告。
 - `research/`、`explore/`：对 DSH 插件机制、compaction、UI 的逆向调研与设计笔记。
@@ -21,7 +21,7 @@ DeepSeek Harness（DSH）的 agent 具身与上下文管理插件仓库。市场
 
 ```bash
 cd agent-embodiment
-npm test                    # static + metrics + state + scaffold + insights
+npm test                    # static + metrics + state + persist + scaffold + insights
 node test/static.mjs        # manifest/exports/Config/client 形状与文本断言
 node test/metrics.mjs       # 会话日志折叠、成本与 CSV 单元格
 node test/state.mjs         # 会话开关/提示词文本持久化往返
@@ -173,6 +173,7 @@ UI 脚本通过 Windows Edge 的 CDP 连接（`scripts/lib/cdp.mjs`，默认 Edg
 - 第三方插件不能默认 `import '@deepseek-ai/*'`；集成测试才从 app.asar 解出真实 Cordis。
 - Agent 脚手架生成 preset 时，`dsh-subagent` service 与 `spawn` provider 已由基础组合全局提供，preset 只挂 `dsh-tool-subagent`；重复挂载会让 preset 激活失败（E18 实测）。
 - 测试会临时改 `HOME`/`USERPROFILE` 到临时目录（`smoke.mjs`、`prompt-state.mjs`），避免污染真实 profile；新增落盘逻辑时保持这一习惯。
+- 单元套件依赖仓库布局：`test/static.mjs` 会读 `../../README.md` 断言版本副本一致，所以在独立安装副本（如 `~/dsh-plugins/agent-embodiment`）里 `npm test` 会 `ENOENT`。验收脚本因此在源码检出目录跑单元、只在安装副本跑 `node --check` 与集成（`scripts/wsl-verify.sh`）。
 - 不要手改 `cordis.yml`（恒为空）；用户 tweak 写 `cordis.patch.yml`，插件自身走 `ctx.configEditor`。
 - 追加到用户消息末尾的提示词不是隐藏指令，会在会话历史里可见；不要把它当作秘密注入机制。
 - 控制行未挂载时，工具/提示词开关不会生效：0.23.0 起面板会显示 `controlRequired` 提示并拒绝执行，但会话级开关仍会落盘。排查“开关没反应”先看 `control.active`。
@@ -185,7 +186,7 @@ UI 脚本通过 Windows Edge 的 CDP 连接（`scripts/lib/cdp.mjs`，默认 Edg
 - `agent-embodiment/README.md`：用户功能与入口。
 - `agent-embodiment/docs/IMPLEMENTATION.md`：实现细节、路由清单、测试结果（最接近架构总览）。
 - `agent-embodiment/docs/LIMITATIONS.md`：行为边界与已知限制。
-- `agent-embodiment/docs/EVIDENCE.md`：逐版本 UI/运行证据（E16–E31 覆盖 0.19–0.24）。
+- `agent-embodiment/docs/EVIDENCE.md`：逐版本 UI/运行证据（E16–E32 覆盖 0.19–0.24）。
 - `agent-embodiment/docs/CORE-FUNCTION-AUDIT.md`：核心功能冲突、实现一致性与 P1/P2 审计结论。
 - `agent-embodiment/docs/RELEASE-PLAN.md`：0.22.0 → 1.0.0 的版本路线图、发布门禁、兼容矩阵与回滚步骤。
 - `agent-embodiment/docs/UI-PROPOSAL.md`：面板信息架构与视觉提案。

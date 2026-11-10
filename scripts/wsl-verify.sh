@@ -38,23 +38,31 @@ ok "已复制 $(ls "$DEST" | wc -l) 个条目"
 
 say "== 2. 语法与单元测试"
 if (cd "$DEST" && node --check index.js && node --check control.js && node --check client.js && node --check persist.js); then
-  ok "node --check 通过"
+  ok "node --check 通过（安装副本）"
 else
   fail "node --check 失败"
 fi
-if (cd "$DEST" && npm test >/tmp/embody-unit.log 2>&1); then
-  ok "npm test：$(grep -E '项通过' /tmp/embody-unit.log | tr '\n' ' ')"
+# 单元测试按仓库布局写：static.mjs 会读 ../../README.md 断言版本副本一致，
+# 独立的安装副本没有这个父目录，所以单元套件在源码检出目录跑。
+if (cd "$SRC" && npm test >/tmp/embody-unit.log 2>&1); then
+  ok "npm test（源码目录）：$(grep -E '项通过' /tmp/embody-unit.log | tr '\n' ' ')"
 else
   fail "npm test 失败"; tail -20 /tmp/embody-unit.log
 fi
 
 say "== 3. 集成测试（需要 app.asar 或已准备的 test/deps）"
-ASAR=""
-for candidate in "$LOCALAPPDATA/Programs/DeepSeek Harness/resources/app.asar" \
-  "/mnt/c/Users/$USER/AppData/Local/Programs/DeepSeek Harness/resources/app.asar" \
-  "/mnt/e/tool/dsh/resources/app.asar"; do
-  [ -f "$candidate" ] && ASAR="$candidate" && break
-done
+# WSL 里没有 LOCALAPPDATA/$USERNAME 这些 Windows 变量，按路径通配探测；
+# DSH_ASAR 优先，便于指定非默认安装位置。
+ASAR="${DSH_ASAR:-}"
+if [ -z "$ASAR" ]; then
+  for candidate in \
+    /mnt/c/Users/*/"AppData/Local/Programs/DeepSeek Harness/resources/app.asar" \
+    /mnt/c/*/*/"DeepSeek Harness/resources/app.asar" \
+    /mnt/e/tool/dsh/resources/app.asar \
+    "$HOME/.local/share/DeepSeek Harness/resources/app.asar"; do
+    [ -f "$candidate" ] && ASAR="$candidate" && break
+  done
+fi
 if [ -n "$ASAR" ] && (cd "$DEST" && DSH_ASAR="$ASAR" node test/prepare-deps.mjs >/tmp/embody-deps.log 2>&1); then
   if (cd "$DEST" && node test/control.mjs >/tmp/embody-int.log 2>&1 && node test/smoke.mjs >>/tmp/embody-int.log 2>&1 && node test/prompt-state.mjs >>/tmp/embody-int.log 2>&1); then
     ok "集成：$(grep -E '项通过' /tmp/embody-int.log | tr '\n' ' ')"
@@ -79,6 +87,8 @@ const p=require('$P/package.json');
 const b=p.dsh?.profile?.bundles??[]; const d=Object.keys(p.dependencies??{});
 console.log((b.includes('$PKG')||d.includes('$PKG'))?'ok   - profile 已登记 $PKG':'FAIL - profile 未登记 $PKG');
 " || fail "profile 登记检查失败"
+LINK=$(grep -o "\"$PKG\": \"[^\"]*\"" "$P/package.json" | head -1 | cut -d'"' -f4)
+[ -n "$LINK" ] && say "    当前链接目标：$LINK（回滚：dsh plugin --profile $PROFILE add <旧路径>）"
 
 say "== 5. 启动 web 并校验状态接口"
 if [ "${SKIP_START:-0}" = "1" ]; then

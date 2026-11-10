@@ -8,8 +8,8 @@
 
 | 项 | 值 |
 | --- | --- |
-| 分支 / HEAD | `main` / 最新提交（含本文件；`git log -1 --oneline` 查看） |
-| 远端 | `origin/main = a958590`，本地领先 4 个提交（`01af6e0` 0.24.0、`a0ab1b0` 0.24.1、`d18eb19` 交接文件、本文件提交） |
+| 分支 / HEAD | `main` / `724ae7d`（已推送；本文件后续若有提交会再更新） |
+| 远端 | `origin/main` 已与本地同步（2026-11-10 22:27 推送 `a958590..724ae7d`）；CI run #20 五个 job 全绿：unit 20/22/24 + integration（Cordis 4.0.5+cosmokit 1.8.6、4.1.0+1.9.0） |
 | 插件版本 | `agent-embodiment@0.24.1` |
 | 兼容矩阵 | `0.2.0-rc.2` / `0.2.1-rc.2` / `0.2.1-rc.3` / `0.2.1-rc.5` = compatible；`0.2.2-rc.1` = **unknown** |
 | 本机 DSH | Desktop 运行时 0.2.2-rc.1（`E:\tool\dsh\resources\app.asar`，Cordis 4.1.0）；WSL `dsh 0.2.1-rc.5` |
@@ -53,14 +53,11 @@ robocopy "C:\Users\40410\Desktop\context\agent-embodiment" $dst /MIR /XD test/de
 
 通过后：`0.2.2-rc.1` 从 `unknown` 改 `compatible`，同步 PERMISSIONS/LIMITATIONS/RELEASE-PLAN，补 E33（截图放 `docs/ui/`）。
 
-### 3.2 推送
+### 3.2 推送（已完成）
 
-```powershell
-cd C:\Users\40410\Desktop\context
-git push origin main
-```
+已推送 `a958590..724ae7d`（2026-11-10 22:27），`git ls-remote origin main` 等于本地 HEAD。CI [run #20](https://github.com/qiangweiliu/dsh-context/actions/runs/42834151550) 五个 job 全绿，新增的 `integration` job 首次通过（Cordis 4.0.5/4.1.0 两档）。
 
-沙盒内 `git ls-remote` 报 `schannel SEC_E_NO_CREDENTIALS`（没有 GitHub 凭据），必须在你本机带凭据的终端执行。推后核对 `git ls-remote origin main` 等于本地 HEAD，并确认 CI 的 `integration` job（Cordis 4.0.5 / 4.1.0 两档）首次转绿——该 job 的依赖与布局已在本机等价复现通过。
+之前沙盒里 `git ls-remote` 报 `schannel SEC_E_NO_CREDENTIALS` 是因为受限沙盒拿不到 Windows 凭据；放开文件策略后同一个 credential helper（`manager`）可直接鉴权，无需手工输入。
 
 ### 3.3 npm 发布
 

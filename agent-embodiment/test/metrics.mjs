@@ -3,7 +3,7 @@
  *
  * 运行：node test/metrics.mjs
  */
-import { csvCell, estimateInputCost, foldSession, sessionDetail, summarizeFolds } from '../metrics.js'
+import { csvCell, csvDocument, estimateInputCost, foldSession, sessionDetail, summarizeFolds } from '../metrics.js'
 
 const checks = []
 function check(name, condition, detail) {
@@ -114,6 +114,12 @@ check('CSV：+ / @ 开头的文本被中和', csvCell('+1') === "'+1" && csvCell
 check('CSV：- 开头的文本被中和', csvCell('-1+2') === "'-1+2", csvCell('-1+2'))
 check('CSV：真实数字保留数值形态', csvCell(-12.5) === '-12.5', csvCell(-12.5))
 check('CSV：null/undefined 变空串', csvCell(null) === '' && csvCell(undefined) === '', [csvCell(null), csvCell(undefined)])
+
+// CSV 文档：Excel/WPS 在中文 Windows 上需要 BOM 才按 UTF-8 解析。
+const csvDoc = csvDocument(['id,title', '1,测试会话'])
+check('CSV 文档以 BOM 开头', csvDoc.charCodeAt(0) === 0xfeff, csvDoc.charCodeAt(0))
+check('CSV 文档保留表头与行、以换行结尾', csvDoc.slice(1) === 'id,title\n1,测试会话\n', JSON.stringify(csvDoc.slice(1)))
+check('CSV 文档接受空数组', csvDocument([]) === '\uFEFF\n', JSON.stringify(csvDocument([])))
 
 const failed = checks.filter((item) => !item.ok)
 console.log(`\n[metrics] ${checks.length - failed.length}/${checks.length} 项通过`)

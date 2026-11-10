@@ -2,6 +2,37 @@
 
 格式参考 Keep a Changelog；版本遵循 SemVer。DSH 兼容版本写在每个条目的 Compatibility 下。
 
+## [0.25.0] - 2026-11-10
+
+### Changed
+
+- **预算优先级调整**：控制行的 `maxContextTokens > 0` 现在是显式覆盖，优先于宿主全局默认值；此前它只是 `budgetFor` 的 fallback，而宿主默认值恒存在，导致该配置**从不生效**。状态接口的 `budget.source` / `budget.controlTokens` 反映实际来源。
+- **状态目录按 profile 隔离**：`~/.dsh/agent-embodiment/profiles/<profile>/`；识别依据是「哪个 profile 的依赖真的指向本插件目录」。识别不出来时沿用旧的共享目录，行为不变；首次进入时把共享目录的状态文件复制过去（不覆盖已有文件）。
+- **鉴权失败关闭**：挂了 `webServer` 但没有 `connection` 服务时，状态路由一律 403；纯 headless（没有 webServer）仍放行。此前这种自定义组合下 23 条路由全部裸奔。
+- **CSV 导出带 UTF-8 BOM**：Excel/WPS 在中文 Windows 上不再把标题、cwd 里的中文按 ANSI 解析成乱码；公式注入防护不变。
+- `docs/` 与 `PERMISSIONS.md` 说清兼容声明口径：`engines.dsh` 只是安装范围，逐版本验证状态看 `dshReleases`（`unknown` 不代表被阻断）。
+
+### Added
+
+- `insights.js` 新增 `pricing-stale` 洞察：价格表超过 30 天未更新就提示（`PRICING_STALE_DAYS`），避免官方调价后费用估算静默偏差。
+- `profile.js`（纯函数）+ `test/profile.mjs`：profile 识别、状态目录计算、旧目录迁移；11 项断言。
+- `client.js`：面板卡片级 `ErrorBoundary`（单张卡片渲染失败不再让整块面板变空，带“重试”）与 tab 可访问性（`role=tablist/tab/tabpanel`、`aria-selected`、方向键 / Home / End 切换）。
+- `scripts/bench-analytics.mjs`：analytics 折叠性能基线（P50/P95 与 RSS），结果记入 LIMITATIONS。
+- `oxlint` 配置与 `npm run lint`；CI 增加 npm 缓存、`concurrency`、lint 与 `npm ci`。
+- 状态接口新增 `profile` 与 `compatibility`（范围 + 逐版本状态）字段。
+
+### Fixed
+
+- **面板整块崩溃（0.24.0 起的真实缺陷）**：`CtxPanel` 里 `analyticsLimit` 引用 `budget` 早于其 `const` 声明，函数作用域的 TDZ 让每次渲染都抛 `ReferenceError`，四个 tab 一起变空；任何卡片级边界都救不了。已把 `data` / `budget` 提到使用点之前。
+- 新增 `test/render.mjs`（最小 React mock 真跑面板组件）作为这类问题的回归测试；此前 static/smoke 只做源码字符串断言，全绿也发现不了。
+- `test/prompt-state.mjs` 补 `MockConnection`：真实 web profile 一定有 connection，测试桩缺少它会让状态路由按 0.25.0 的新规则返回 403。
+- `scripts/wsl-verify.sh` 默认改为 dry-run：只同步副本 + 跑测试；`--apply` 才执行安装、`pkill` 与启动，避免“只是想验证”却改掉 profile 指向。
+- `test/static.mjs` 补 3 条工具链断言（lint 脚本、oxlint 配置、lockfile），`files` 加入 `profile.js`。
+
+### Compatibility
+
+- `0.2.0-rc.2` / `0.2.1-rc.2` / `0.2.1-rc.3` / `0.2.1-rc.5` = compatible；`0.2.2-rc.1` = unknown（Desktop 端到端仍未做）。
+
 ## [0.24.1] - 2026-11-10
 
 ### Fixed

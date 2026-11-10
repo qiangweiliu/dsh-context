@@ -37,11 +37,14 @@ check(
 )
 check(
   'manifest files 分发全部运行文件',
-  ['index.js', 'control.js', 'state.js', 'metrics.js', 'persist.js', 'scaffold.js', 'client.js', 'dsh.bundle.patch.yml'].every((file) => Array.isArray(manifest.files) && manifest.files.includes(file)),
+  ['index.js', 'control.js', 'state.js', 'metrics.js', 'persist.js', 'profile.js', 'scaffold.js', 'client.js', 'dsh.bundle.patch.yml'].every((file) => Array.isArray(manifest.files) && manifest.files.includes(file)),
   JSON.stringify(manifest.files),
 )
 check('manifest 无 npm 运行依赖（只依赖宿主服务与 Node 内置模块）', !manifest.dependencies || Object.keys(manifest.dependencies).length === 0, JSON.stringify(manifest.dependencies ?? {}))
 check('manifest 声明权限说明文档已分发', Array.isArray(manifest.files) && manifest.files.includes('PERMISSIONS.md'))
+check('lint 脚本存在且用 oxlint（devDependency）', String(manifest.scripts?.lint ?? '').includes('oxlint') && Boolean(manifest.devDependencies?.oxlint), JSON.stringify({ lint: manifest.scripts?.lint, dev: manifest.devDependencies }))
+check('oxlint 配置随仓库提交', existsSync(new URL('../.oxlintrc.json', import.meta.url)))
+check('npm ci 用的 lockfile 存在', existsSync(new URL('../package-lock.json', import.meta.url)))
 
 // ── 1c. 版本号副本一致（scripts/bump-version.mjs 负责同步）───────────────
 const rootReadme = readFileSync(new URL('../../README.md', import.meta.url), 'utf8')

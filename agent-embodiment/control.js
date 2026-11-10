@@ -14,8 +14,8 @@
  *
  * 上下文从哪来（三级）：
  *   1. 会话级临时覆盖：宿主半侧 `/embody <tokens>` 写入（兼容 `/ctx`）（同包 ./state.js 共享）
- *   2. 全局默认：宿主半侧 Config.contextWindowTokens
- *   3. 本行 Config.maxContextTokens（0 = 跟随前两级；宿主没装时才用它）
+ *   2. 本行 Config.maxContextTokens（>0 视为显式覆盖；0 = 跟随宿主全局）
+ *   3. 宿主半侧 Config.contextWindowTokens（再往下才是 100000 兜底）
  *
  * 控制语义（v1，只走官方 seam，不 import 任何包）：
  *   - 触发条件：`tokenMeter` 实测用量 > 插件上下文上限 × `triggerAt`（默认 1，
@@ -53,15 +53,13 @@ import {
   recordInventory,
   setCompacting,
   setControlActive,
+  setControlBudget,
 } from './state.js'
 
 export const name = 'agent-embodiment-control'
 
 /** 硬依赖：没有测量服务就没有控制依据。 */
 export const inject = ['tokenMeter']
-
-/** 宿主没装、本行也没配时的兜底上下文。 */
-const FALLBACK_BUDGET = 100000
 
 const DEFAULT_CONFIG = {
   /** 触发上下文；0 = 跟随宿主默认与会话覆盖。 */
@@ -150,6 +148,10 @@ function describeResult(result) {
  */
 export function apply(ctx, config) {
   // mode: 'off' 只停用压缩动作；工具/提示词清单与开关仍要生效。
+
+  // 本行显式预算（0 = 跟随前两级）：写进共享状态，宿主/控制两半按同一顺序取预算。
+  setControlBudget(config.maxContextTokens ?? 0)
+  ctx.effect(() => () => setControlBudget(0), 'agent-embodiment-control: budget')
 
   const log = (level, message) => {
     const logger = ctx.logger
@@ -335,8 +337,8 @@ export function apply(ctx, config) {
 
   const sessionIdOf = (agent) => agent?.session?.id ?? agent?.sessionId
 
-  /** 某会话的实际上下文：会话覆盖 > 宿主默认 > 本行配置 > 兜底。 */
-  const budgetOf = (agent) => budgetFor(sessionIdOf(agent), config.maxContextTokens || FALLBACK_BUDGET)
+  /** 某会话的实际上下文：会话覆盖 > 本行显式预算 > 宿主全局 > 兜底（顺序见 state.budgetFor）。 */
+  const budgetOf = (agent) => budgetFor(sessionIdOf(agent))
 
   /** 自动压缩的触发线：上下文上限 × triggerAt（宿主半侧 Config.triggerAt，默认 1）。 */
   const triggerTokensOf = (budget) => {

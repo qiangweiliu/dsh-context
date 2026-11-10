@@ -45,11 +45,12 @@ Tier B 证据（50 题）：
 
 ### 1.2 DSH 兼容矩阵
 
-- 当前声明：`>=0.2.0-rc.2 <0.3.0 || 0.2.1-rc.2 || 0.2.1-rc.3`
-- 已实测：`0.2.0-rc.2`（WSL web）、`0.2.1-rc.2`（Desktop）、`0.2.1-rc.5`（WSL web，2026-11-10：`scripts/wsl-verify.sh` 真实安装 + 启动 + 状态接口 0.24.1 / `control.active=true`）。
+- 当前声明：`>=0.2.0-rc.2 <0.3.0 || 0.2.1-rc.2 || 0.2.1-rc.3`（**安装范围**，不等于逐版本验证）
+- 已实测：`0.2.0-rc.2`（WSL web）、`0.2.1-rc.2`（Desktop）、`0.2.1-rc.5`（WSL web，2026-11-10：`scripts/wsl-verify.sh --apply` 真实安装 + 启动 + 状态接口 0.24.1 / `control.active=true`）。
 - `0.2.1-rc.3`（npm `next`）已完成 headless + Web 实测并加入矩阵；Desktop 未验收。
 - `0.2.2-rc.1`：集成 137 项在 Cordis 4.1.0 下通过，但 Desktop 端到端验收未做，保持 `unknown`。
-- **规则**：未跑通 smoke/control/prompt-state + 一次真实安装之前，不把版本写进 `dshReleases`。
+- **规则**：未跑通 smoke/control/prompt-state + 一次真实安装之前，不把版本写进 `dshReleases`；范围满足而验证状态为 `unknown` 时，面板显示“范围满足但未验证”，不阻断加载。
+- **_0.25.0_ 之后**：`engines.dsh` 仍保持宽区间（收窄会直接挡住 Desktop 0.2.2-rc.1），真正的兼容承诺由 `dshReleases` 承担；1.0 前把宽区间换成显式枚举。
 
 ---
 
@@ -60,7 +61,8 @@ Tier B 证据（50 题）：
 | `0.22.0` | 安全 + 定位调整 | 已并入工作区 | 安全加固 | 路由认证、scaffold 路径保护、process skills opt-in、4 个模板标 experimental |
 | `0.23.0` | 证据与压缩控制 | 已并入工作区 | 压缩可控 | 3 reps 对照、三档 preset、控制未挂载提示、analytics 限额、rc.3 兼容、费用估算 |
 | `0.24.0` | 产品补齐 | 已并入 0.24.1 | 可解释与可信任 | 首次运行引导、洞察/健康检查、节省估算、数据导出与清理、4 tab IA、会话对比、自定义价格 |
-| `0.24.1` | patch | **当前工作区版本** | 安全与可靠性 | CSV 公式注入、状态原子写 + 备份回落、读取超时 AbortSignal、PERMISSIONS 对齐、CI 集成、版本 bump 脚本 |
+| `0.24.1` | patch | 已并入 0.25.0 | 安全与可靠性 | CSV 公式注入、状态原子写 + 备份回落、读取超时 AbortSignal、PERMISSIONS 对齐、CI 集成、版本 bump 脚本 |
+| `0.25.0` | minor | **当前工作区版本** | 修正真实缺陷 + 工程化 | 面板 TDZ 崩溃、预算优先级、状态目录按 profile 隔离、鉴权失败关闭、CSV BOM、价格表时效、client 错误边界与 a11y、oxlint/CI、analytics 基线 |
 | `1.0.0` | major | 2026-12 起，按门禁 | 稳定承诺 | 移除 `/ctx` 别名与旧状态迁移、冻结配置面、安全审查、兼容矩阵 |
 
 ---
@@ -296,3 +298,22 @@ https://github.com/awesome-dsh-plugin/awesome-dsh-plugin/compare/main...qiangwei
 4. 用 `GET status/export` 拉一次 CSV，核对列与 `metrics.js` 口径一致。
 5. 跑完整发布门禁（第 4 节），再 `npm publish` + tag `v0.24.0`。
 6. 市场 PR 描述同步到 0.24.0：写清 analytics 范围、节省是估算、scaffold 仍是 optional/experimental。
+
+## 11. 0.25.0 执行记录（2026-11-10）
+
+来源：0.24.1 交接后的一次完整问题审查（P1 真缺陷 6 条 + P2 工程化 6 项）。本轮按「先真缺陷、再工程化」落地，全部附测试或可复现命令。
+
+| 项目 | 状态 | 结果 |
+|---|---|---|
+| 面板 TDZ 崩溃 | ✅ | `CtxPanel` 的 `analyticsLimit` 读 `budget` 早于声明，四个 tab 全空；已上移声明并加 `test/render.mjs` 行为级回归 |
+| 预算优先级 | ✅ | 控制行 `maxContextTokens` > 0 现优先于宿主默认值；`state 26/26`、`control 55/55` |
+| 鉴权失败关闭 | ✅ | 有 `webServer` 无 `connection` 时 403；`smoke 73/73` |
+| 状态目录按 profile | ✅ | `profile.js` 识别 profile 依赖并分层，旧目录自动迁移；`profile 11/11` |
+| CSV BOM | ✅ | Excel/WPS 中文不再乱码；`metrics 45/45` |
+| 价格表时效 | ✅ | `pricing-stale` 洞察（>30 天）；`insights 16/16` |
+| 兼容声明口径 | ✅ | `engines` = 安装范围、`dshReleases` = 验证状态；状态接口下发 `compatibility` |
+| client 错误边界 / a11y | ✅ | 卡片级 ErrorBoundary + tab `role`/方向键；`static`、`render` 覆盖 |
+| 工具链 | ✅ | oxlint（0 warning）+ lockfile + `npm ci`、CI 缓存/并发/lint |
+| 性能基线 | ✅ | `scripts/bench-analytics.mjs`：40×200 P50 6.6ms / P95 12.4ms；200×400 P50 18.7ms / P95 62.4ms |
+| 验收脚本安全性 | ✅ | `wsl-verify.sh` 默认 dry-run，`--apply` 才改动 profile |
+| 未做 | ⬜ | `client.js` 拆模块（4054 行，留 0.26.0）；Desktop 0.2.2-rc.1 端到端 |

@@ -377,6 +377,23 @@ check('settings.section id/order/locale', section.id === 'agent-embodiment' && t
 check('settings.section label 走中文词典', section.label?.() === '上下文', section.label?.())
 check('settings.section 组件是函数', typeof client.slotRegistrations[0]?.component === 'function', typeof client.slotRegistrations[0]?.component)
 
+// ── 6b. 有 webServer 无 connection：状态路由失败关闭（403）────────────────────
+{
+  const solo = new Context()
+  await solo.plugin(MockCommands)
+  await solo.plugin(MockTokenMeter)
+  await solo.plugin(MockWebServer)
+  const soloFiber = solo.plugin(plugin, { contextWindowTokens: 128000, warnAt: 0.75, errorAt: 0.9 })
+  await soloFiber
+  await new Promise((resolve) => setTimeout(resolve, 0))
+  const soloServer = solo.get('webServer')
+  const soloRoute = soloServer?.routes?.get('/api/agent-embodiment/status')
+  const denied = makeResponse()
+  soloRoute?.handler({ method: 'GET', headers: {} }, denied)
+  check('没有 connection 时状态路由 403（失败关闭）', denied.statusCode === 403 && String(denied.body) === 'forbidden', JSON.stringify({ code: denied.statusCode, body: denied.body }))
+  try { await soloFiber.dispose() } catch {}
+}
+
 try {
   rmSync(testHome, { recursive: true, force: true })
 } catch {}

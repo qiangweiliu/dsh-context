@@ -2,7 +2,7 @@
 
 本文描述 `agent-embodiment` 的内部结构、集成点和验证方式。面向用户的功能说明见 [README.md](../README.md)；约束与已知限制见 [LIMITATIONS.md](LIMITATIONS.md)。
 
-当前版本：`0.24.1`
+当前版本：`0.25.0`
 
 ## 1. 两个半侧
 
@@ -15,6 +15,7 @@
 | `state.js` | 共享状态 | 两个半侧共享默认预算、会话覆盖、控制状态 |
 | `metrics.js` | 统计层 | 把会话事件折叠成 usage、费用、工具调用与压缩统计；CSV 单元格转义 |
 | `persist.js` | 持久化工具 | 状态文件原子写、写前备份、备份读取（可单独测试） |
+| `profile.js` | 持久化工具 | 识别所属 profile、计算状态目录、从旧共享目录迁移状态文件 |
 | `insights.js` | 规则层 | 纯函数生成健康检查与可执行洞察（不依赖 Cordis/文件系统） |
 | `client.js` | 浏览器平面 | 注册整页面板、设置分区、侧栏 `Context` 和 composer dock |
 | `dsh.bundle.patch.yml` | bundle 层 | 向 profile boot graph 插入插件行 |
@@ -265,11 +266,13 @@ powershell -NoProfile -ExecutionPolicy Bypass -File scripts/verify-uninstall.ps1
 ## 9. 测试
 
 ```powershell
-npm test                      # static + metrics + state + scaffold（不依赖 DSH 运行时）
+npm test                      # static + metrics + state + persist + profile + scaffold + insights（不依赖 DSH 运行时）
 npm run test:integration      # prepare-deps + control + smoke + prompt-state（需要本机 app.asar）
+npm run lint                  # oxlint（devDependency，CI 也会跑）
 node --check index.js
 node --check control.js
 node --check client.js
+node --check profile.js
 ```
 
 `test/prepare-deps.mjs` 默认读取本机 DSH 的 `app.asar`，可用 `DSH_ASAR` 环境变量指定其他路径。
@@ -277,16 +280,20 @@ node --check client.js
 当前结果：
 
 ```text
-static       98/98
-metrics      42/42
-state        18/18
-persist       7/7
-scaffold    146/146
-insights     12/12
-control      54/54
-smoke        72/72
-prompt-state 11/11
+static       101/101
+metrics       45/45
+state         26/26
+persist        7/7
+profile       11/11
+scaffold     146/146
+insights      16/16
+render        23/23
+control       55/55
+smoke         73/73
+prompt-state  11/11
 ```
+
+`test/render.mjs` 用最小 React mock 真正执行 `client.js` 的面板组件（四个 tab、ARIA 关系、键盘切换、卡片级错误边界），补上字符串断言覆盖不到的行为层；0.25.0 的 TDZ 面板崩溃就是它发现的。
 
 UI 证据与历史版本验收见 [EVIDENCE.md](EVIDENCE.md)。
 

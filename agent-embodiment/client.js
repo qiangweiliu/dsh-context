@@ -21,7 +21,7 @@ window.__ModuleLoader__.load({
 
     const NS = 'agentEmbodiment'
     /** 与 package.json 版本保持一致；宿主版本不同时提示刷新页面而不是重启 DSH。 */
-    const CLIENT_VERSION = '0.24.1'
+    const CLIENT_VERSION = '0.25.0'
     /**
      * API 路径必须相对页面 base 解析，而不是写死根路径：
      * 反向代理部署在 /app/dsh/ 这类前缀下时，根路径 /api/... 会打到网关根并 404。
@@ -85,6 +85,7 @@ window.__ModuleLoader__.load({
       lastDelta: 'Since last sync',
       retry: 'Retry',
       error: 'Could not load status',
+      cardFailed: 'This card failed to render: {message}',
       hint: 'Tip: /embody <tokens> temporarily overrides this session; /embody reset restores the default. /ctx is a legacy alias.',
       tokens: 'tokens',
       control: 'Control',
@@ -159,7 +160,6 @@ window.__ModuleLoader__.load({
       source: 'Source',
       sourceUnknown: 'unidentified',
       edit: 'Edit',
-      save: 'Save',
       resetOriginal: 'Restore original',
       globalOverridden: 'overridden (global)',
       sessionOverridden: 'overridden (session)',
@@ -205,6 +205,7 @@ window.__ModuleLoader__.load({
       tabsEvents: 'Events',
       tabsSettings: 'Settings',
       tabsScaffold: 'Agent',
+      tabsLabel: 'Sections',
       scaffoldTitle: 'Agent embodiment scaffold',
       scaffoldIntro: 'Generate a DSH agent preset with senses, hands, skills, and a verification loop.',
       scaffoldTemplate: 'Template',
@@ -428,6 +429,7 @@ window.__ModuleLoader__.load({
       lastDelta: '较上次同步',
       retry: '重试',
       error: '读取状态失败',
+      cardFailed: '本卡片渲染失败：{message}',
       hint: '提示：/embody <tokens> 临时覆盖本会话上下文；/embody reset 恢复默认；/ctx 是兼容别名。',
       tokens: 'tokens',
       control: '控制',
@@ -502,7 +504,6 @@ window.__ModuleLoader__.load({
       source: '来源',
       sourceUnknown: '未识别',
       edit: '编辑',
-      save: '保存',
       resetOriginal: '恢复原文',
       globalOverridden: '已覆盖（全局）',
       sessionOverridden: '已覆盖（会话）',
@@ -548,6 +549,7 @@ window.__ModuleLoader__.load({
       tabsEvents: '事件',
       tabsSettings: '设置',
       tabsScaffold: 'Agent',
+      tabsLabel: '分区',
       scaffoldTitle: 'Agent 脚手架',
       scaffoldIntro: '生成一个带感官、手、技能和验证闭环的 DSH agent preset。',
       scaffoldTemplate: '模板',
@@ -1048,6 +1050,9 @@ window.__ModuleLoader__.load({
       page: { height: '100%', minHeight: 0, overflow: 'auto', background: 'var(--dsw-alias-bg-base)', color: 'var(--dsw-alias-label-primary)' },
       pageInner: { maxWidth: '1040px', margin: '0 auto', padding: '24px clamp(16px, 4vw, 40px) 48px', display: 'flex', flexDirection: 'column', gap: '16px' },
       root: { display: 'flex', flexDirection: 'column', gap: '12px' },
+      // tab 内容区单独一层容器只为承载 role=tabpanel / aria-labelledby：纵向节奏与 root 相同，
+      // 视觉与之前「卡片直接排在 root 里」一致。
+      tabPanel: { display: 'flex', flexDirection: 'column', gap: '12px' },
       title: { margin: 0, fontSize: '21px', fontWeight: 600, lineHeight: '29px', letterSpacing: '-0.01em' },
       versionChip: { display: 'inline-flex', alignItems: 'center', borderRadius: '999px', border: '0.5px solid var(--dsw-alias-border-l2)', background: 'var(--dsw-alias-bg-layer-2)', padding: '1px 8px', fontSize: '11.5px', lineHeight: '18px', color: 'var(--dsw-alias-label-secondary)', fontVariantNumeric: 'tabular-nums' },
       subtitle: { margin: 0, fontSize: '12px', lineHeight: 1.6, color: 'var(--dsw-alias-label-tertiary)' },
@@ -1350,6 +1355,66 @@ window.__ModuleLoader__.load({
       )
     }
 
+    /** 异常信息转一行可显示的文本（抛出的不一定是 Error，message 也可能为空）。 */
+    function boundaryMessage(error) {
+      if (error && error.message !== undefined && error.message !== null) {
+        const text = String(error.message).trim()
+        return text || 'Error'
+      }
+      const text = String(error === undefined || error === null ? '' : error).trim()
+      return text || 'Error'
+    }
+
+    /**
+     * 卡片级错误边界。
+     *
+     * 宿主 renderer 只在每个 slot entry 外面套一层 ErrorBoundary：面板内部任何一张卡抛错，
+     * 整块面板会一起变空（四个 tab 全没了）。这里在面板内部按卡片再兜一层，某张卡渲染失败时
+     * 只把它换成一条可读的降级提示（带“重试”按钮），其余卡片与 tab 继续可用。
+     * 正常路径直接返回 children、不额外包 DOM，所以卡片布局与之前完全一致。
+     *
+     * 用 class 而不是函数组件：React 只有 class 才能实现 error boundary。
+     */
+    function makeCardBoundary(Base) {
+      return class CardBoundary extends Base {
+        constructor(props) {
+          super(props)
+          this.state = { failed: false, message: '' }
+          this.retry = this.retry.bind(this)
+        }
+
+        static getDerivedStateFromError(error) {
+          return { failed: true, message: boundaryMessage(error) }
+        }
+
+        /** 重试：清掉失败状态，让子树重新挂载一次；仍然失败会再次落到降级提示。 */
+        retry() {
+          this.setState({ failed: false, message: '' })
+        }
+
+        render() {
+          if (!this.state.failed) return this.props.children === undefined ? null : this.props.children
+          const t = this.props.t
+          const detail = typeof t === 'function'
+            ? String(t('cardFailed')).replace('{message}', this.state.message)
+            : `This card failed to render: ${this.state.message}`
+          return h('div', { style: styles.emptyState, role: 'alert', 'data-embodiment-card-error': '1' },
+            // 异常文本一律按纯文本渲染，不用 dangerouslySetInnerHTML。
+            h('p', { style: styles.error }, detail),
+            h('button', { type: 'button', style: styles.button, onClick: this.retry, 'data-embodiment-card-retry': '1' }, typeof t === 'function' ? t('retry') : 'Retry'),
+          )
+        }
+      }
+    }
+
+    // 宿主 react 是完整 React，正常走 class 边界；测试桩等裁剪过的 react 没有 Component，
+    // 退回「只渲染 children」的函数组件，保证模块能加载、面板照常显示（只是不再捕获卡内异常）。
+    const CardBoundary = typeof react.Component === 'function'
+      ? makeCardBoundary(react.Component)
+      : function CardBoundary(props) {
+        return props && props.children !== undefined ? props.children : null
+      }
+
     // ── 数据 hooks ─────────────────────────────────────────────────────────
     function useStatus(path) {
       const [state, setState] = react.useState({ phase: 'loading' })
@@ -1593,7 +1658,7 @@ window.__ModuleLoader__.load({
       const [snapshot, setSnapshot] = react.useState(undefined)
       const [account, setAccount] = react.useState(null)
       const [failed, setFailed] = react.useState(false)
-      const { open, setOpen, rootRef, triggerProps } = useDock()
+      const { open, rootRef, triggerProps } = useDock()
       const usageTick = useUsageActivity()
       const lastReadRef = react.useRef(0)
 
@@ -3674,6 +3739,10 @@ window.__ModuleLoader__.load({
     function CtxPanel(props) {
       const t = props.t
       const [state, load] = useStatus(STATUS_PATH)
+      // data / budget 必须声明在 analyticsLimit 之前：analyticsLimit 读 budget.analyticsLimit，
+      // 而 const 在函数作用域里是 TDZ，晚于使用点声明会抛 ReferenceError 让整块面板变空。
+      const data = state.phase === 'ready' ? state.data || {} : null
+      const budget = data ? data.budget || {} : {}
       const [tab, setTab] = react.useState('overview')
       const [range, setRange] = react.useState('7d')
       const [selected, setSelected] = react.useState(null)
@@ -3698,8 +3767,6 @@ window.__ModuleLoader__.load({
       }, [activeSession])
       const live = liveState.data
       const liveForHeader = live && (!activeSession || live.sessionId === activeSession) ? live : null
-      const data = state.phase === 'ready' ? state.data || {} : null
-      const budget = data ? data.budget || {} : {}
       const control = data ? data.control || {} : {}
       const measurements = data && Array.isArray(data.measurements) ? data.measurements : []
       const latest = measurements.length > 0 ? measurements[0] : null
@@ -3720,6 +3787,35 @@ window.__ModuleLoader__.load({
         ['events', t('tabsEvents')],
         ['settings', t('tabsSettings')],
       ]
+
+      // tab 的 id、aria 关系与键盘交互都从这一份顺序推导，避免再手工维护第二份键列表。
+      const tabKeys = tabs.map(([key]) => key)
+      // 同一页面里面板可能同时挂在设置页和左侧整页：用 useId 让两个实例的 id 不互相覆盖。
+      // 宿主 react 没有 useId（旧版本或测试桩）时退回固定前缀；调用点始终无条件，符合 hooks 规则。
+      const useHostId = typeof react.useId === 'function' ? react.useId : () => 'embody'
+      const idPrefix = String(useHostId()).replace(/:/g, '')
+      const tabDomId = (key) => `${idPrefix}-tab-${key}`
+      const panelDomId = (key) => `${idPrefix}-tabpanel-${key}`
+      /**
+       * ARIA tabs 的标准键盘交互：←/→ 在 tab 之间循环，Home/End 跳到首尾。
+       * 切换仍然复用 setTab，和点击共用同一份状态；切完把焦点送到新 tab，方便连续按方向键。
+       */
+      const onTabKeyDown = (event) => {
+        const index = tabKeys.indexOf(tab)
+        if (index < 0 || !event || typeof event.key !== 'string') return
+        let next = null
+        if (event.key === 'ArrowRight') next = tabKeys[(index + 1) % tabKeys.length]
+        else if (event.key === 'ArrowLeft') next = tabKeys[(index - 1 + tabKeys.length) % tabKeys.length]
+        else if (event.key === 'Home') next = tabKeys[0]
+        else if (event.key === 'End') next = tabKeys[tabKeys.length - 1]
+        if (!next) return
+        event.preventDefault()
+        setTab(next)
+        const list = event.currentTarget
+        const buttons = list && typeof list.querySelectorAll === 'function' ? list.querySelectorAll('[role="tab"]') : []
+        const target = buttons[tabKeys.indexOf(next)]
+        if (target && typeof target.focus === 'function') target.focus()
+      }
 
       const openAction = (action) => {
         if (!action) return
@@ -3781,8 +3877,20 @@ window.__ModuleLoader__.load({
             ? h(SegmentedBar, { usedRatio: headerRatio ?? 0, categories: headerCategories, warnAt: headerWarnAt, errorAt: headerErrorAt, ticks: true })
             : null,
           hasHeaderComposition ? h(LegendGrid, { categories: headerCategories, tokensLabel: t('tokens') }) : null,
-          h('div', { style: styles.tabs, role: 'tablist' }, tabs.map(([key, label]) =>
-            h('button', { key, type: 'button', role: 'tab', 'aria-selected': tab === key ? 'true' : 'false', style: { ...styles.tab, ...(tab === key ? styles.tabActive : null) }, onClick: () => setTab(key), 'data-embodiment-tab': key }, label),
+          h('div', { style: styles.tabs, role: 'tablist', 'aria-label': t('tabsLabel'), onKeyDown: onTabKeyDown }, tabs.map(([key, label]) =>
+            h('button', {
+              key,
+              type: 'button',
+              role: 'tab',
+              id: tabDomId(key),
+              'aria-selected': tab === key ? 'true' : 'false',
+              'aria-controls': panelDomId(key),
+              // 只有当前 tab 留在 Tab 键序列里，方向键切换时把焦点送到新 tab。
+              tabIndex: tab === key ? 0 : -1,
+              style: { ...styles.tab, ...(tab === key ? styles.tabActive : null) },
+              onClick: () => setTab(key),
+              'data-embodiment-tab': key,
+            }, label),
           )),
           tab === 'overview' ? h('div', { style: styles.rangeRow },
             [['7d', t('range7')], ['30d', t('range30')], ['all', t('rangeAll')]].map(([key, label]) =>
@@ -3792,9 +3900,26 @@ window.__ModuleLoader__.load({
         ),
       ]
 
+      // 卡片级边界包装：每张卡失败只降级自己，不影响同 tab 的其它卡片。
+      const guard = (key, node) => h(CardBoundary, { key, t }, node)
+      // tab 专属内容先进 body，最后统一放进 role=tabpanel；内容区再套一层边界，
+      // 保证内容区整体失败时面板头部、告警条等仍然可用。
+      const body = []
+      const renderPanel = () =>
+        h('div', { style: styles.root, 'data-embodiment-panel': '1' }, children.concat(
+          // 每个 tab 各一个 tabpanel：非当前 tab 的 panel 只作占位（hidden、无内容），
+          // 这样每个 tab 的 aria-controls 都能解析到真实节点；只有当前 tab 的 panel 承载内容。
+          tabKeys.map((key) => h('div', {
+            key,
+            role: 'tabpanel',
+            id: panelDomId(key),
+            'aria-labelledby': tabDomId(key),
+            ...(tab === key ? { style: styles.tabPanel } : { hidden: true }),
+          }, tab === key ? h(CardBoundary, { t }, body) : null)),
+        ))
+
       if (alertsEnabled) {
-        children.push(h(AlertStrip, {
-          key: 'alerts',
+        children.push(guard('alerts', h(AlertStrip, {
           t,
           live: liveForHeader,
           control,
@@ -3802,11 +3927,11 @@ window.__ModuleLoader__.load({
             if (typeof target === 'string') setTab(target)
             else openAction(target)
           },
-        }))
+        })))
       }
 
       if (data && data.onboarding && !data.onboarding.completed && !data.onboarding.dismissed && tab === 'overview') {
-        children.push(h(OnboardingCard, { key: 'onboarding', t, data, onDone: reloadAll }))
+        children.push(guard('onboarding', h(OnboardingCard, { t, data, onDone: reloadAll })))
       }
 
       // 宿主已更新但当前页面还是旧客户端 bundle：提示刷新页面。DSH 的客户端模块
@@ -3833,62 +3958,63 @@ window.__ModuleLoader__.load({
       }
 
       if (state.phase === 'loading') {
-        children.push(h('div', { key: 'loading', style: styles.card }, h('div', { style: styles.skeletonStack },
+        body.push(h('div', { key: 'loading', style: styles.card }, h('div', { style: styles.skeletonStack },
           h('div', { style: { ...styles.skeleton, width: '38%', height: '14px' } }),
           h('div', { style: { ...styles.skeleton, width: '100%', height: '84px' } }),
           h('div', { style: { ...styles.skeleton, width: '64%' } }),
         )))
-        return h('div', { style: styles.root, 'data-embodiment-panel': '1' }, children)
+        return renderPanel()
       }
       if (state.phase === 'error') {
-        children.push(h('div', { key: 'error', style: styles.emptyState },
+        body.push(h('div', { key: 'error', style: styles.emptyState },
           h('p', { style: styles.error }, `${t('error')}: ${state.message}`),
           h('button', { type: 'button', style: styles.button, onClick: reloadAll }, t('retry')),
         ))
-        return h('div', { style: styles.root, 'data-embodiment-panel': '1' }, children)
+        return renderPanel()
       }
 
       if (tab === 'overview') {
-        children.push(h(KpiBand, { key: 'kpis', t, kpi: analytics ? analytics.kpi : {}, coverage: analytics ? analytics.coverage : null }))
-        if (analytics) children.push(h(BillingCard, { key: 'billing', t, kpi: analytics.kpi, pricing: data ? data.pricing : null }))
-        if (analytics && analytics.savings) children.push(h(SavingsCard, { key: 'savings', t, savings: analytics.savings }))
+        body.push(guard('kpis', h(KpiBand, { t, kpi: analytics ? analytics.kpi : {}, coverage: analytics ? analytics.coverage : null })))
+        if (analytics) body.push(guard('billing', h(BillingCard, { t, kpi: analytics.kpi, pricing: data ? data.pricing : null })))
+        if (analytics && analytics.savings) body.push(guard('savings', h(SavingsCard, { t, savings: analytics.savings })))
         if (insightsState.data && Array.isArray(insightsState.data.insights)) {
-          children.push(h(InsightCards, { key: 'insights', t, insights: insightsState.data.insights, onOpen: openAction }))
+          body.push(guard('insights', h(InsightCards, { t, insights: insightsState.data.insights, onOpen: openAction })))
         }
         if (analyticsState.error && !analytics) {
-          children.push(h('div', { key: 'analyticsError', style: styles.emptyState },
+          body.push(h('div', { key: 'analyticsError', style: styles.emptyState },
             h('p', { style: styles.error }, `${t('analyticsError')}: ${analyticsState.error}`),
             h('button', { type: 'button', style: styles.button, onClick: reloadAnalytics }, t('retry')),
           ))
         } else if (!analytics) {
-          children.push(h('div', { key: 'analyticsLoading', style: styles.banner }, t('analyticsLoading')))
+          body.push(h('div', { key: 'analyticsLoading', style: styles.banner }, t('analyticsLoading')))
         }
         if (analytics) {
-          children.push(h('div', { key: 'charts', style: styles.card }, h(DailyChart, { t, daily: analytics.daily })))
+          body.push(guard('charts', h('div', { style: styles.card }, h(DailyChart, { t, daily: analytics.daily }))))
         }
-        children.push(h(SessionCards, { key: 'sessions', t, sessions: analytics ? analytics.sessions : [], selected: detailSession, onSelect: (id) => { setSelected(id); setTab('trend') }, onOpen: (item) => { openSessionInSidebar(item.title || shortSessionId(item.id), item.id) } }))
+        body.push(guard('sessions', h(SessionCards, { t, sessions: analytics ? analytics.sessions : [], selected: detailSession, onSelect: (id) => { setSelected(id); setTab('trend') }, onOpen: (item) => { openSessionInSidebar(item.title || shortSessionId(item.id), item.id) } })))
         if (analytics && Array.isArray(analytics.warnings) && analytics.warnings.length > 0) {
-          children.push(h('div', { key: 'warnings', style: styles.banner, title: analytics.warnings.join(' | ') }, `${t('coverage').replace('{scanned}', analytics.coverage.scanned).replace('{total}', analytics.coverage.total)} · ${t('readFailures').replace('{count}', String(analytics.warnings.length))}`))
+          body.push(h('div', { key: 'warnings', style: styles.banner, title: analytics.warnings.join(' | ') }, `${t('coverage').replace('{scanned}', analytics.coverage.scanned).replace('{total}', analytics.coverage.total)} · ${t('readFailures').replace('{count}', String(analytics.warnings.length))}`))
         }
       } else if (tab === 'trend') {
-        children.push(h(TrendCard, { key: 'trend', t, detail, error: detailState.error, budget: (liveForHeader && liveForHeader.budget && liveForHeader.budget.tokens) || (latestForSession && latestForSession.budget && latestForSession.budget.tokens) || budget.tokens }))
-        if (analytics && Array.isArray(analytics.sessions)) children.push(h(SessionCompare, { key: 'compare', t, sessions: analytics.sessions }))
-        if (selected) children.push(h('button', { key: 'back', type: 'button', style: styles.button, onClick: () => setSelected(null) }, t('tabsOverview')))
+        body.push(guard('trend', h(TrendCard, { t, detail, error: detailState.error, budget: (liveForHeader && liveForHeader.budget && liveForHeader.budget.tokens) || (latestForSession && latestForSession.budget && latestForSession.budget.tokens) || budget.tokens })))
+        if (analytics && Array.isArray(analytics.sessions)) body.push(guard('compare', h(SessionCompare, { t, sessions: analytics.sessions })))
+        if (selected) body.push(h('button', { key: 'back', type: 'button', style: styles.button, onClick: () => setSelected(null) }, t('tabsOverview')))
       } else if (tab === 'events') {
-        children.push(h(EventsCard, { key: 'events', t, logs: control.log || [], detail }))
+        body.push(guard('events', h(EventsCard, { t, logs: control.log || [], detail })))
       } else {
-        if (data && data.health) children.push(h(HealthCard, { key: 'health', t, health: data.health, control, onDone: reloadAll }))
-        children.push(h('div', { key: 'settings', style: styles.cols },
-          h(ControlSection, { t, control, onToggled: load }),
-          h(ConfigSection, { t, budget, editable: Boolean(data.configEditable), onSaved: load }),
-          h(BalanceDisplayCard, { key: 'balance-display', t }),
-        ))
-        children.push(h(InventoryCard, { key: 'inventory', t, data: invState.data, loading: invState.data === null && invState.error === null, error: invState.data === null ? invState.error : null, reload: reloadInv, sessionId: activeSession, controlActive: Boolean(control.active) }))
-        children.push(h(PricingSection, { key: 'pricing', t, pricing: data ? data.pricing : null, editable: Boolean(data.configEditable), onSaved: load }))
-        children.push(h(DataCard, { key: 'data', t, range, coverage: analytics ? analytics.coverage : null, alertsEnabled, onAlertsChange: setAlerts, onDone: reloadAll }))
-        children.push(h(LabsCard, { key: 'labs', t }))
+        if (data && data.health) body.push(guard('health', h(HealthCard, { t, health: data.health, control, onDone: reloadAll })))
+        // 设置页三列各自兜一层：某一列抛错时另外两列照常可用。
+        body.push(guard('settings', h('div', { style: styles.cols },
+          guard('control', h(ControlSection, { t, control, onToggled: load })),
+          guard('config', h(ConfigSection, { t, budget, editable: Boolean(data.configEditable), onSaved: load })),
+          guard('balance-display', h(BalanceDisplayCard, { t })),
+        )))
+        body.push(guard('inventory', h(InventoryCard, { t, data: invState.data, loading: invState.data === null && invState.error === null, error: invState.data === null ? invState.error : null, reload: reloadInv, sessionId: activeSession, controlActive: Boolean(control.active) })))
+        body.push(guard('pricing', h(PricingSection, { t, pricing: data ? data.pricing : null, editable: Boolean(data.configEditable), onSaved: load })))
+        body.push(guard('data', h(DataCard, { t, range, coverage: analytics ? analytics.coverage : null, alertsEnabled, onAlertsChange: setAlerts, onDone: reloadAll })))
+        body.push(guard('labs', h(LabsCard, { t })))
       }
-      return h('div', { style: styles.root, 'data-embodiment-panel': '1' }, children)
+      return renderPanel()
     }
     function CtxPage(props) {
       return h(

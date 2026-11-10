@@ -11,7 +11,6 @@ function check(name, condition, detail) {
   checks.push({ name, ok: Boolean(condition), detail })
   console.log(`${condition ? 'ok  ' : 'FAIL'} - ${name}${condition || detail === undefined ? '' : ` (${typeof detail === 'string' ? detail : JSON.stringify(detail)})`}`)
 }
-const same = (a, b) => JSON.stringify(a) === JSON.stringify(b)
 const fileOf = (plan, suffix) => plan.files.find((file) => file.path.endsWith(suffix))
 
 check('模板数量为 6', SCAFFOLD_TEMPLATES.length === 6, SCAFFOLD_TEMPLATES.map((item) => item.id))

@@ -74,8 +74,14 @@
 ## 5. 兼容性声明
 
 - `engines.node`：`>=20`
-- `engines.dsh`：`>=0.2.0-rc.2 <0.3.0 || 0.2.1-rc.2 || 0.2.1-rc.3`
+- `engines.dsh`：`>=0.2.0-rc.2 <0.3.0 || 0.2.1-rc.2 || 0.2.1-rc.3`（**只表示安装范围**，不表示逐版本验证过）
 - `dsh.compatibility.dshReleases`：`0.2.0-rc.2`、`0.2.1-rc.2`、`0.2.1-rc.3`、`0.2.1-rc.5` 标为 `compatible`（均为真实安装/启动验证过的宿主版本）；`0.2.2-rc.1` 标为 `unknown`（集成测试通过，待 Desktop 端到端验收）
 - `dsh.compatibility.profiles`：`web`、`desktop`
 
-其他宿主版本未做运行验证，保持 `unknown`，不以范围声明代替真实验收。
+其他宿主版本未做运行验证，保持 `unknown`，不以范围声明代替真实验收。状态接口的 `compatibility` 字段会把这两层原样下发，面板据此显示“范围满足但未验证”，不把 `unknown` 当成阻断。
+
+## 6. 状态文件位置
+
+- 0.25.0 起：`~/.dsh/agent-embodiment/profiles/<profile>/`（`session-toggles.json`、`onboarding.json`、`compaction-log.jsonl`、`backups/`）。所属 profile 由「哪个 profile 的依赖指向本插件目录」判定；判定不出来时退回共享目录 `~/.dsh/agent-embodiment/`（旧行为）。
+- 首次进入 profile 目录时，会把共享目录里的同名状态文件**复制**过去，不覆盖已有文件、不删除旧文件。
+- 状态路由的鉴权：有 `webServer` 但没有 `connection` 服务时一律 403（失败关闭）；纯 headless（没有 `webServer`）放行以保持 headless 兼容。

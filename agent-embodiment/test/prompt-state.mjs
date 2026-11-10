@@ -69,6 +69,16 @@ class MockSessions extends Service {
     return id === 'prompt-test' ? { id } : undefined
   }
 }
+/** 真实 web profile 一定有 connection；没有它时插件会失败关闭返回 403。 */
+class MockConnection extends Service {
+  constructor(ctx) {
+    super(ctx, 'connection')
+  }
+  requestRejection() {
+    return undefined
+  }
+}
+
 class MockConfigEditor extends Service {
   constructor(ctx) {
     super(ctx, 'configEditor')
@@ -89,6 +99,7 @@ const root = new Context()
 await root.plugin(MockCommands)
 await root.plugin(MockTokenMeter)
 await root.plugin(MockWebServer)
+await root.plugin(MockConnection)
 await root.plugin(MockSessions)
 await root.plugin(MockConfigEditor)
 const editor = root.get('configEditor')
@@ -151,7 +162,6 @@ check('连续写入不丢前一次', saved['deployment:persona-suffix'] === 'ONE
 check('配置写队列串行落盘', editor.writes === 2, editor.writes)
 
 const after = await call('/api/agent-embodiment/status/inventory?sessionId=prompt-test', 'GET')
-const afterSection = after.payload?.inventory?.sections?.[0]
 check('inventory 读当前运行时覆盖', after.payload?.promptOverrides?.['tool:bash'] === 'TWO', JSON.stringify(after.payload?.promptOverrides))
 
 const reset = await call('/api/agent-embodiment/status/inventory/reset', 'POST', { layer: 'global' })

@@ -2,14 +2,24 @@
 # 在 WSL 里验证 agent-embodiment：同步源码 → 单元/集成测试 → 安装到 profile → 启动 web → 校验状态接口。
 #
 # 用法（Windows PowerShell，仓库在 C:\Users\40410\Desktop\context）：
-#   wsl.exe -d Ubuntu-24.04 -e bash /mnt/c/Users/40410/Desktop/context/scripts/wsl-verify.sh [profile]
+#   wsl.exe -d Ubuntu-24.04 -e bash /mnt/c/Users/40410/Desktop/context/scripts/wsl-verify.sh [profile] [--apply]
 #
-# 默认 profile=web。脚本只操作 ~/dsh-plugins/agent-embodiment 与指定 profile；
-# 结束后会停掉它启动的 dsh 实例。
+# 默认是 **dry-run**：只同步副本、跑语法/单元/集成测试，不安装、不改 profile、不启动实例。
+# 加 --apply 才会执行有破坏性的步骤（rm -rf 目标副本、dsh plugin remove/add、pkill 同 profile 实例、启动 web）。
+# 默认 profile=web。
 set -uo pipefail
 export PATH="$HOME/.local/bin:$PATH"
 
-PROFILE="${1:-web}"
+PROFILE="web"
+APPLY=0
+for arg in "$@"; do
+  case "$arg" in
+    --apply) APPLY=1 ;;
+    --help|-h) sed -n '2,12p' "${BASH_SOURCE[0]}"; exit 0 ;;
+    -*) : ;;
+    *) PROFILE="$arg" ;;
+  esac
+done
 SRC="$(cd "$(dirname "${BASH_SOURCE[0]}")/../agent-embodiment" && pwd)"
 DEST="$HOME/dsh-plugins/agent-embodiment"
 P="$HOME/.dsh/profiles/$PROFILE"
@@ -22,6 +32,7 @@ ok() { say "ok   - $*"; }
 fail() { say "FAIL - $*"; FAILED=1; }
 
 say "== 0. 环境"
+say "mode=$([ "$APPLY" = "1" ] && echo 'apply（会改 profile）' || echo 'dry-run（不改 profile）')"
 command -v node >/dev/null || { fail "找不到 node"; exit 1; }
 command -v dsh >/dev/null || { fail "找不到 dsh（~/.local/bin/dsh）"; exit 1; }
 say "node $(node -v) · dsh $(dsh --version 2>/dev/null || echo '?')"
@@ -37,7 +48,7 @@ rm -rf "$DEST/test/deps"
 ok "已复制 $(ls "$DEST" | wc -l) 个条目"
 
 say "== 2. 语法与单元测试"
-if (cd "$DEST" && node --check index.js && node --check control.js && node --check client.js && node --check persist.js); then
+if (cd "$DEST" && node --check index.js && node --check control.js && node --check client.js && node --check persist.js && node --check profile.js); then
   ok "node --check 通过（安装副本）"
 else
   fail "node --check 失败"
@@ -71,6 +82,19 @@ if [ -n "$ASAR" ] && (cd "$DEST" && DSH_ASAR="$ASAR" node test/prepare-deps.mjs 
   fi
 else
   fail "找不到可用的 app.asar（设置 DSH_ASAR 后重跑）"
+fi
+
+if [ "$APPLY" != "1" ]; then
+  say "== 4. 安装到 profile $PROFILE（dry-run，跳过）"
+  say "    将执行：dsh plugin --profile $PROFILE remove $PKG（若已装）+ add $DEST"
+  LINK=$(grep -o "\"$PKG\": \"[^\"]*\"" "$P/package.json" | head -1 | cut -d'"' -f4)
+  [ -n "$LINK" ] && say "    当前链接目标：$LINK（回滚：dsh plugin --profile $PROFILE add <旧路径>）"
+  say "== 5. 启动 web 并校验状态接口（dry-run，跳过）"
+  say "== 6. 清理（dry-run，无需清理）"
+  say "提示：加 --apply 才会真的安装/启动；日志只写 /tmp/embody-*.log。"
+  [ "$FAILED" -ne 0 ] && { say "RESULT=FAIL"; exit 1; }
+  say "RESULT=PASS（dry-run）"
+  exit 0
 fi
 
 say "== 4. 安装到 profile $PROFILE"

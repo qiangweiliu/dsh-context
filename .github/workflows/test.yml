@@ -4,9 +4,18 @@ on:
   push:
   pull_request:
 
+# 同一分支的新推送取消上一次运行，避免排队。
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
 jobs:
   unit:
     runs-on: ubuntu-latest
+    timeout-minutes: 10
     strategy:
       fail-fast: false
       matrix:
@@ -19,14 +28,19 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: ${{ matrix.node-version }}
-      # 单元套件不依赖 DSH 运行时；集成套件见下方 integration job。
-      - run: node --check index.js && node --check control.js && node --check client.js && node --check persist.js
+          cache: npm
+          cache-dependency-path: agent-embodiment/package-lock.json
+      # devDependencies 只有 oxlint；运行时依然零依赖。
+      - run: npm ci --ignore-scripts
+      - run: node --check index.js && node --check control.js && node --check client.js && node --check persist.js && node --check profile.js
       - run: npm test
+      - run: npm run lint
       # 提前暴露 files/exports 缺文件的问题。
       - run: npm pack --dry-run
 
   integration:
     runs-on: ubuntu-latest
+    timeout-minutes: 20
     strategy:
       fail-fast: false
       matrix:

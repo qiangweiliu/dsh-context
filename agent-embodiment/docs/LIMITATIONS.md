@@ -17,7 +17,7 @@ DSH 默认启用 HMR（`dsh-hmr` + `dsh-client-hmr`），因此：
 如果安装后仍未出现，按顺序检查：
 
 1. **profile 是否一致**：Desktop 运行的是 `desktop`，WSL `dsh web` 通常是 `web`。带 `--profile` 安装到另一个 profile 不会出现在当前实例里。
-2. **DSH 版本**：支持矩阵是 `0.2.0-rc.2` / `0.2.1-rc.2` / `0.2.1-rc.3` / `0.2.1-rc.5`（均实测过：真实安装 + 启动 + 状态接口）；`0.2.2-rc.1` 目前标记为 `unknown`（集成测试通过，Desktop 端到端验收待补），更老的版本或更早的 `0.2.1-rc.1` 不在矩阵内，旧版本也可能没有 `dsh-client-hmr`。
+2. **DSH 版本**：已逐版本验证 `0.2.0-rc.2` / `0.2.1-rc.2` / `0.2.1-rc.3` / `0.2.1-rc.5`（真实安装 + 启动 + 状态接口）；`0.2.2-rc.1` 标为 `unknown`（集成 137 项在它的 Cordis 4.1.0 下通过，但 Desktop 端到端验收未做）。**`engines.dsh` 只是安装范围**（`>=0.2.0-rc.2 <0.3.0`），范围满足 ≠ 已验收；兼容状态以上面的逐版本记录和状态接口的 `compatibility` 字段为准。更老的版本或更早的 `0.2.1-rc.1` 不在矩阵内，旧版本也可能没有 `dsh-client-hmr`。
 3. **HMR 是否被关闭**：自定义 profile patch 若把 `hmr` 行设为 `disabled: true`，运行中的进程不会重新组合。
 4. **是否在替换已安装包**：升级到新版本属于 DSH 的“package replacement”，仍需重启进程；首次安装不受此限制。
 5. **页面是否陈旧**：Web 刷新一次即可；Desktop 0.2.1-rc.2 实测无需刷新，若仍未出现再重启应用。
@@ -32,6 +32,9 @@ DSH 默认启用 HMR（`dsh-hmr` + `dsh-client-hmr`），因此：
 - 当预算低于「系统提示 + 工具定义」的基础开销时，压缩无法把用量降到目标线以下。
 - `warnAt` / `errorAt` 只影响显示颜色，不参与自动压缩。
 - 自动压缩依赖 DSH 的 compaction 服务；没有可安全压缩的历史时会跳过。
+- **预算优先级**（0.25.0 起）：会话覆盖（`/embody <tokens>`）> 控制行 `maxContextTokens`（>0 时）> 宿主 `contextWindowTokens` > 100000。控制行的值不再被宿主默认值遮蔽；`budget.source` 会显示 `control` 或 `default`。
+- **状态目录**：`~/.dsh/agent-embodiment/profiles/<profile>/`（0.25.0 起）。识别不出所属 profile 时（例如手工拷贝、路径不是 profile 依赖）退回共享目录 `~/.dsh/agent-embodiment/`，此时同机多 profile 仍会共享开关与引导状态。
+- **analytics 性能**：纯函数折叠的基线（`node scripts/bench-analytics.mjs`，固定夹具）——40 会话 × 200 事件：P50 6.6ms / P95 12.4ms / RSS 46MB；200 会话 × 400 事件：P50 18.7ms / P95 62.4ms / RSS 85MB。真实宿主还要加读日志的时间（并发 4、TTL 20s），事件数超过约 8 万时单次扫描会进入百毫秒级，面板会明显停顿。
 
 ## 3. 工具与提示词清单
 

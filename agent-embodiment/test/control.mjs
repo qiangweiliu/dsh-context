@@ -258,7 +258,7 @@ check('exports apply function', typeof controlPlugin.apply === 'function')
   await root.fiber.dispose()
 }
 
-// ── 3. 上下文来源：会话覆盖 > 宿主默认 > 本行配置 ────────────────────────────
+// ── 3. 上下文来源：会话覆盖 > 本行显式预算 > 宿主默认 ──────────────────────────
 {
   const { root, fiber, meter, compaction, agent } = await mount({ mode: 'idle', cooldownMs: 0, maxContextTokens: 200000 })
   compaction.shrinkTo = 10000
@@ -269,7 +269,12 @@ check('exports apply function', typeof controlPlugin.apply === 'function')
 
   state.setDefaultBudget(120000)
   await root.waterfall('agent/pre-step', { agent, signal: new AbortController().signal }, () => 'inner-reached')
-  check('宿主默认上下文覆盖本行配置（150k > 120k 触发）', compaction.calls.length === 1, compaction.calls.length)
+  check('本行显式预算优先于宿主默认（150k < 200k 仍不压）', compaction.calls.length === 0, compaction.calls.length)
+
+  // 宿主仍配 120k，但控制行不再声明预算（0 = 跟随）→ 才轮到宿主默认值。
+  state.setControlBudget(0)
+  await root.waterfall('agent/pre-step', { agent, signal: new AbortController().signal }, () => 'inner-reached')
+  check('控制行为 0 时宿主默认生效（150k > 120k 触发）', compaction.calls.length === 1, compaction.calls.length)
 
   compaction.calls.length = 0
   meter.tokens = 150000
@@ -280,6 +285,8 @@ check('exports apply function', typeof controlPlugin.apply === 'function')
   state.setSessionBudget('control-session', 50000)
   await root.waterfall('agent/pre-step', { agent, signal: new AbortController().signal }, () => 'inner-reached')
   check('会话级覆盖调低后触发（150k > 50k）', compaction.calls.length === 1, compaction.calls.length)
+  state.clearSessionBudget('control-session')
+  state.setDefaultBudget(undefined)
   await fiber.dispose()
   await root.fiber.dispose()
 }

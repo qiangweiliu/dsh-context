@@ -403,6 +403,24 @@ npm 运行依赖：无；生命周期脚本：无
 - 矩阵：`0.2.1-rc.5` 加入 `dshReleases` 为 `compatible`；`0.2.2-rc.1` 仍为 `unknown`（Desktop 端到端未做）。
 - 边界：本轮是“安装 + 启动 + 状态接口”级验收，**没有**在 WSL 面板里做点击/截图回归（引导三出口、真实压缩、CSV 导出仍未验）；集成测试的运行库（Cordis 4.1.0）与宿主（0.2.1-rc.5 自带 4.0.x）不同代，属交叉验证而非同宿主同库。
 
+## E33. v0.25.0 真实缺陷修复与工程化（2026-11-10，静态/集成/行为级测试）
+
+- 环境：Windows 工作区（Node 22.23.3），集成测试用 `E:\tool\dsh\resources\app.asar`（desktop-runtime `0.2.2-rc.1`，Cordis 4.1.0）解出的 `test/deps`；本轮**没有**重新做 WSL/Desktop 宿主级安装验收（见边界）。
+- **发现并修复一个 0.24.0 起的致命缺陷**：`CtxPanel` 里 `const analyticsLimit = Number(budget.analyticsLimit)…` 早于 `const budget = …` 声明，函数作用域的 TDZ 让面板每次渲染都抛 `ReferenceError: Cannot access 'budget' before initialization` —— 四个 tab 整块变空，内部卡片级边界也救不了。此前 0.24.0/0.24.1 的静态（字符串断言）与集成（只加载模块、不渲染组件）测试都发现不了；WSL 验收只校验了状态接口，也没有打开面板。修复是把 `data` / `budget` 两行提到使用点之前，并新增行为级回归测试。
+- 单元 375 项：static 101 / metrics 45 / state 26 / persist 7 / profile 11 / scaffold 146 / insights 16 / **render 23**。
+- 集成 139 项：control 55 / smoke 73 / prompt-state 11。
+- 行为级测试 `test/render.mjs`：最小 React mock（含 `Component`/`useState`/`useRef`/`useId`，`useEffect` 不执行以免真发请求）真正调用 `settings.section` 组件，断言四个 tab 都能渲染、tablist/tab/tabpanel 的 role 与 id/aria 关系、roving tabindex、←/→/Home/End 键盘切换、卡片边界的透传/降级/重试。TDZ 这类错误会在第一条断言直接暴露。
+- P1 修复与证据：
+  - 预算优先级：会话覆盖 > 控制行 `maxContextTokens`(>0) > 宿主 `contextWindowTokens` > 100000；`state 26/26`（8 条新增断言）+ `control 55/55`（控制行优先 / 为 0 时回退宿主）。
+  - 鉴权失败关闭：有 `webServer` 无 `connection` → 403；`smoke 73/73` 新增断言（独立 Context 只挂 webServer，状态路由返回 `forbidden`）。`prompt-state` 因此补 `MockConnection`（真实 web profile 一定有 connection）。
+  - 状态目录按 profile 隔离：`profile.js` 依据 profile 依赖指向识别，`test/profile.mjs` 11/11 覆盖 link / 普通依赖 / 不匹配 / 迁移不覆盖。
+  - CSV BOM：`csvDocument()`，`metrics 45/45`（BOM、换行结尾、空数组）。
+  - 价格表时效：`pricing-stale` 洞察（>30 天），`insights 16/16`（38 天触发、10 天内不触发、缺字段不误报）。
+  - 兼容口径：状态接口下发 `compatibility { engines, releases }`；文档写清“范围 ≠ 验证”。
+- 工程化：`oxlint`（`npm run lint`，配置 `.oxlintrc.json`，0 error / 0 warning，顺手清掉重复词典键与未使用变量）、lockfile + `npm ci`、CI 增加缓存/`concurrency`/lint；`wsl-verify.sh` 默认 dry-run（`--apply` 才改动）；analytics 基准 `scripts/bench-analytics.mjs` —— 40 会话 × 200 事件 P50 6.6ms / P95 12.4ms / RSS 46MB，200 × 400 P50 18.7ms / P95 62.4ms / RSS 85MB。
+- 打包：`npm pack --dry-run` 22 个文件、178.7 kB（unpacked 600.8 kB），含 `profile.js`。
+- 边界：本轮为静态/集成/行为级验证；**没有**在 WSL 或 Desktop 上重新安装 0.25.0 并点面板，0.2.2-rc.1 端到端仍未验收；`client.js` 拆模块（4054 行）本轮未做，只加了错误边界兜底。
+
 ## 已知限制（unknown）
 
 - 未进行独立安全审计；本文件不声称“安全通过”。

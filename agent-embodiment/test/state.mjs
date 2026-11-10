@@ -9,14 +9,20 @@
  * ReferenceError 并被吞掉，会话开关实际上从未落盘。
  */
 import {
+  budgetFor,
   clearAllSessionToggles,
+  clearSessionBudget,
   clearSessionToggles,
   getAutoMountControl,
+  getControlBudget,
   getSessionDisabledPrompts,
   getSessionDisabledTools,
   getSessionPromptTextMap,
   hydrateSessionToggles,
   setAutoMountControl,
+  setControlBudget,
+  setDefaultBudget,
+  setSessionBudget,
   setSessionPromptEnabled,
   setSessionPromptText,
   setSessionToolEnabled,
@@ -91,6 +97,26 @@ for (let index = 0; index < 260; index += 1) many.tools[`s-${index}`] = ['read']
 hydrateSessionToggles(many)
 const capped = snapshotSessionToggles()
 check('会话状态按 200 个会话截断', Object.keys(capped.tools).length === 200, Object.keys(capped.tools).length)
+
+// ── 6. 预算优先级：会话覆盖 > 控制行显式预算 > 宿主全局 > 兜底 ────────────
+// 回归：0.24.1 之前控制行 maxContextTokens 只是 budgetFor 的 fallback，
+// 而宿主 contextWindowTokens 恒有默认值，导致行配置永远不生效。
+setDefaultBudget(128000)
+setControlBudget(0)
+check('控制行为 0 时跟随宿主全局', budgetFor('budget-a') === 128000, budgetFor('budget-a'))
+setControlBudget(200000)
+check('控制行显式预算优先于宿主全局', budgetFor('budget-a') === 200000, budgetFor('budget-a'))
+check('getControlBudget 读到显式值', getControlBudget() === 200000, getControlBudget())
+setSessionBudget('budget-a', 64000)
+check('会话覆盖优先于控制行', budgetFor('budget-a') === 64000, budgetFor('budget-a'))
+check('其它会话仍用控制行预算', budgetFor('budget-b') === 200000, budgetFor('budget-b'))
+clearSessionBudget('budget-a')
+setControlBudget(0)
+check('清掉控制行后回到宿主全局', budgetFor('budget-a') === 128000, budgetFor('budget-a'))
+setControlBudget(-1)
+check('负数预算被视为未设置', getControlBudget() === 0, getControlBudget())
+setDefaultBudget(undefined)
+check('两半都没配置时回落 100000', budgetFor('budget-c') === 100000, budgetFor('budget-c'))
 
 // 复位全局状态，避免影响同进程内的其他测试。
 hydrateSessionToggles({ tools: {}, prompts: {}, promptText: {}, autoMountControl: true })

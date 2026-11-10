@@ -10,6 +10,9 @@ const number = (value) => (typeof value === 'number' && Number.isFinite(value) ?
 const positive = (value) => number(value) > 0
 const array = (value) => (Array.isArray(value) ? value : [])
 
+/** 价格表超过这么多天没更新就提示（口径来自 metrics.PRICING_UPDATED_AT 的手工日期）。 */
+export const PRICING_STALE_DAYS = 30
+
 const sumBy = (items, read) => items.reduce((total, item) => total + number(read(item)), 0)
 
 const median = (values) => {
@@ -44,7 +47,6 @@ const modelList = (sessions) => {
  */
 export function buildInsights(input = {}) {
   const analytics = input.analytics && typeof input.analytics === 'object' ? input.analytics : {}
-  const kpi = analytics.kpi && typeof analytics.kpi === 'object' ? analytics.kpi : {}
   const sessions = array(analytics.sessions)
   const latest = input.latest && typeof input.latest === 'object' ? input.latest : null
   const inventory = input.inventory && typeof input.inventory === 'object' ? input.inventory : null
@@ -164,11 +166,26 @@ export function buildInsights(input = {}) {
     }
   }
 
+  // 7) 价格表过期：官方调价后费用/节省估算会静默偏差，没有人会主动发现。
+  const updatedAt = typeof pricing.updatedAt === 'string' ? Date.parse(pricing.updatedAt) : Number.NaN
+  const nowMs = Number.isFinite(input.now) ? input.now : Date.now()
+  if (Number.isFinite(updatedAt)) {
+    const days = Math.floor((nowMs - updatedAt) / 86400000)
+    if (days >= PRICING_STALE_DAYS) {
+      results.push({
+        id: 'pricing-stale',
+        severity: 'info',
+        values: { days, updatedAt: pricing.updatedAt, thresholdDays: PRICING_STALE_DAYS },
+        action: { tab: 'settings', anchor: 'pricing' },
+      })
+    }
+  }
+
   // 首次运行状态由面板的 Onboarding 卡单独承担，不在这里重复成一张洞察卡。
   void onboarding
   void budget
 
-  return results.slice(0, 6)
+  return results.slice(0, 7)
 }
 
 /**

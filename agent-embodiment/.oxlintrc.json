@@ -1,0 +1,7 @@
+{
+  "$schema": "./node_modules/oxlint/configuration_schema.json",
+  "ignorePatterns": ["test/deps/**", "node_modules/**"],
+  "rules": {
+    "unicorn/no-useless-fallback-in-spread": "off"
+  }
+}

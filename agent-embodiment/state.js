@@ -23,6 +23,9 @@ const MAX_SESSION_STATES = 200
 /** 全局默认预算（token）；宿主半侧 apply 时写入。 */
 let defaultBudget
 
+/** 控制行显式预算（0 = 未设置）；控制半侧 apply 时写入。 */
+let controlBudget = 0
+
 /** 自动压缩触发比例（0–1；0.9 = 到 90% 预压缩）；宿主半侧 apply 时写入。 */
 let defaultTriggerAt = 0.9
 
@@ -56,6 +59,20 @@ export const control = {
 /** 宿主半侧写入全局默认预算。 */
 export function setDefaultBudget(tokens) {
   defaultBudget = Number.isFinite(tokens) && tokens > 0 ? Math.floor(tokens) : undefined
+}
+
+/**
+ * 控制半侧写入本行显式预算（0/非法值 = 不参与，跟随宿主全局）。
+ * 之所以要单独存一份：宿主的 `contextWindowTokens` 有默认值 128000，
+ * 如果只把行配置当 budgetFor 的 fallback，它永远轮不到生效。
+ */
+export function setControlBudget(tokens) {
+  controlBudget = Number.isFinite(tokens) && tokens > 0 ? Math.floor(tokens) : 0
+}
+
+/** 读取控制行显式预算（0 = 未设置）。 */
+export function getControlBudget() {
+  return controlBudget
 }
 
 /** 宿主半侧写入自动压缩触发比例（非法值忽略，保持默认 1）。 */
@@ -122,14 +139,16 @@ export function listSessionBudgets() {
 }
 
 /**
- * 计算某会话的实际预算：会话覆盖 > 全局默认 > fallback（控制行自己的配置）。
+ * 计算某会话的实际预算：会话覆盖 > 控制行显式预算 > 宿主全局 > fallback > 100000。
+ * 控制行的 `maxContextTokens` 必须排在宿主默认之前，否则宿主默认值（128000）会把它永久遮蔽。
  * @param {string | undefined} sessionId 会话 id
- * @param {number} fallback 兜底值（通常来自 control.js 的 Config.maxContextTokens）
+ * @param {number} [fallback] 兜底值（宿主两半都没配置时使用）
  * @returns {number} 实际预算（正整数）
  */
 export function budgetFor(sessionId, fallback) {
   const override = typeof sessionId === 'string' ? overrides.get(sessionId) : undefined
   if (typeof override === 'number') return override
+  if (controlBudget > 0) return controlBudget
   if (typeof defaultBudget === 'number') return defaultBudget
   return typeof fallback === 'number' && fallback > 0 ? fallback : 100000
 }

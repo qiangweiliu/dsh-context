@@ -171,16 +171,20 @@ README 声称不重复实现引擎；`control.js` 确实调用官方 `compactIfN
 
 ### P2-1 控制行的 `maxContextTokens` 实际被宿主默认值遮蔽
 
-**证据**：
+**状态：0.25.0 已修复** —— 控制半侧改为 `setControlBudget(config.maxContextTokens)` 写入共享状态，`budgetFor` 顺序调成「会话覆盖 > 控制行显式预算（>0） > 宿主全局 > 100000」，`control.js` 不再把它当 fallback 传；`test/state.mjs` 与 `test/control.mjs` 有对应断言。
+
+**证据：**
 
 - 宿主 `apply()` 总是 `setDefaultBudget(config.contextWindowTokens)`（`index.js:415`），默认 128000（`index.js:100`）。
 - `budgetFor()` 的顺序是“会话覆盖 > global default > fallback”（`state.js:130-135`）。
 - `control.js` 用 `budgetFor(sessionId, config.maxContextTokens || FALLBACK_BUDGET)`（`control.js:339`），所以只有宿主未设置 global 时 control 的 `maxContextTokens` 才生效。
 
-**判断**：注释已说明这是 fallback，但在同一产品里保留两套 budget 配置容易误配；用户改 control 行的 `maxContextTokens` 通常不会看到效果。  
+**判断**：注释已说明这是 fallback，但在同一产品里保留两套 budget 配置容易误配；用户改 control 行的 `maxContextTokens` 不会看到效果。  
 **建议**：删除 control 的预算配置，或让 UI 明确只暴露宿主 `contextWindowTokens`；保留 fallback 时在文档中写清楚优先级。
 
 ### P2-2 全局工具禁用被实现了两次
+
+**状态：0.25.0 未统一（有意保留）** —— 历史 bug（重置后 control 读旧值）已由 `setGlobalDisabledTools` 修复，两个 restrict 现在收敛到同一份状态；真正合并成单层要改两个平面的职责边界，风险大于收益。若要统一，先补“叠加语义”的行为测试再动。
 
 **证据**：
 
@@ -191,6 +195,8 @@ README 声称不重复实现引擎；`control.js` 确实调用官方 `compactIfN
 **建议**：只保留一层职责：要么宿主负责全局、control 只加会话项；要么 control 全权负责，宿主不再 restrict。并在测试中固定叠加语义。
 
 ### P2-3 会话开关和压缩日志是跨 profile 共享的
+
+**状态：0.25.0 已修复** —— 状态目录改为 `profiles/<profile>/`（`profile.js` 按 profile 依赖指向识别），首次进入时从共享目录复制缺失文件；识别不出 profile 时保持旧行为。`test/profile.mjs` 覆盖识别与迁移。
 
 **证据**：状态目录固定为 `~/.dsh/agent-embodiment`（`index.js:430`），`session-toggles.json` / `compaction-log.jsonl` 不按 profile 分目录。  
 **影响**：同一台机器上 `desktop`、`web`、测试 profile 会共享会话级开关和压缩历史；事件页可能显示另一个 profile 的压缩记录。  

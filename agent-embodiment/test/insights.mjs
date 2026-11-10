@@ -47,7 +47,24 @@ check('重复压缩生成洞察', ids.includes('repeated-compaction') && base.fi
 check('压缩失败优先生成洞察', ids.includes('compaction-failures') && base.find((item) => item.id === 'compaction-failures').severity === 'warn', base.find((item) => item.id === 'compaction-failures'))
 check('未知价格生成洞察', ids.includes('unknown-pricing') && base.find((item) => item.id === 'unknown-pricing').values.sessions === 1, base.find((item) => item.id === 'unknown-pricing'))
 check('费用异常会话生成洞察', ids.includes('cost-outlier') && base.find((item) => item.id === 'cost-outlier').values.sessionId === 'a', base.find((item) => item.id === 'cost-outlier'))
-check('洞察最多 6 条且 id 不重复', base.length <= 6 && new Set(ids).size === ids.length, ids)
+check('洞察最多 7 条且 id 不重复', base.length <= 7 && new Set(ids).size === ids.length, ids)
+
+// 价格表时效：超过 30 天提示，未超时/字段缺失都不提示。
+const stale = buildInsights({
+  analytics: { sessions: [] },
+  pricing: { updatedAt: '2026-10-24' },
+  now: Date.parse('2026-12-01T00:00:00Z'),
+})
+check('价格表超过 30 天生成 pricing-stale', stale.some((item) => item.id === 'pricing-stale'), stale)
+check('pricing-stale 带天数与阈值', stale.find((item) => item.id === 'pricing-stale')?.values?.days === 38 && stale.find((item) => item.id === 'pricing-stale')?.values?.thresholdDays === 30, stale.find((item) => item.id === 'pricing-stale')?.values)
+const freshPricing = buildInsights({
+  analytics: { sessions: [] },
+  pricing: { updatedAt: '2026-10-24' },
+  now: Date.parse('2026-11-01T00:00:00Z'),
+})
+check('价格表未过期不提示', !freshPricing.some((item) => item.id === 'pricing-stale'), freshPricing)
+const noDatePricing = buildInsights({ analytics: { sessions: [] }, pricing: { custom: true }, now: Date.parse('2027-01-01T00:00:00Z') })
+check('没有 updatedAt 时不误报', !noDatePricing.some((item) => item.id === 'pricing-stale'), noDatePricing)
 
 const quiet = buildInsights({
   analytics: { sessions: [] },

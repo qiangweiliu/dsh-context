@@ -156,6 +156,17 @@ export function csvCell(value) {
   return /[",\n\r]/u.test(text) ? `"${text.replace(/"/g, '""')}"` : text
 }
 
+/**
+ * 拼出一份可被 Excel/WPS 正确识别的 CSV：UTF-8 BOM + 行内容。
+ * 没有 BOM 时 Excel 在中文 Windows 上会按 ANSI 打开，标题/cwd 里的中文直接乱码。
+ *
+ * @param {string[]} lines 已转义好的行
+ * @returns {string} 带 BOM、以换行结尾的 CSV 文本
+ */
+export function csvDocument(lines) {
+  return `\uFEFF${Array.isArray(lines) ? lines.join('\n') : String(lines)}\n`
+}
+
 const tokenTitle = (event) => {
   if (event?.type !== 'session/title') return null
   const title = event?.data?.title

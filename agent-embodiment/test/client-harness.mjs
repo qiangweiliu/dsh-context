@@ -1,5 +1,5 @@
 /** Load client.js in the same mock browser shell used by static/smoke tests. */
-export function loadClient(clientSource, { trackEffects = false, onConfigForms, scope } = {}) {
+export function loadClient(clientSource, { trackEffects = false, onConfigForms, scope, react: reactOverrides } = {}) {
   let registration
   const dictionaries = {}
   const effects = []
@@ -12,6 +12,7 @@ export function loadClient(clientSource, { trackEffects = false, onConfigForms, 
     useEffect: () => {},
     useCallback: (fn) => fn,
     useMemo: (fn) => fn(),
+    ...(reactOverrides ?? {}),
   }
   const require = (specifier) => {
     if (specifier === 'react') return react

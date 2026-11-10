@@ -1,87 +1,94 @@
-# 交接说明 · agent-embodiment 0.24.1（2026-11-10 22:45 更新）
+# 交接说明 · agent-embodiment 0.25.0（2026-11-10）
 
 给接手的人：这份文件只记录**当前状态、已完成、待办和命令**；设计细节见 `agent-embodiment/docs/`。
 
 ## 0. 一句话状态
 
-代码与 **WSL 端到端验收都已完成**；剩下三项都需要人工或凭据：**Desktop 端到端验收、推送、npm 发布**。WSL 已不再是阻塞项。
+0.25.0 的「真实缺陷修复 + 工程化」已完成并全部测试通过（单元 375 + 集成 139，lint 0 warning）；**未推送、未发布 npm、Desktop 0.2.2-rc.1 端到端仍未验收**。本轮最重要的一条：0.24.x 的面板有一个 TDZ 崩溃（四个 tab 全空），已修并补了行为级回归测试。
 
 | 项 | 值 |
 | --- | --- |
-| 分支 / HEAD | `main` / `724ae7d`（已推送；本文件后续若有提交会再更新） |
-| 远端 | `origin/main` 已与本地同步（2026-11-10 22:27 推送 `a958590..724ae7d`）；CI run #20 五个 job 全绿：unit 20/22/24 + integration（Cordis 4.0.5+cosmokit 1.8.6、4.1.0+1.9.0） |
-| 插件版本 | `agent-embodiment@0.24.1` |
+| 分支 / HEAD | `main` / 本轮提交（`git log -3 --oneline`） |
+| 远端 | `origin/main = 9e09966`（0.24.1 那轮已推送）；本轮提交待推送 |
+| 插件版本 | `agent-embodiment@0.25.0`（package/client/README/IMPLEMENTATION 已同步） |
 | 兼容矩阵 | `0.2.0-rc.2` / `0.2.1-rc.2` / `0.2.1-rc.3` / `0.2.1-rc.5` = compatible；`0.2.2-rc.1` = **unknown** |
-| 本机 DSH | Desktop 运行时 0.2.2-rc.1（`E:\tool\dsh\resources\app.asar`，Cordis 4.1.0）；WSL `dsh 0.2.1-rc.5` |
-| npm | **未发布**（registry 404，`npm whoami` = ENEEDAUTH） |
-| WSL web profile | 已 `link:/home/wu/dsh-plugins/agent-embodiment`（0.24.1），原链是 `~/dsh-context`（0.23.0） |
+| 本机 DSH | Desktop 0.2.2-rc.1（`E:\tool\dsh\resources\app.asar`，Cordis 4.1.0）；WSL `dsh 0.2.1-rc.5` |
+| npm | **未发布**（本会话浏览器登录未完成，`npm whoami` 仍 ENEEDAUTH） |
+| 状态目录 | 0.25.0 起按 profile 分层：`~/.dsh/agent-embodiment/profiles/<profile>/` |
 
-## 1. 2026-11-10 第二轮（交接之后）做了什么
+## 1. 本轮（0.25.0）做了什么
 
-| 文件 | 改动 |
-| --- | --- |
-| `scripts/wsl-verify.sh` | 修 3 处首跑暴露的缺陷：`set -u` 下 `$LOCALAPPDATA` 未绑定导致中途退出（改 `DSH_ASAR` 优先 + `/mnt/c/Users/*/...` 通配）；单元套件改在仓库检出目录跑（独立副本缺 `../../README.md`）；安装后打印实际链接目标与回滚命令 |
-| `agent-embodiment/package.json` | `dshReleases` 增加 `0.2.1-rc.5: compatible` |
-| `agent-embodiment/PERMISSIONS.md` / `docs/LIMITATIONS.md` / `docs/RELEASE-PLAN.md` | 兼容矩阵同步 `0.2.1-rc.5`；`0.2.2-rc.1` 保持 `unknown` 并写明原因（Desktop 端到端未做） |
-| `agent-embodiment/docs/EVIDENCE.md` | 新增 **E32**：WSL 真实安装 + 启动 + 状态接口验收、脚本缺陷修复记录、边界声明 |
-| `agent-embodiment/CHANGELOG.md` | 0.24.1 的 Changed 补矩阵与脚本修复两条 |
-| `CLAUDE.md` | 易错点补充「单元套件依赖仓库布局，不能只在安装副本里跑」 |
+### 1.1 真实缺陷（P1）
+
+| 问题 | 修复 | 证据 |
+| --- | --- | --- |
+| **面板整块崩溃**：`CtxPanel` 里 `analyticsLimit` 读 `budget` 早于 `const budget` 声明（TDZ），每次渲染抛 `ReferenceError`，四个 tab 全空 | 把 `data` / `budget` 提到使用点之前；新增 `test/render.mjs` 真跑组件 | `render 23/23` |
+| 控制行 `maxContextTokens` 永不生效（宿主默认值遮蔽） | `state.setControlBudget` + 新优先级：会话覆盖 > 控制行(>0) > 宿主 > 100000 | `state 26/26`、`control 55/55` |
+| 有 `webServer` 无 `connection` 时 23 条路由裸奔 | 该形态一律 403；纯 headless 仍放行 | `smoke 73/73` |
+| 状态目录跨 profile 共享 | `profile.js` 识别 profile 并分层，旧文件自动复制迁移 | `profile 11/11` |
+| CSV 无 BOM，Excel 中文乱码 | `metrics.csvDocument()` 加 `\uFEFF` | `metrics 45/45` |
+| 价格表过期无提示 | `insights` 新增 `pricing-stale`（>30 天） | `insights 16/16` |
+| 兼容声明自相矛盾（宽范围 vs unknown） | 状态接口下发 `compatibility`，文档写清“范围 ≠ 验证” | 文档 + smoke |
+
+### 1.2 工程化（P2）
+
+- `client.js`：卡片级 `ErrorBoundary`（降级卡 + 重试，正常路径不加 DOM）+ tab 可访问性（`role=tablist/tab/tabpanel`、`aria-*`、roving tabindex、←/→/Home/End）。
+- `oxlint`（`.oxlintrc.json` + `npm run lint`，CI 跑，0 error / 0 warning）；`package-lock.json` + `npm ci`；CI 加 npm 缓存、`concurrency`、lint、`timeout-minutes`。
+- `scripts/bench-analytics.mjs`：40×200 P50 6.6ms / P95 12.4ms；200×400 P50 18.7ms / P95 62.4ms（已写入 LIMITATIONS）。
+- `scripts/wsl-verify.sh` 默认 **dry-run**，`--apply` 才安装/启动。
+- 文档漂移修正：IMPLEMENTATION 的测试清单与计数、CORE-FUNCTION-AUDIT 的 P2-1/P2-3 状态。
 
 ## 2. 已验证
 
-- 单元 323 项全绿（static 98 / metrics 42 / state 18 / persist 7 / scaffold 146 / insights 12）：Windows 工作区与 WSL 源码目录各跑一遍。
-- 集成 137 项全绿（control 54 / smoke 72 / prompt-state 11）：Windows 上按 CI 的 `test/deps/dsh/node_modules` 布局，用 npm 公开包复现 **Cordis 4.0.5+cosmokit 1.8.6** 与 **4.1.0+1.9.0** 两条线；WSL 内用 `E:\tool\dsh\resources\app.asar` 解出的 Cordis 4.1.0 再跑一遍。
-- **WSL 端到端**：`scripts/wsl-verify.sh web` → `RESULT=PASS`；`GET /api/agent-embodiment/status` 返回 `version:"0.24.1"`、`control.active=true`，随后停掉实例无残留。
-- 语法：`node --check index.js control.js client.js persist.js` 通过。
-- 打包：`npm pack --dry-run` 21 个文件、167.2 kB（unpacked 573.4 kB）、退出码 0。
-- 未验证：Desktop 端到端（面板 4 tab、引导三出口、真实压缩、CSV 导出）；WSL 面板点击/截图。
+- 单元 375 项：static 101 / metrics 45 / state 26 / persist 7 / profile 11 / scaffold 146 / insights 16 / render 23。
+- 集成 139 项：control 55 / smoke 73 / prompt-state 11（Cordis 4.1.0，来自本机 asar）。
+- `npm run lint`：0 error / 0 warning。
+- `npm pack --dry-run`：22 个文件、178.7 kB（unpacked 600.8 kB）。
+- 未验证：Desktop/WSL 上安装 0.25.0 后的面板点击（本轮只有行为级 mock 渲染）、0.2.2-rc.1 端到端。
 
 ## 3. 待办（按顺序）
 
-### 3.1 Desktop 端到端验收（人工，先同步副本）
-
-当前 Desktop profile 是 `agent-embodiment: link:C:/Users/40410/dsh-plugins/agent-embodiment`，**那份副本仍是 0.23.0**，所以现在点 UI 验收不到 0.24.x。先同步：
+### 3.1 推送本轮提交
 
 ```powershell
-# 先备份，再覆盖（源=工作区 agent-embodiment/）
-$dst = "C:\Users\40410\dsh-plugins\agent-embodiment"
-Copy-Item $dst "$dst.bak-$(Get-Date -f yyyyMMdd-HHmmss)" -Recurse
-robocopy "C:\Users\40410\Desktop\context\agent-embodiment" $dst /MIR /XD test/deps /NFL /NDL /NJH /NJS
+cd C:\Users\40410\Desktop\context
+git push origin main
 ```
 
-同步后 HMR 生效，按 [RELEASE-PLAN §10](agent-embodiment/docs/RELEASE-PLAN.md) 第 1–4 项点一遍：4 个 tab / `Context` 命名 / Settings → Labs、引导三种出口（确认预算 / 跳过 / 授予挂载）与 `onboarding.json` + `control.active` 一致、一次真实压缩（事件页 / 节省卡 / 洞察卡读同一份日志）、`GET status/export?format=csv` 列与 `metrics.js` 口径一致。
+推后看 CI（`.github/workflows/test.yml`）：unit 20/22/24 + lint + integration 两档，应全绿。
 
-通过后：`0.2.2-rc.1` 从 `unknown` 改 `compatible`，同步 PERMISSIONS/LIMITATIONS/RELEASE-PLAN，补 E33（截图放 `docs/ui/`）。
+### 3.2 Desktop 端到端（0.2.2-rc.1，仍为 unknown）
 
-### 3.2 推送（已完成）
+当前 Desktop profile 是 `agent-embodiment: link:C:/Users/40410/dsh-plugins/agent-embodiment`，那份副本还是 **0.23.0**。要验 0.25.0：
 
-已推送 `a958590..724ae7d`（2026-11-10 22:27），`git ls-remote origin main` 等于本地 HEAD。CI [run #20](https://github.com/qiangweiliu/dsh-context/actions/runs/42834151550) 五个 job 全绿，新增的 `integration` job 首次通过（Cordis 4.0.5/4.1.0 两档）。
+```powershell
+$dst = "C:\Users\40410\dsh-plugins\agent-embodiment"
+Copy-Item $dst "$dst.bak-$(Get-Date -f yyyyMMdd-HHmmss)" -Recurse
+robocopy "C:\Users\40410\Desktop\context\agent-embodiment" $dst /MIR /XD test/deps node_modules /NFL /NDL /NJH /NJS
+```
 
-之前沙盒里 `git ls-remote` 报 `schannel SEC_E_NO_CREDENTIALS` 是因为受限沙盒拿不到 Windows 凭据；放开文件策略后同一个 credential helper（`manager`）可直接鉴权，无需手工输入。
+同步后 HMR 生效，按 [RELEASE-PLAN §10](agent-embodiment/docs/RELEASE-PLAN.md#L290) 第 1–4 项点一遍（4 tab / 引导三出口 / 一次真实压缩 / CSV 导出）。**本轮 TDZ 崩溃说明“面板能出现”必须亲眼确认**。通过后 `0.2.2-rc.1` 改 `compatible` 并补 E34。
 
 ### 3.3 npm 发布
 
-- `npm publish` 需要登录 + 2FA（沙盒 `npm whoami` 为 ENEEDAUTH）。发布前确认包名 `agent-embodiment` 仍可用（当前 registry 404）。
-- 发布后 README 的「从 npm 安装」才成立；打 tag `v0.24.1`。
-- 市场条目无需新 PR（npm 映射自动采集），仅当描述要改时动 `submission/qiangweiliu__dsh-context--agent-embodiment.yml`。
+仍未发布（本会话浏览器登录未完成）。需要登录 + 2FA 后 `npm publish --access public`，再打 tag `v0.25.0`。
 
-### 3.4 WSL 面板点击/截图（补 E32 边界）
+### 3.4 0.26.0 候选
 
-接口层已验，UI 层未验。可用 `scripts/wsl-start-web.sh 3080` 起实例，再 `scripts/ui-probe.mjs` / `ui-screenshot.mjs` 走 CDP。
+- `client.js` 拆模块（4054 行；本轮只加了错误边界兜底与行为测试）。
+- `engines.dsh` 收窄为显式枚举（需先完成 Desktop 验收）。
+- 全局工具禁用两层实现统一（CORE-FUNCTION-AUDIT P2-2）。
+- analytics 真实宿主性能采样（当前只有纯函数基线）。
 
 ## 4. 回滚
 
-- 代码：`git revert a0ab1b0`（0.24.1）或 `git reset --hard 01af6e0`；本次文档/脚本提交可单独 revert。
-- 插件（WSL web）：`dsh plugin --profile web add /home/wu/dsh-context/agent-embodiment`（恢复 0.23.0 链接）；profile 清单备份在 `~/.dsh/profiles/web/package.json.bak-embody-20261110-222305`。
-- 插件（Desktop）：把 `C:\Users\40410\dsh-plugins\agent-embodiment` 换回 0.23.0 副本，或 `dsh plugin --profile desktop add <旧路径>`。
+- 代码：`git revert <本轮提交>`；或 `git reset --hard 9e09966` 回到 0.24.1。
+- 状态目录：0.25.0 若误判 profile，会把状态写到 `profiles/<name>/`；旧共享目录数据未被删除，删掉新目录即可回到旧行为。
+- 插件（WSL web）：`dsh plugin --profile web add /home/wu/dsh-context/agent-embodiment`（0.23.0）或 `~/dsh-plugins/agent-embodiment`（0.24.1）。
 - profile 残留：`node scripts/clean-agent-embodiment-profile-patch.mjs ~/.dsh/profiles/<profile>`。
-- 状态文件损坏：0.24.1 起自动回落 `~/.dsh/agent-embodiment/backups/` 最新备份。
 
-## 5. 明确未做（0.25.0 范围）
+## 5. 明确未做
 
-- `client.js`（4000+ 行）拆模块与卡片级 ErrorBoundary。
-- 更新提示胶囊（npm registry / 市场数据）。
-- analytics 性能基线（40 会话整日志折叠的 P50/P95 与内存）。
-- 可访问性（tab 语义、键盘导航）。
-- 已知设计债：control 行 `maxContextTokens` 被宿主默认值遮蔽、全局工具禁用两层实现、状态目录跨 profile 共享（见 CORE-FUNCTION-AUDIT）。
-- `engines.dsh` 仍是宽区间，会自动放行未测的 0.2.x 预发布；Desktop（0.2.2-rc.1）验收后再收窄为显式枚举。
+- `client.js` 模块拆分、更新提示胶囊、全量可访问性复核（只做了 tab 语义与键盘）。
+- Desktop 0.2.2-rc.1 端到端、WSL 面板截图。
+- npm 发布与 tag。

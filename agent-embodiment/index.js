@@ -19,6 +19,9 @@ export const name = 'agent-embodiment'
 import { appendFileSync, copyFileSync, existsSync, mkdirSync, readFileSync, statSync, writeFileSync } from 'node:fs'
 import { homedir } from 'node:os'
 import { dirname, isAbsolute, join, resolve, sep } from 'node:path'
+import { fileURLToPath } from 'node:url'
+
+import { detectProfileName, migrateStateFiles, stateDirFor } from './profile.js'
 
 import {
   budgetFor,
@@ -46,6 +49,7 @@ import {
   snapshotSessionToggles,
   control as controlState,
   getSessionBudget,
+  getControlBudget,
   listSessionBudgets,
   setDefaultBudget,
   setDefaultTriggerAt,
@@ -55,7 +59,7 @@ import {
   clearSessionBudget,
 } from './state.js'
 
-import { DEFAULT_MODEL_PRICING, PRICING_CURRENCY, PRICING_META, PRICING_SOURCE, PRICING_UPDATED_AT, csvCell, estimateInputCost, foldSession, isPeakTime, sessionDetail, summarizeFolds } from './metrics.js'
+import { DEFAULT_MODEL_PRICING, PRICING_CURRENCY, PRICING_META, PRICING_SOURCE, PRICING_UPDATED_AT, csvCell, csvDocument, estimateInputCost, foldSession, isPeakTime, sessionDetail, summarizeFolds } from './metrics.js'
 import { atomicWriteFile, backupFile as backupStateFile, latestBackupJson as latestStateBackup } from './persist.js'
 import { buildHealth, buildInsights } from './insights.js'
 import { SCAFFOLD_TEMPLATES, mergeAgentsContent, planScaffold } from './scaffold.js'
@@ -64,7 +68,14 @@ import { SCAFFOLD_TEMPLATES, mergeAgentsContent, planScaffold } from './scaffold
 export const inject = ['commands', 'tokenMeter']
 
 /** 与 package.json 的 version 保持一致（只用于状态接口的自述）。 */
-const PLUGIN_VERSION = JSON.parse(readFileSync(new URL('./package.json', import.meta.url), 'utf8')).version
+const MANIFEST = JSON.parse(readFileSync(new URL('./package.json', import.meta.url), 'utf8'))
+const PLUGIN_VERSION = MANIFEST.version
+
+/** 兼容声明原样下发给面板：范围（engines）与逐版本验证状态（dshReleases）是两件事。 */
+const COMPATIBILITY = {
+  engines: MANIFEST.dsh?.compatibility?.dsh ?? MANIFEST.engines?.dsh ?? null,
+  releases: MANIFEST.dsh?.compatibility?.dshReleases ?? {},
+}
 
 /** 浏览器半侧 client.js 拉的只读状态接口；两处路径必须一致。 */
 const sendJson = (response, code, payload) => {
@@ -429,17 +440,23 @@ export function apply(ctx, config) {
     ? [...config.modelPricing, ...DEFAULT_MODEL_PRICING]
     : DEFAULT_MODEL_PRICING
 
-  // 状态目录：0.21.0 从 ctx-mon-and-con 改名；首次启动把旧目录的两个状态文件复制过来。
-  const STATE_DIR = join(homedir(), '.dsh', 'agent-embodiment')
+  // 状态目录：0.21.0 从 ctx-mon-and-con 改名；首次启动把旧目录的状态文件复制过来。
+  // 0.25.0 起按 profile 再分一层（识别依据：哪个 profile 的依赖真的指向本插件目录），
+  // 识别不出来时沿用旧的共享目录，行为与以前一致。
+  const BASE_STATE_DIR = join(homedir(), '.dsh', 'agent-embodiment')
   const LEGACY_STATE_DIR = join(homedir(), '.dsh', 'ctx-mon-and-con')
+  const PROFILE_NAME = detectProfileName(join(homedir(), '.dsh', 'profiles'), dirname(fileURLToPath(import.meta.url)))
+  const STATE_DIR = stateDirFor(BASE_STATE_DIR, PROFILE_NAME)
   try {
     mkdirSync(STATE_DIR, { recursive: true })
-    for (const file of ['session-toggles.json', 'compaction-log.jsonl']) {
+    for (const file of ['session-toggles.json', 'compaction-log.jsonl', 'onboarding.json']) {
       const source = join(LEGACY_STATE_DIR, file)
       const destination = join(STATE_DIR, file)
       if (!existsSync(destination) && existsSync(source)) copyFileSync(source, destination)
     }
   } catch {}
+  // 共享目录 -> profile 目录的迁移（只补缺失文件，不覆盖已有数据）。
+  migrateStateFiles(BASE_STATE_DIR, STATE_DIR)
 
   // 所有写操作前自动备份（profile patch 与状态文件），保留最近 30 份。
   // 状态文件用「临时文件 + rename」落盘：崩溃/断电最多丢最后一次写入，不会留下半截 JSON。
@@ -454,7 +471,7 @@ export function apply(ctx, config) {
   }
   const latestBackupJson = (label) => latestStateBackup(BACKUP_DIR, label)
 
-  // 会话级开关持久化：~/.dsh/agent-embodiment/session-toggles.json（按 sessionId 区分，跨 profile 共享）。
+  // 会话级开关持久化：<状态目录>/session-toggles.json（0.25.0 起按 profile 隔离）。
   const SESSION_TOGGLES_PATH = join(STATE_DIR, 'session-toggles.json')
   const saveSessionToggles = () => {
     try {
@@ -776,12 +793,6 @@ export function apply(ctx, config) {
     if (typeof sub.effect === 'function') sub.effect(() => () => { sessions = null }, 'agent-embodiment: sessions presence')
   })
 
-  let workspaceRegistry = null
-  ctx.inject(['workspaceRegistry'], (sub) => {
-    workspaceRegistry = sub?.workspaceRegistry ?? null
-    if (typeof sub.effect === 'function') sub.effect(() => () => { workspaceRegistry = null }, 'agent-embodiment: workspace registry presence')
-  })
-
   // 浏览器/API 认证：DSH 把认证放在 connection 的 /api 前缀路由里，本插件注册的是
   // 精确路由，必须自己调用官方 admission，否则会绕过 Host/Origin 与 cookie 校验。
   let connection = null
@@ -790,15 +801,22 @@ export function apply(ctx, config) {
     if (typeof sub.effect === 'function') sub.effect(() => () => { connection = null }, 'agent-embodiment: connection presence')
   })
 
+  /** 是否挂了 webServer（浏览器形态）。在注册路由时置位，用于鉴权失败关闭。 */
+  let webServerPresent = false
+
   /**
-   * 用 DSH 的 requestRejection 决定是否放行。没有 connection（headless 等）时不拦截；
-   * 检查本身抛错时按 403 失败关闭。
+   * 用 DSH 的 requestRejection 决定是否放行。
+   * 没有 connection 时：
+   *   - 纯 headless（没有 webServer）→ 放行，保持 headless 兼容；
+   *   - 有 webServer 但没有 connection → 403 失败关闭，避免自定义组合下状态路由裸奔。
+   * 检查本身抛错时同样按 403 失败关闭。
    */
   const requestRejection = (request) => {
+    if (!connection) return webServerPresent ? 403 : undefined
     try {
-      return connection && typeof connection.requestRejection === 'function'
+      return typeof connection.requestRejection === 'function'
         ? connection.requestRejection(request)
-        : undefined
+        : 403
     } catch {
       return 403
     }
@@ -1084,7 +1102,7 @@ export function apply(ctx, config) {
   }
 
   const mapLimit = async (items, limit, worker) => {
-    const output = new Array(items.length)
+    const output = Array.from({ length: items.length })
     let cursor = 0
     const runners = Array.from({ length: Math.min(limit, items.length) }, async () => {
       for (;;) {
@@ -1226,6 +1244,8 @@ export function apply(ctx, config) {
     const body = JSON.stringify({
       plugin: 'agent-embodiment',
       version: PLUGIN_VERSION,
+      profile: PROFILE_NAME ?? null,
+      compatibility: COMPATIBILITY,
       budget: {
         tokens: config.contextWindowTokens,
         warnAt: config.warnAt,
@@ -1235,7 +1255,9 @@ export function apply(ctx, config) {
         keepTokens: config.keepTokens,
         compressionStrategy: config.compressionStrategy,
         analyticsLimit: config.analyticsLimit,
-        source: 'default',
+        // 生效来源：控制行 >0 时它优先于宿主默认值（见 state.budgetFor）。
+        source: getControlBudget() > 0 ? 'control' : 'default',
+        controlTokens: getControlBudget(),
       },
       sessionBudgets: listSessionBudgets(),
       control,
@@ -1490,7 +1512,10 @@ export function apply(ctx, config) {
           inventory,
           toolUsage: analytics.toolUsage,
           logs: listCompactionLog(),
-          pricing: { custom: Array.isArray(config.modelPricing) && config.modelPricing.length > 0 },
+          pricing: {
+            custom: Array.isArray(config.modelPricing) && config.modelPricing.length > 0,
+            updatedAt: PRICING_UPDATED_AT,
+          },
           onboarding,
           budget: { tokens: config.contextWindowTokens },
         }),
@@ -1537,7 +1562,7 @@ export function apply(ctx, config) {
         response.setHeader('content-type', 'text/csv; charset=utf-8')
         response.setHeader('content-disposition', `attachment; filename="agent-embodiment-${payload.range}.csv"`)
         response.setHeader('cache-control', 'no-store')
-        response.end(lines.join('\n') + '\n')
+        response.end(csvDocument(lines))
         return
       }
       response.statusCode = 200
@@ -1921,6 +1946,9 @@ export function apply(ctx, config) {
   ctx.inject(['webServer'], (sub) => {
     const server = sub?.webServer
     if (!server || typeof server.register !== 'function') return
+    // 有 webServer 就说明这是浏览器形态：此时若没有 connection 服务，
+    // 请求无法做 Host/Origin/cookie 校验，状态路由必须失败关闭（见 requestRejection）。
+    webServerPresent = true
     const register = () => {
       const offs = [
         server.register({ kind: 'exact', path: STATUS_PATH, handler: authed(statusHandler) }),
@@ -1950,6 +1978,7 @@ export function apply(ctx, config) {
     }
     if (typeof sub.effect === 'function') sub.effect(register, 'agent-embodiment: routes')
     else register()
+    if (typeof sub.effect === 'function') sub.effect(() => () => { webServerPresent = false }, 'agent-embodiment: webServer presence')
   })
 
   // 注意：本文件是宿主半侧，只读测量、不改会话历史。真正的「控制」在

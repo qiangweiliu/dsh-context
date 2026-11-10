@@ -2,6 +2,26 @@
 
 格式参考 Keep a Changelog；版本遵循 SemVer。DSH 兼容版本写在每个条目的 Compatibility 下。
 
+## [0.24.1] - 2026-11-10
+
+### Fixed
+
+- 状态文件改为原子写（临时文件 + rename）：`session-toggles.json`、`onboarding.json`、压缩日志截断/清空不再可能留下半截 JSON；读取失败时自动回落到最近一份备份（备份文件名在同一毫秒内去重，轮转仍保留 30 份）。
+- 跨会话统计的读取超时改为 `AbortSignal` 取消：`observeSession` / `listSessions` 超时会一并中止底层读取，不再只丢弃结果而让会话观察继续运行。
+- CSV 导出增加公式注入防护：以 `=`、`+`、`-`、`@`、TAB、CR 开头的文本单元格会加前导 `'`，真实数字保持数值形态；RFC 4180 引号规则不变。
+
+### Added
+
+- `persist.js`：原子写、写前备份、备份读取的独立模块（可单独测试），`test/persist.mjs` 覆盖原子覆盖、备份轮转与损坏回落。
+- `scripts/bump-version.mjs`：一次同步 package/client/README/IMPLEMENTATION 的版本号；static 测试新增三处版本一致性断言。
+- `screenshots.json`：向插件市场声明详情页截图（仓库内相对路径）。
+- `scripts/wsl-verify.sh`：在 WSL 里同步源码、跑单元/集成测试并安装到指定 profile 的一键验证脚本。
+
+### Changed
+
+- `PERMISSIONS.md` 与实现对齐：补充 `sessionQuery.observeSession` 读取的派生字段（标题/cwd/模型/工具/用量）、数据导出字段与公式注入处理；修正 `process.env` 的表述；兼容矩阵补上 `0.2.1-rc.3`。
+- 插件 README 增加安装 / 升级 / 回滚章节（npm 发布前使用源码路径安装）。
+
 ## [0.24.0] - 2026-10-25
 
 ### Added

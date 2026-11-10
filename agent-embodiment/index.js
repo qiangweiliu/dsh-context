@@ -16,7 +16,7 @@
 export const name = 'agent-embodiment'
 
 /** 与 control.js 共享的进程内状态（同一包内相对 import，不涉及 npm 依赖）。 */
-import { appendFileSync, copyFileSync, existsSync, mkdirSync, readFileSync, readdirSync, statSync, unlinkSync, writeFileSync } from 'node:fs'
+import { appendFileSync, copyFileSync, existsSync, mkdirSync, readFileSync, statSync, writeFileSync } from 'node:fs'
 import { homedir } from 'node:os'
 import { dirname, isAbsolute, join, resolve, sep } from 'node:path'
 
@@ -55,7 +55,8 @@ import {
   clearSessionBudget,
 } from './state.js'
 
-import { DEFAULT_MODEL_PRICING, PRICING_CURRENCY, PRICING_META, PRICING_SOURCE, PRICING_UPDATED_AT, estimateInputCost, foldSession, isPeakTime, sessionDetail, summarizeFolds } from './metrics.js'
+import { DEFAULT_MODEL_PRICING, PRICING_CURRENCY, PRICING_META, PRICING_SOURCE, PRICING_UPDATED_AT, csvCell, estimateInputCost, foldSession, isPeakTime, sessionDetail, summarizeFolds } from './metrics.js'
+import { atomicWriteFile, backupFile as backupStateFile, latestBackupJson as latestStateBackup } from './persist.js'
 import { buildHealth, buildInsights } from './insights.js'
 import { SCAFFOLD_TEMPLATES, mergeAgentsContent, planScaffold } from './scaffold.js'
 
@@ -440,13 +441,26 @@ export function apply(ctx, config) {
     }
   } catch {}
 
+  // 所有写操作前自动备份（profile patch 与状态文件），保留最近 30 份。
+  // 状态文件用「临时文件 + rename」落盘：崩溃/断电最多丢最后一次写入，不会留下半截 JSON。
+  // 具体实现见 persist.js（可单独测试）。
+  const BACKUP_DIR = join(STATE_DIR, 'backups')
+  const backupFile = (filePath, label) => {
+    const logger = ctx.logger
+    const warn = typeof logger?.warn === 'function'
+      ? (message) => logger.warn('agent-embodiment: backup failed: ' + message)
+      : () => {}
+    backupStateFile(BACKUP_DIR, filePath, label, warn)
+  }
+  const latestBackupJson = (label) => latestStateBackup(BACKUP_DIR, label)
+
   // 会话级开关持久化：~/.dsh/agent-embodiment/session-toggles.json（按 sessionId 区分，跨 profile 共享）。
   const SESSION_TOGGLES_PATH = join(STATE_DIR, 'session-toggles.json')
   const saveSessionToggles = () => {
     try {
       backupFile(SESSION_TOGGLES_PATH, 'session-toggles')
       mkdirSync(dirname(SESSION_TOGGLES_PATH), { recursive: true })
-      writeFileSync(SESSION_TOGGLES_PATH, JSON.stringify(snapshotSessionToggles(), null, 2) + '\n', 'utf8')
+      atomicWriteFile(SESSION_TOGGLES_PATH, JSON.stringify(snapshotSessionToggles(), null, 2) + '\n')
     } catch (error) {
       const logger = ctx.logger
       if (typeof logger?.warn === 'function') logger.warn('agent-embodiment: could not save session toggles: ' + (error instanceof Error ? error.message : String(error)))
@@ -459,6 +473,12 @@ export function apply(ctx, config) {
     } catch (error) {
       const logger = ctx.logger
       if (typeof logger?.warn === 'function') logger.warn('agent-embodiment: could not load session toggles: ' + (error instanceof Error ? error.message : String(error)))
+      // 主文件损坏（半截 JSON/磁盘错误）时回落到最近一份可用备份，避免静默丢全部会话开关。
+      const recovered = latestBackupJson('session-toggles')
+      if (recovered !== null) {
+        hydrateSessionToggles(recovered)
+        if (typeof logger?.warn === 'function') logger.warn('agent-embodiment: session toggles restored from the latest backup')
+      }
     }
   }
   loadSessionToggles()
@@ -479,29 +499,36 @@ export function apply(ctx, config) {
   const saveOnboarding = () => {
     try {
       mkdirSync(dirname(ONBOARDING_PATH), { recursive: true })
-      writeFileSync(ONBOARDING_PATH, JSON.stringify(onboarding, null, 2) + '\n', 'utf8')
+      backupFile(ONBOARDING_PATH, 'onboarding')
+      atomicWriteFile(ONBOARDING_PATH, JSON.stringify(onboarding, null, 2) + '\n')
     } catch (error) {
       const logger = ctx.logger
       if (typeof logger?.warn === 'function') logger.warn('agent-embodiment: could not save onboarding: ' + (error instanceof Error ? error.message : String(error)))
     }
   }
+  const applyOnboarding = (raw) => {
+    if (!raw || typeof raw !== 'object' || Array.isArray(raw)) return false
+    onboarding = {
+      completed: raw.completed === true,
+      dismissed: raw.dismissed === true,
+      budgetConfirmed: raw.budgetConfirmed === true,
+      budgetTokens: Number.isInteger(raw.budgetTokens) && raw.budgetTokens > 0 ? raw.budgetTokens : config.contextWindowTokens,
+      presetConsent: raw.presetConsent === true ? true : raw.presetConsent === false ? false : null,
+      at: typeof raw.at === 'string' ? raw.at : null,
+      version: typeof raw.version === 'string' ? raw.version : PLUGIN_VERSION,
+    }
+    return true
+  }
   const loadOnboarding = () => {
     try {
       if (!existsSync(ONBOARDING_PATH)) return
-      const raw = JSON.parse(readFileSync(ONBOARDING_PATH, 'utf8'))
-      if (!raw || typeof raw !== 'object' || Array.isArray(raw)) return
-      onboarding = {
-        completed: raw.completed === true,
-        dismissed: raw.dismissed === true,
-        budgetConfirmed: raw.budgetConfirmed === true,
-        budgetTokens: Number.isInteger(raw.budgetTokens) && raw.budgetTokens > 0 ? raw.budgetTokens : config.contextWindowTokens,
-        presetConsent: raw.presetConsent === true ? true : raw.presetConsent === false ? false : null,
-        at: typeof raw.at === 'string' ? raw.at : null,
-        version: typeof raw.version === 'string' ? raw.version : PLUGIN_VERSION,
-      }
+      applyOnboarding(JSON.parse(readFileSync(ONBOARDING_PATH, 'utf8')))
     } catch (error) {
       const logger = ctx.logger
       if (typeof logger?.warn === 'function') logger.warn('agent-embodiment: could not load onboarding: ' + (error instanceof Error ? error.message : String(error)))
+      if (applyOnboarding(latestBackupJson('onboarding')) && typeof logger?.warn === 'function') {
+        logger.warn('agent-embodiment: onboarding state restored from the latest backup')
+      }
     }
   }
   loadOnboarding()
@@ -535,7 +562,7 @@ export function apply(ctx, config) {
         // 体积过大时只保留最近 N 行，避免长期运行无限增长。
         if (statSync(COMPACTION_LOG_PATH).size > COMPACTION_LOG_MAX_BYTES) {
           const lines = readFileSync(COMPACTION_LOG_PATH, 'utf8').split('\n').filter((line) => line.trim().length > 0).slice(-COMPACTION_LOG_KEEP_LINES)
-          writeFileSync(COMPACTION_LOG_PATH, lines.join('\n') + '\n', 'utf8')
+          atomicWriteFile(COMPACTION_LOG_PATH, lines.join('\n') + '\n')
         }
       } catch (error) {
         const logger = ctx.logger
@@ -1039,14 +1066,22 @@ export function apply(ctx, config) {
     if (typeof sub.effect === 'function') sub.effect(() => () => { sessionQuery = null }, 'agent-embodiment: sessionQuery presence')
   })
 
-  const withTimeout = (promise, ms, label) =>
-    Promise.race([
-      promise,
-      new Promise((_, reject) => {
-        const timer = setTimeout(() => reject(new Error(`${label} timed out after ${ms}ms`)), ms)
-        if (typeof timer?.unref === 'function') timer.unref()
-      }),
-    ])
+  // 带超时的读取：超时通过 AbortSignal 一并取消底层读取，避免只丢弃结果而让会话观察继续运行。
+  const readWithTimeout = async (call, ms, label) => {
+    const controller = new AbortController()
+    const timer = setTimeout(() => controller.abort(new Error(`${label} timed out after ${ms}ms`)), ms)
+    if (typeof timer?.unref === 'function') timer.unref()
+    try {
+      return await Promise.race([
+        call(controller.signal),
+        new Promise((_, reject) => {
+          controller.signal.addEventListener('abort', () => reject(controller.signal.reason), { once: true })
+        }),
+      ])
+    } finally {
+      clearTimeout(timer)
+    }
+  }
 
   const mapLimit = async (items, limit, worker) => {
     const output = new Array(items.length)
@@ -1071,7 +1106,7 @@ export function apply(ctx, config) {
     const cached = foldCache.get(sessionId)
     if (cached && Date.now() - cached.at < ttlMs) return cached.fold
     if (!sessionQuery || typeof sessionQuery.observeSession !== 'function') throw new Error('sessionQuery.observeSession unavailable')
-    const observation = await withTimeout(sessionQuery.observeSession(sessionId, { projectionMode: 'none' }), 4000, 'observeSession')
+    const observation = await readWithTimeout((signal) => sessionQuery.observeSession(sessionId, { projectionMode: 'none', signal }), 4000, 'observeSession')
     try {
       const fold = foldSession(observation.header ?? header, observation.events ?? [], effectivePricing)
       foldCache.delete(sessionId)
@@ -1122,7 +1157,7 @@ export function apply(ctx, config) {
     }
     const days = parseRange(url.searchParams.get('range'))
     const limit = Math.min(200, Math.max(1, Number(url.searchParams.get('limit')) || config.analyticsLimit))
-    const records = await withTimeout(sessionQuery.listSessions(), 8000, 'listSessions')
+    const records = await readWithTimeout((signal) => sessionQuery.listSessions(signal), 8000, 'listSessions')
     const list = sessionsNewestFirst(records)
     const picked = list.slice(0, limit)
     const warnings = []
@@ -1225,28 +1260,7 @@ export function apply(ctx, config) {
     response.end(body)
   }
 
-  // 所有写操作前自动备份（profile patch 与 session-toggles.json），保留最近 30 份。
-  const BACKUP_DIR = join(STATE_DIR, 'backups')
-  const backupFile = (filePath, label) => {
-    try {
-      if (!filePath || !existsSync(filePath)) return
-      mkdirSync(BACKUP_DIR, { recursive: true })
-      const stamp = new Date().toISOString().replace(/[:.]/g, '-')
-      copyFileSync(filePath, join(BACKUP_DIR, `${label}.${stamp}.bak`))
-      const names = readdirSync(BACKUP_DIR)
-        .filter((name) => name.startsWith(label + '.'))
-        .sort()
-      while (names.length > 30) {
-        const stale = names.shift()
-        try {
-          unlinkSync(join(BACKUP_DIR, stale))
-        } catch {}
-      }
-    } catch (error) {
-      const logger = ctx.logger
-      if (typeof logger?.warn === 'function') logger.warn('agent-embodiment: backup failed: ' + (error instanceof Error ? error.message : String(error)))
-    }
-  }
+  // 所有写操作前自动备份（profile patch 与状态文件），保留最近 30 份；实现见状态目录初始化处。
 
   // 可写配置：宿主平面有 configEditor 服务时（Web/Desktop profile 都有），
   // 面板可以把上下文/阈值写回 profile 的 patch 层，写完后 Loader 会按新配置重挂本插件。
@@ -1517,12 +1531,8 @@ export function apply(ctx, config) {
       const format = (url.searchParams.get('format') || 'json').toLowerCase()
       if (format === 'csv') {
         const columns = ['id', 'title', 'cwd', 'model', 'tokens', 'input', 'cacheRead', 'cacheWrite', 'output', 'requests', 'toolCalls', 'compactions', 'activeMs', 'cost', 'lastActivityAt']
-        const escape = (value) => {
-          const text = value === null || value === undefined ? '' : String(value)
-          return /[",\n\r]/.test(text) ? `"${text.replace(/"/g, '""')}"` : text
-        }
         const lines = [columns.join(',')]
-        for (const session of payload.sessions) lines.push(columns.map((column) => escape(session[column])).join(','))
+        for (const session of payload.sessions) lines.push(columns.map((column) => csvCell(session[column])).join(','))
         response.statusCode = 200
         response.setHeader('content-type', 'text/csv; charset=utf-8')
         response.setHeader('content-disposition', `attachment; filename="agent-embodiment-${payload.range}.csv"`)
@@ -1550,7 +1560,7 @@ export function apply(ctx, config) {
       if (scope === 'logs' || scope === 'all') {
         hydrateCompactionLog([])
         try {
-          if (existsSync(COMPACTION_LOG_PATH)) writeFileSync(COMPACTION_LOG_PATH, '', 'utf8')
+          if (existsSync(COMPACTION_LOG_PATH)) atomicWriteFile(COMPACTION_LOG_PATH, '')
         } catch {}
       }
       if (scope === 'toggles' || scope === 'all') {

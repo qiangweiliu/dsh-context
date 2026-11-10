@@ -140,6 +140,22 @@ const dateKey = (time) => {
   return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')}`
 }
 
+/**
+ * Escape one CSV cell for spreadsheet import.
+ *
+ * RFC 4180 quoting handles commas, quotes and newlines. Separately, a cell whose
+ * text begins with a formula trigger (`=`, `+`, `-`, `@`, TAB, CR) would be
+ * evaluated by Excel/WPS; such text cells get a leading apostrophe so they open
+ * as literal text. Real numbers are left untouched so negative values still
+ * sort/aggregate numerically.
+ */
+export function csvCell(value) {
+  const raw = value === null || value === undefined ? '' : value
+  let text = String(raw)
+  if (typeof raw !== 'number' && /^[=+\-@\t\r]/u.test(text)) text = `'${text}`
+  return /[",\n\r]/u.test(text) ? `"${text.replace(/"/g, '""')}"` : text
+}
+
 const tokenTitle = (event) => {
   if (event?.type !== 'session/title') return null
   const title = event?.data?.title

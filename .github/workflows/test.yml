@@ -19,9 +19,36 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: ${{ matrix.node-version }}
-      # 单元套件不依赖 DSH 运行时；集成套件（control/smoke/prompt-state）
-      # 需要本机 app.asar，见 docs/IMPLEMENTATION.md。
-      - run: node --check index.js && node --check control.js && node --check client.js
+      # 单元套件不依赖 DSH 运行时；集成套件见下方 integration job。
+      - run: node --check index.js && node --check control.js && node --check client.js && node --check persist.js
       - run: npm test
       # 提前暴露 files/exports 缺文件的问题。
       - run: npm pack --dry-run
+
+  integration:
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        # 与 dshReleases 对应的 Cordis 线：0.2.0/0.2.1 用 4.0.5，0.2.2 起用 4.1.0。
+        include:
+          - cordis: '4.0.5'
+            cosmokit: '1.8.6'
+          - cordis: '4.1.0'
+            cosmokit: '1.9.0'
+    defaults:
+      run:
+        working-directory: agent-embodiment
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      # 集成套件原本从本机 app.asar 解出 Cordis；CI 改为从 npm 安装同一运行时，
+      # 目录布局与 prepare-deps.mjs 的输出一致（test/deps/dsh/node_modules）。
+      - run: |
+          mkdir -p test/deps/dsh
+          cd test/deps/dsh
+          npm init -y > /dev/null
+          npm install --no-audit --no-fund @deepseek-ai/cordis@${{ matrix.cordis }} @deepseek-ai/cosmokit@${{ matrix.cosmokit }}
+      - run: node test/control.mjs && node test/smoke.mjs && node test/prompt-state.mjs

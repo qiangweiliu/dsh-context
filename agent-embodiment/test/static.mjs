@@ -37,11 +37,19 @@ check(
 )
 check(
   'manifest files 分发全部运行文件',
-  ['index.js', 'control.js', 'state.js', 'metrics.js', 'scaffold.js', 'client.js', 'dsh.bundle.patch.yml'].every((file) => Array.isArray(manifest.files) && manifest.files.includes(file)),
+  ['index.js', 'control.js', 'state.js', 'metrics.js', 'persist.js', 'scaffold.js', 'client.js', 'dsh.bundle.patch.yml'].every((file) => Array.isArray(manifest.files) && manifest.files.includes(file)),
   JSON.stringify(manifest.files),
 )
 check('manifest 无 npm 运行依赖（只依赖宿主服务与 Node 内置模块）', !manifest.dependencies || Object.keys(manifest.dependencies).length === 0, JSON.stringify(manifest.dependencies ?? {}))
 check('manifest 声明权限说明文档已分发', Array.isArray(manifest.files) && manifest.files.includes('PERMISSIONS.md'))
+
+// ── 1c. 版本号副本一致（scripts/bump-version.mjs 负责同步）───────────────
+const rootReadme = readFileSync(new URL('../../README.md', import.meta.url), 'utf8')
+const pluginReadme = readFileSync(new URL('../README.md', import.meta.url), 'utf8')
+const implementationDoc = readFileSync(new URL('../docs/IMPLEMENTATION.md', import.meta.url), 'utf8')
+check('根 README 的当前版本与 package.json 一致', rootReadme.includes('当前版本：`' + manifest.version + '`'), manifest.version)
+check('插件 README 的当前版本与 package.json 一致', pluginReadme.includes('当前版本：`' + manifest.version + '`'), manifest.version)
+check('IMPLEMENTATION 的当前版本与 package.json 一致', implementationDoc.includes('当前版本：`' + manifest.version + '`'), manifest.version)
 
 // ── 1. 插件导出形状 ────────────────────────────────────────────────────────
 check('exports name 是字符串', typeof plugin.name === 'string' && plugin.name.length > 0, plugin.name)

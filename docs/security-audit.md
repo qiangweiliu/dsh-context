@@ -1,6 +1,6 @@
 # agent-embodiment 安全审计（可恢复性 + 不破坏 DSH 核心）
 
-日期：2026-10-17 · 版本：0.21.0（2026-10-22 重命名并同步当前实现）
+日期：2026-10-17（主体）· 2026-11-10（0.24.1 增量）· 版本：0.21.0 审计 + 0.24.1 增量复核（2026-10-22 重命名并同步当前实现）
 
 ## 1. 写操作清单（全部有撤销路径/备份）
 
@@ -51,4 +51,18 @@
 ## 5. 建议
 
 - 升级/更新前先确认 `~/.dsh/agent-embodiment/backups/` 有最近备份；`wsl-restore-all.sh` 执行前也会先备份。
-- 生产 profile 中保持 `autoMountControl` 默认 true 前，先确认 DSH preset 结构；不想被自动改 preset 就在面板停用一次（会持久记为 false）。
+- 生产 profile 中如需自动挂载控制行，先确认 DSH preset 结构；0.24.0 起 `autoMountControl` 默认 `false`，只有用户在引导或面板显式启用才会改写 preset。
+
+## 6. 0.24.1 增量复核（2026-11-10）
+
+0.21.0 之后的版本新增了四个路由（`/status/insights`、`/status/onboarding`、`/status/export`、`/status/data/reset`）、跨会话统计与会话导出。本轮复核结论：
+
+| 项 | 结论 |
+| --- | --- |
+| 新路由鉴权 | 全部经 `authed` → `connection.requestRejection`，与旧路由一致；POST 只接受 `application/json` 且有体积上限 |
+| 会话数据读取 | `sessionQuery.observeSession` 读取整份事件日志，但只消费标题/cwd/模型/工具/用量等派生字段，不展示或上传消息正文；导出文件由浏览器本地下载 |
+| 数据导出 | JSON/CSV 只含会话级字段；CSV 已中和公式注入（`=`/`+`/`-`/`@`/TAB/CR 开头加前导 `'`） |
+| 状态持久化 | 0.24.1 起原子写（临时文件 + rename）；读取失败回落到最近备份；备份同毫秒去重、保留 30 份 |
+| 会话读取超时 | 0.24.1 起通过 `AbortSignal` 取消底层读取，超时不再遗留会话观察 |
+| 剩余风险 | 有 `webServer` 但无 `connection` 的自定义组合下路由放行（按 headless 设计）；独立安全审查仍未做，1.0 前需补 |
+

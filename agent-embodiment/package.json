@@ -1,11 +1,11 @@
 {
   "name": "agent-embodiment",
-  "version": "0.24.0",
+  "version": "0.24.1",
   "description": "Cross-session context analytics with cost and savings estimates, compaction insights, session-level budget/prompt/tool controls, and optional agent scaffolds on top of DeepSeek Harness native compaction and tools.",
   "type": "module",
   "main": "index.js",
   "scripts": {
-    "test": "node test/static.mjs && node test/metrics.mjs && node test/state.mjs && node test/scaffold.mjs && node test/insights.mjs",
+    "test": "node test/static.mjs && node test/metrics.mjs && node test/state.mjs && node test/persist.mjs && node test/scaffold.mjs && node test/insights.mjs",
     "test:integration": "node test/prepare-deps.mjs && node test/control.mjs && node test/smoke.mjs && node test/prompt-state.mjs"
   },
   "exports": {
@@ -23,6 +23,7 @@
     "control.js",
     "state.js",
     "metrics.js",
+    "persist.js",
     "scaffold.js",
     "insights.js",
     "client.js",
@@ -65,7 +66,8 @@
       "dshReleases": {
         "0.2.0-rc.2": "compatible",
         "0.2.1-rc.2": "compatible",
-        "0.2.1-rc.3": "compatible"
+        "0.2.1-rc.3": "compatible",
+        "0.2.2-rc.1": "unknown"
       },
       "profiles": [
         "web",
@@ -86,4 +88,3 @@
     }
   }
 }
-

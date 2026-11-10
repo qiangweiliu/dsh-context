@@ -2,7 +2,7 @@
 
 本文描述 `agent-embodiment` 的内部结构、集成点和验证方式。面向用户的功能说明见 [README.md](../README.md)；约束与已知限制见 [LIMITATIONS.md](LIMITATIONS.md)。
 
-当前版本：`0.24.0`
+当前版本：`0.24.1`
 
 ## 1. 两个半侧
 
@@ -13,7 +13,8 @@
 | `index.js` | 宿主平面 | 读取 token 用量、注册 `/embody` 与状态路由、保存全局配置 |
 | `control.js` | agent preset 内 | 执行自动压缩、工具/提示词开关、`/embody-compact` |
 | `state.js` | 共享状态 | 两个半侧共享默认预算、会话覆盖、控制状态 |
-| `metrics.js` | 统计层 | 把会话事件折叠成 usage、费用、工具调用与压缩统计 |
+| `metrics.js` | 统计层 | 把会话事件折叠成 usage、费用、工具调用与压缩统计；CSV 单元格转义 |
+| `persist.js` | 持久化工具 | 状态文件原子写、写前备份、备份读取（可单独测试） |
 | `insights.js` | 规则层 | 纯函数生成健康检查与可执行洞察（不依赖 Cordis/文件系统） |
 | `client.js` | 浏览器平面 | 注册整页面板、设置分区、侧栏 `Context` 和 composer dock |
 | `dsh.bundle.patch.yml` | bundle 层 | 向 profile boot graph 插入插件行 |
@@ -276,9 +277,10 @@ node --check client.js
 当前结果：
 
 ```text
-static       95/95
-metrics      35/35
+static       98/98
+metrics      42/42
 state        18/18
+persist       7/7
 scaffold    146/146
 insights     12/12
 control      54/54

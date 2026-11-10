@@ -23,15 +23,16 @@ DeepSeek Harness（DSH）的 agent 具身与上下文管理插件仓库。市场
 cd agent-embodiment
 npm test                    # static + metrics + state + scaffold + insights
 node test/static.mjs        # manifest/exports/Config/client 形状与文本断言
-node test/metrics.mjs       # 会话日志折叠统计
+node test/metrics.mjs       # 会话日志折叠、成本与 CSV 单元格
 node test/state.mjs         # 会话开关/提示词文本持久化往返
+node test/persist.mjs       # 原子写、写前备份与备份读取
 node test/scaffold.mjs      # 脚手架生成计划、YAML 与 AGENTS 合并
 node test/insights.mjs      # 健康检查与洞察规则
 ```
 
-当前基线（0.24.0）：static 95/95、metrics 35/35、state 18/18、scaffold 146/146、insights 12/12。
+当前基线（0.24.1）：static 98/98、metrics 42/42、state 18/18、persist 7/7、scaffold 146/146、insights 12/12。
 
-CI 在 `.github/workflows/test.yml`：Node 20/22/24 三档，先 `node --check index.js control.js client.js`，再 `npm test`，最后 `npm pack --dry-run`（提前暴露 `files`/`exports` 缺文件）。
+CI 在 `.github/workflows/test.yml`：Node 20/22/24 三档跑单元；另有 integration job 从 npm 安装 Cordis（4.0.5 / 4.1.0 两档）跑 control/smoke/prompt-state，不依赖本机 app.asar。
 
 ### 集成测试（需要本机 DSH 的 app.asar）
 
@@ -53,6 +54,12 @@ cd agent-embodiment
 node --check index.js
 node --check control.js
 node --check client.js
+```
+
+### 版本号同步
+
+```bash
+node scripts/bump-version.mjs 0.24.1   # package.json / client.js / README / IMPLEMENTATION 一次改齐
 ```
 
 ### 评测
@@ -103,6 +110,7 @@ UI 脚本通过 Windows Edge 的 CDP 连接（`scripts/lib/cdp.mjs`，默认 Edg
 - `index.js`（宿主平面，`inject: ['commands', 'tokenMeter']`）：注册 `/embody`、`/embody <tokens>`、`/embody reset`（并保留 `/ctx` 别名）；注册 `/api/agent-embodiment/status` 及其全部子路由；负责全局配置写入、会话开关与压缩日志落盘、全局工具禁用（`tools.restrict`）和自动挂载控制行。**它不做提示词装配**。
 - `control.js`（preset 平面，`inject: ['tokenMeter']`）：在 `system-prompt/assemble` waterfall 里按会话重建 `result.sections`、应用 `promptOverrides` / `extraPrompts` / 禁用项并写 inventory；在 `agent/pre-step` 测量并调用 `compaction.compactIfNeeded` / `compactRegion`；`notify` 模式在 `agent/status === 'idle'` 时只记录；通过 `agent.ctx.tools.restrict({ deny })` 应用会话级工具禁用；注册 `/embody-compact`。`mode` 为 `idle`（默认，含范围压缩兜底）/ `pre-step` / `notify` / `off`。
 - `state.js`：两个半侧共享的进程内状态。Cordis realm 隔离使二者互相 `import` 服务不可行，但同一包内 `./state.js` 的 ESM 模块缓存是同一份实例。
+- `persist.js`：状态文件的原子写、写前备份与备份读取（`atomicWriteFile` / `backupFile` / `latestBackupJson`），不依赖 Cordis，由 `test/persist.mjs` 单独覆盖；状态文件损坏时 `index.js` 会回落到最近备份。
 - `metrics.js`：把会话事件日志折叠成 turn/step/usage/费用/工具调用统计，供宿主状态路由消费。
 - `insights.js`：纯函数规则层，`buildInsights()` 生成可执行洞察、`buildHealth()` 生成健康检查；不依赖 Cordis、文件系统或 npm 包。
 - `client.js`：浏览器半侧，经 `window.__ModuleLoader__.load` 注册 5 个 slot 条目（4 类 slot）：`settings.section`、`main`（`key='embody'`）、`sidebar.panellist`、`conversation.composer.dock` 两次（用量指示器 + 余额胶囊）。侧栏名称是 `Context` / `上下文`；面板固定 Overview / Trend / Events / Settings 四个 tab，脚手架在 Settings → Labs。只用内联样式和 `--dsw-alias-*` token，不引 CSS/Tailwind。
@@ -112,7 +120,7 @@ UI 脚本通过 Windows Edge 的 CDP 连接（`scripts/lib/cdp.mjs`，默认 Edg
 
 控制半侧必须挂进 agent preset（设置 → Agent preset → compaction 组），原因：Web 形态下 `dsh-web-app` 把宿主平面的 compaction 行全部 disabled，真正的 `compaction` 服务在 `preset-standard` 的 isolate group 里，宿主上下文拿不到。`autoMountControl` 默认 `false`，只有首次运行显式授权或用户在设置里启用自动压缩后，插件才会往 `preset-standard` 补挂一行，写入后回读校验，失败写 warning。
 
-**关键约束：运行时代码（`index.js` / `control.js` / `state.js` / `metrics.js` / `insights.js` / `scaffold.js`）不 import 任何 npm 包**（只用 Node 内置模块）。本地 `link:` 安装时插件目录没有宿主依赖，裸导入会解析失败。配置校验是手写的同步 Standard Schema（`Config['~standard'].validate`），因为 Cordis 不支持 async 校验。`test/static.mjs` 会断言无运行依赖、无安装生命周期脚本。
+**关键约束：运行时代码（`index.js` / `control.js` / `state.js` / `metrics.js` / `persist.js` / `insights.js` / `scaffold.js`）不 import 任何 npm 包**（只用 Node 内置模块）。本地 `link:` 安装时插件目录没有宿主依赖，裸导入会解析失败。配置校验是手写的同步 Standard Schema（`Config['~standard'].validate`），因为 Cordis 不支持 async 校验。`test/static.mjs` 会断言无运行依赖、无安装生命周期脚本。
 
 ### 数据流
 

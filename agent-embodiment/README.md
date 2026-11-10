@@ -4,7 +4,32 @@
 
 > **与 DSH 原生能力的关系**：token 计量、自动压缩、系统提示词装配、文件/命令/Web/子 agent 等由 DSH 本体提供；本插件不重复实现这些引擎，而是复用官方 seam，补上可观测性与用户控制。单轮任务能力不会因为安装本插件而提升。
 
-包名：`agent-embodiment` · 市场标题：`Agent Embodiment` / `智能体具身` · 当前版本：`0.24.0`
+包名：`agent-embodiment` · 市场标题：`Agent Embodiment` / `智能体具身` · 当前版本：`0.24.1`
+
+## 安装 / 升级 / 回滚
+
+> npm 包发布前，请用「从源码安装」；市场（awesome-dsh-plugin）条目已收录，安装时选中 `agent-embodiment` 即可。
+
+从源码安装（推荐，当前可用）：
+
+```sh
+git clone https://github.com/qiangweiliu/dsh-context.git
+cd dsh-context
+dsh plugin --profile web add "$PWD/agent-embodiment"     # Desktop 用 --profile desktop
+```
+
+从 npm 安装（发布后）：
+
+```sh
+dsh plugin --profile web add agent-embodiment
+dsh plugin --profile web update agent-embodiment@latest
+```
+
+升级与回滚：
+
+- 升级到新版本（替换已安装包）后需要重启 DSH 进程；首次安装/启停由 HMR 热生效。
+- 回滚：`dsh plugin --profile web add agent-embodiment@<旧版本>`；源码安装则重新 `add` 旧路径。
+- 卸载后如 profile 里仍残留 preset 行，用 `node scripts/clean-agent-embodiment-profile-patch.mjs ~/.dsh/profiles/<profile>` 清理。
 
 ## 安装后何时生效
 

@@ -3,7 +3,7 @@
  *
  * 运行：node test/metrics.mjs
  */
-import { estimateInputCost, foldSession, sessionDetail, summarizeFolds } from '../metrics.js'
+import { csvCell, estimateInputCost, foldSession, sessionDetail, summarizeFolds } from '../metrics.js'
 
 const checks = []
 function check(name, condition, detail) {
@@ -105,6 +105,15 @@ const old = foldSession({ id: 's3', createdAt: now - 40 * 24 * 3600 * 1000 }, [
 ])
 const range = summarizeFolds([old], { now, days: 7 })
 check('范围外的会话被过滤', range.kpi.sessions === 0, range.kpi.sessions)
+
+// CSV 单元格：公式注入防护与 RFC 4180 引号。
+check('CSV：普通文本原样输出', csvCell('hello') === 'hello', csvCell('hello'))
+check('CSV：逗号/引号/换行按 RFC 4180 引号', csvCell('a,"b"\nc') === '"a,""b""\nc"', csvCell('a,"b"\nc'))
+check('CSV：= 开头的文本被中和', csvCell('=SUM(A1)') === "'=SUM(A1)", csvCell('=SUM(A1)'))
+check('CSV：+ / @ 开头的文本被中和', csvCell('+1') === "'+1" && csvCell('@cmd') === "'@cmd", [csvCell('+1'), csvCell('@cmd')])
+check('CSV：- 开头的文本被中和', csvCell('-1+2') === "'-1+2", csvCell('-1+2'))
+check('CSV：真实数字保留数值形态', csvCell(-12.5) === '-12.5', csvCell(-12.5))
+check('CSV：null/undefined 变空串', csvCell(null) === '' && csvCell(undefined) === '', [csvCell(null), csvCell(undefined)])
 
 const failed = checks.filter((item) => !item.ok)
 console.log(`\n[metrics] ${checks.length - failed.length}/${checks.length} 项通过`)

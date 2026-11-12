@@ -421,6 +421,22 @@ npm 运行依赖：无；生命周期脚本：无
 - 打包：`npm pack --dry-run` 22 个文件、178.7 kB（unpacked 600.8 kB），含 `profile.js`。
 - 边界：本轮为静态/集成/行为级验证；**没有**在 WSL 或 Desktop 上重新安装 0.25.0 并点面板，0.2.2-rc.1 端到端仍未验收；`client.js` 拆模块（4054 行）本轮未做，只加了错误边界兜底。
 
+## E34. v0.26.0 性能 / UX / a11y / 安全优化（2026-11-11，静态/集成/行为级测试）
+
+- 环境同 E33（Windows 工作区 Node 22.23.3，集成用 `E:\tool\dsh\resources\app.asar` 的 Cordis 4.1.0）。本轮仍是静态/集成/行为级验证，未做 WSL/Desktop 宿主级安装验收。
+- 单元 377 项：static 101 / metrics 45 / state 26 / persist 7 / profile 11 / scaffold 146 / insights 16 / **render 25**（新增 2 条：设置页 onboarding 重开入口、健康卡仍在）。
+- 集成 139 项：control 55 / smoke 73 / prompt-state 11。`npm run lint` 0 error / 0 warning。
+- 性能（静态分析，未做真实负载压测）：
+  - `/insights` 与 `/analytics` 共享 5s 短缓存（`index.js` analyticsCache），Overview 打开时第二次请求命中，避免重复 `listSessions`+折叠+排序。
+  - 前端 `/live` 飞行期去重（`client.js` fetchJson + inflightJson），CtxPanel 与 CtxDock 不再双拉同一会话；MutationObserver 节流 2s→3s。
+  - compaction-log 截断到低水位 256KB（而非恰好 400 行），避免 512KB 边界反复全量读写。
+- UX：onboarding「稍后」由 `dismissed:true` 改为 `deferredAt`（短时不再打扰）；新增 `POST /onboarding {reset:true}` + 设置页「重新打开设置」入口；401/403/5xx/网络错误映射为可操作文案（`client.js` humanizeError）。
+- 口径统一：`tok`→`tokens`（含 `tokensShort` 词典值）；头部标注「插件预算」（`pluginBudgetTag`）。
+- a11y：DailyChart / TrendCard 容器 `role="img"`+`aria-label`；SegmentedBar 阈值线补 `aria-label`。
+- 安全：`metrics.js` 三处工具名计数容器改 `Object.create(null)`；PERMISSIONS 1.4/1.5 补 MCP command 与导出路径披露。
+- 打包：`npm pack --dry-run` 22 个文件（未重新实测字节数，结构同 0.25.0）。
+- 边界：`client.js` 拆模块、static 字符串断言换行为测试、Desktop 0.2.2-rc.1 端到端仍未做，留后续版本。
+
 ## 已知限制（unknown）
 
 - 未进行独立安全审计；本文件不声称“安全通过”。

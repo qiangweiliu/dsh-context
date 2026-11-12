@@ -507,6 +507,8 @@ export function apply(ctx, config) {
   let onboarding = {
     completed: false,
     dismissed: false,
+    // “稍后”不是永久关闭：记录一个时间戳，短时间内不再打扰，之后仍会再次出现。
+    deferredAt: null,
     budgetConfirmed: false,
     budgetTokens: config.contextWindowTokens,
     presetConsent: null,
@@ -528,6 +530,7 @@ export function apply(ctx, config) {
     onboarding = {
       completed: raw.completed === true,
       dismissed: raw.dismissed === true,
+      deferredAt: typeof raw.deferredAt === 'string' ? raw.deferredAt : null,
       budgetConfirmed: raw.budgetConfirmed === true,
       budgetTokens: Number.isInteger(raw.budgetTokens) && raw.budgetTokens > 0 ? raw.budgetTokens : config.contextWindowTokens,
       presetConsent: raw.presetConsent === true ? true : raw.presetConsent === false ? false : null,
@@ -553,6 +556,9 @@ export function apply(ctx, config) {
   // 压缩记录持久化：~/.dsh/agent-embodiment/compaction-log.jsonl（JSONL，内存最多 200 条）。
   const COMPACTION_LOG_PATH = join(STATE_DIR, 'compaction-log.jsonl')
   const COMPACTION_LOG_MAX_BYTES = 512 * 1024
+  // 截断目标是 maxBytes 的一半：避免在 512KB 边界反复 append 就触发一次全量读+重写。
+  // 超过高水位后截到低水位，给后续 append 留出缓冲，减少 O(文件大小) 的同步重写频次。
+  const COMPACTION_LOG_TRIM_BYTES = 256 * 1024
   const COMPACTION_LOG_KEEP_LINES = 400
   const loadCompactionLog = () => {
     try {
@@ -576,10 +582,19 @@ export function apply(ctx, config) {
       try {
         mkdirSync(dirname(COMPACTION_LOG_PATH), { recursive: true })
         appendFileSync(COMPACTION_LOG_PATH, JSON.stringify(entry) + '\n', 'utf8')
-        // 体积过大时只保留最近 N 行，避免长期运行无限增长。
+        // 体积过大时只保留最近 N 行，避免长期运行无限增长。截到低水位（256KB）而非
+        // 刚好 400 行：否则下一次 append 又立刻超过 512KB，每条都触发一次全量读+重写。
         if (statSync(COMPACTION_LOG_PATH).size > COMPACTION_LOG_MAX_BYTES) {
-          const lines = readFileSync(COMPACTION_LOG_PATH, 'utf8').split('\n').filter((line) => line.trim().length > 0).slice(-COMPACTION_LOG_KEEP_LINES)
-          atomicWriteFile(COMPACTION_LOG_PATH, lines.join('\n') + '\n')
+          const lines = readFileSync(COMPACTION_LOG_PATH, 'utf8').split('\n').filter((line) => line.trim().length > 0)
+          let keep = COMPACTION_LOG_KEEP_LINES
+          let bytes = 0
+          // 从尾部往前累计，直到接近低水位（至少保留 50 行，避免极端单行过大时误删）。
+          for (let index = lines.length - 1; index >= 0; index -= 1) {
+            bytes += Buffer.byteLength(lines[index], 'utf8') + 1
+            keep = lines.length - index
+            if (bytes >= COMPACTION_LOG_TRIM_BYTES && keep >= 50) break
+          }
+          atomicWriteFile(COMPACTION_LOG_PATH, lines.slice(lines.length - keep).join('\n') + '\n')
         }
       } catch (error) {
         const logger = ctx.logger
@@ -1120,6 +1135,10 @@ export function apply(ctx, config) {
   // 只保留最近 40 个会话，避免长进程里每个看过的会话都留一份完整折叠结果。
   const foldCache = new Map()
   const FOLD_CACHE_MAX = 40
+  // analytics 结果的短 TTL 缓存：/analytics 与 /insights 在 Overview 同时请求同一范围时命中，
+  // 免去第二次 listSessions + 折叠。TTL 覆盖浏览器侧的 2s 节流刷新，又不至于长期陈旧。
+  const analyticsCache = new Map()
+  const ANALYTICS_CACHE_TTL_MS = 5000
   const observeFold = async (sessionId, header, ttlMs = 20000) => {
     const cached = foldCache.get(sessionId)
     if (cached && Date.now() - cached.at < ttlMs) return cached.fold
@@ -1175,6 +1194,11 @@ export function apply(ctx, config) {
     }
     const days = parseRange(url.searchParams.get('range'))
     const limit = Math.min(200, Math.max(1, Number(url.searchParams.get('limit')) || config.analyticsLimit))
+    // Overview 打开时会同时请求 /analytics 与 /insights，两条路由都走这里；用短 TTL 缓存
+    // 同一 (range,limit) 的结果，让第二次请求直接命中，避免重复 listSessions + 折叠 + 排序。
+    const cacheKey = `${url.searchParams.get('range') ?? '7d'}\u0000${limit}`
+    const cached = analyticsCache.get(cacheKey)
+    if (cached && Date.now() - cached.at < ANALYTICS_CACHE_TTL_MS) return cached.payload
     const records = await readWithTimeout((signal) => sessionQuery.listSessions(signal), 8000, 'listSessions')
     const list = sessionsNewestFirst(records)
     const picked = list.slice(0, limit)
@@ -1188,7 +1212,7 @@ export function apply(ctx, config) {
       }
     })
     const summary = summarizeFolds(folds.filter(Boolean), { days })
-    return {
+    const payload = {
       ok: true,
       generatedAt: new Date().toISOString(),
       range: url.searchParams.get('range') ?? '7d',
@@ -1197,6 +1221,8 @@ export function apply(ctx, config) {
       savings: savingsFromLogs(listCompactionLog(), summary.range.start, effectivePricing),
       ...summary,
     }
+    analyticsCache.set(cacheKey, { at: Date.now(), payload })
+    return payload
   }
 
   /** GET /status/analytics?range=7d|30d|all|today&limit=40 —— 近 N 个会话的聚合。 */
@@ -1525,14 +1551,33 @@ export function apply(ctx, config) {
     }
   }
 
-  /** POST /status/onboarding：记录首次运行是否完成/跳过、预算是否确认。 */
+  /** POST /status/onboarding：记录首次运行是否完成/跳过/授权；reset:true 时清除所有状态以重新显示。 */
   const onboardingHandler = (request, response) => {
     const send = jsonSender(response)
     if (!requireMethod(request, response, 'POST')) return
     readJson(request, response, (input) => {
+      if (input && input.reset === true) {
+        onboarding = {
+          completed: false,
+          dismissed: false,
+          deferredAt: null,
+          budgetConfirmed: false,
+          budgetTokens: config.contextWindowTokens,
+          presetConsent: null,
+          at: new Date().toISOString(),
+          version: PLUGIN_VERSION,
+        }
+        saveOnboarding()
+        return send(202, { ok: true, onboarding })
+      }
       const patch = {}
       if (input && typeof input.completed === 'boolean') patch.completed = input.completed
       if (input && typeof input.dismissed === 'boolean') patch.dismissed = input.dismissed
+      // “稍后”：写入 deferredAt 而非 dismissed，避免永久关闭。
+      if (input && input.deferred === true) {
+        patch.deferredAt = new Date().toISOString()
+        patch.dismissed = false
+      }
       if (input && typeof input.budgetConfirmed === 'boolean') patch.budgetConfirmed = input.budgetConfirmed
       if (input && typeof input.presetConsent === 'boolean') patch.presetConsent = input.presetConsent
       if (input && Number.isInteger(input.budgetTokens) && input.budgetTokens > 0) patch.budgetTokens = input.budgetTokens

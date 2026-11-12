@@ -202,7 +202,7 @@ export function foldSession(header, events, pricingRows = DEFAULT_MODEL_PRICING)
     costParts: { input: 0, cacheRead: 0, cacheWrite: 0, output: 0 },
     compactions: [],
     timeline: [],
-    tools: {},
+    tools: Object.create(null),
     events: list.length,
   }
   if (list.length === 0) return base
@@ -235,7 +235,7 @@ export function foldSession(header, events, pricingRows = DEFAULT_MODEL_PRICING)
         costParts: { input: 0, cacheRead: 0, cacheWrite: 0, output: 0 },
         requests: 0,
         toolCalls: 0,
-        tools: {},
+        tools: Object.create(null),
         compactions: 0,
         injections: 0,
         activeMs: 0,
@@ -441,7 +441,7 @@ export function summarizeFolds(folds, options = {}) {
     activeMs: 0,
     cost: null,
     costParts: { input: 0, cacheRead: 0, cacheWrite: 0, output: 0 },
-    tools: {},
+    tools: Object.create(null),
   }
   const daily = new Map()
   const bucketDays = Math.min(days, 90)

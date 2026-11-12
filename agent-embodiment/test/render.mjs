@@ -168,6 +168,18 @@ if (overview) {
   }
 }
 
+// 设置页：已完成/已跳过引导时出现「重新打开设置」入口（此前 onboardingReopen 从未渲染）。
+// 注：mock 不执行函数组件，只能断言 body 里存在 OnboardingReopen 这一层，无法穿透到其内部 DOM。
+{
+  const settingsTree = trees.settings
+  if (settingsTree) {
+    const reopenBoundary = findAll(settingsTree, (element) => element.props?.key === 'onboarding-reopen' && typeof element.props?.children?.type === 'function' && element.props.children.type.name === 'OnboardingReopen')
+    check('设置页挂载 onboarding 重开入口（completed 时）', reopenBoundary.length === 1, reopenBoundary.length)
+    const healthBoundary = findAll(settingsTree, (element) => element.props?.key === 'health' && element.props?.children?.type?.name === 'HealthCard')
+    check('设置页仍渲染健康卡', healthBoundary.length === 1, healthBoundary.length)
+  }
+}
+
 const failed = checks.filter((item) => !item.ok)
 console.log(`\n[render] ${checks.length - failed.length}/${checks.length} 项通过`)
 if (failed.length > 0) {

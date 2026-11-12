@@ -42,10 +42,12 @@
 - 位置：用户提交的**绝对** `targetDir` 下的 `.dsh/scaffolds/<slug>/` 与 `.agents/skills/<slug>-*/`。
 - 边界：拒绝文件系统根目录和用户 home；默认拒绝覆盖已有文件（`overwrite: true` 才覆盖）；每个目标路径都必须落在 `targetDir` 内（路径穿越校验）。
 - 内容：生成 preset patch、Markdown、SKILL.md、eval JSONL、可选 MCP 配置、可选 `AGENTS.md` 标记 section；不写入真实 secret（MCP 的 `${ENV_VAR}` 转为 `!!js process.env.*`）；**不在生成阶段执行任何 MCP 命令**。生成的 preset 安装仍需用户手动执行 `dsh plugin add` 或使用官方插件管理器；安装后 DSH 可能按生成的 MCP 行启动本地命令，这属于用户审查/启用后的行为。
+- **MCP 命令面**：面板提交的 `mcp[].command` / `args` / `env` 只做类型校验、不做白名单——生成阶段不执行，但会被写入 preset，安装后由 DSH 当作本地命令启动。UI 在输入框给出示例并提示「会用本机命令启动」，请只填你信任的命令。
 
 ### 1.5 数据导出（由浏览器下载）
 
 - `/api/agent-embodiment/status/export` 返回当前扫描范围内的汇总与会话级字段（`id`、`title`、`cwd`、model、tokens、费用、时间等），CSV 单元格做了公式注入中和（`=`/`+`/`-`/`@` 开头的文本会加前导 `'`）。
+- **注意**：`cwd` 是本机绝对路径、`title` 是会话标题，导出文件里都会包含这些本机信息；请勿把导出文件直接分享给不信任的第三方。
 - 文件由浏览器下载到本机；插件不上传、不写第三方位置。
 
 ## 2. 网络

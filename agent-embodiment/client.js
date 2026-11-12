@@ -21,7 +21,7 @@ window.__ModuleLoader__.load({
 
     const NS = 'agentEmbodiment'
     /** 与 package.json 版本保持一致；宿主版本不同时提示刷新页面而不是重启 DSH。 */
-    const CLIENT_VERSION = '0.25.0'
+    const CLIENT_VERSION = '0.26.0'
     /**
      * API 路径必须相对页面 base 解析，而不是写死根路径：
      * 反向代理部署在 /app/dsh/ 这类前缀下时，根路径 /api/... 会打到网关根并 404。
@@ -59,6 +59,7 @@ window.__ModuleLoader__.load({
       used: 'Measured',
       remaining: 'Remaining',
       ratio: 'Used',
+      pluginBudgetTag: 'plugin budget',
       statusOk: 'ok',
       statusWarn: 'warning',
       statusError: 'over the context limit',
@@ -85,6 +86,10 @@ window.__ModuleLoader__.load({
       lastDelta: 'Since last sync',
       retry: 'Retry',
       error: 'Could not load status',
+      errorUnauthorized: 'This session is no longer authenticated. Refresh the page or sign in again.',
+      errorForbidden: 'This session cannot access the plugin API. Refresh the page or check the token.',
+      errorUnavailable: 'The plugin service is temporarily unavailable. Try again in a moment.',
+      errorNetwork: 'Could not reach the plugin. Check that the DSH instance is still running.',
       cardFailed: 'This card failed to render: {message}',
       hint: 'Tip: /embody <tokens> temporarily overrides this session; /embody reset restores the default. /ctx is a legacy alias.',
       tokens: 'tokens',
@@ -153,7 +158,7 @@ window.__ModuleLoader__.load({
       cancel: 'Cancel',
       restoreAll: 'Restore all',
       restoreConfirm: 'Clears session toggles and session prompt text, global prompt edits and global tool disables. Continue?',
-      tokensShort: 'tok',
+      tokensShort: 'tokens',
       copy: 'Copy',
       copied: 'Copied',
       parameters: 'Parameters (JSON Schema)',
@@ -226,7 +231,7 @@ window.__ModuleLoader__.load({
       scaffoldAgents: 'Merge a marked section into AGENTS.md',
       scaffoldProcessSkills: 'Include process skills (sense-environment, verify-change)',
       scaffoldMcp: 'MCP servers (JSON, optional)',
-      scaffoldMcpHint: 'Array of { serverName, transport: "stdio"|"streamable-http", command/args/env or url/headers }. Use ${ENV_VAR} for secrets.',
+      scaffoldMcpHint: 'Array of { serverName, transport: "stdio"|"streamable-http", command/args/env or url/headers }. Use ${ENV_VAR} for secrets. The command will be launched locally after you install the generated preset.',
       scaffoldMcpInvalid: 'MCP JSON is not valid JSON.',
       scaffoldCopy: 'Copy',
       scaffoldCopied: 'Copied',
@@ -246,6 +251,7 @@ window.__ModuleLoader__.load({
       onboardingLater: 'Later',
       onboardingDone: 'Setup complete. You can change it any time in Settings.',
       onboardingReopen: 'Reopen setup',
+      onboardingReopenHint: 'You skipped first-run setup. You can reopen it any time.',
       onboardingBudgetRequired: 'Confirm a positive budget first.',
       healthTitle: 'Control health',
       healthOk: 'All core checks pass',
@@ -403,6 +409,7 @@ window.__ModuleLoader__.load({
       used: '实测用量',
       remaining: '剩余',
       ratio: '已用',
+      pluginBudgetTag: '插件预算',
       statusOk: '正常',
       statusWarn: '警告',
       statusError: '已超限',
@@ -429,6 +436,10 @@ window.__ModuleLoader__.load({
       lastDelta: '较上次同步',
       retry: '重试',
       error: '读取状态失败',
+      errorUnauthorized: '本会话登录已失效，请刷新页面或重新登录。',
+      errorForbidden: '本会话无权访问插件接口，请刷新页面或检查 token。',
+      errorUnavailable: '插件服务暂时不可用，请稍后重试。',
+      errorNetwork: '无法连接插件，请确认 DSH 实例仍在运行。',
       cardFailed: '本卡片渲染失败：{message}',
       hint: '提示：/embody <tokens> 临时覆盖本会话上下文；/embody reset 恢复默认；/ctx 是兼容别名。',
       tokens: 'tokens',
@@ -497,7 +508,7 @@ window.__ModuleLoader__.load({
       cancel: '取消',
       restoreAll: '恢复全部',
       restoreConfirm: '将清除：会话开关、会话提示词文本覆盖、全局提示词覆盖、全局工具禁用。确认？',
-      tokensShort: 'tok',
+      tokensShort: 'tokens',
       copy: '复制',
       copied: '已复制',
       parameters: '参数（JSON Schema）',
@@ -570,7 +581,7 @@ window.__ModuleLoader__.load({
       scaffoldAgents: '合并带标记的 section 到 AGENTS.md',
       scaffoldProcessSkills: '包含过程 skill（sense-environment、verify-change）',
       scaffoldMcp: 'MCP servers（JSON，可选）',
-      scaffoldMcpHint: '{ serverName, transport: "stdio"|"streamable-http", command/args/env 或 url/headers } 数组；secret 用 ${ENV_VAR}。',
+      scaffoldMcpHint: '{ serverName, transport: "stdio"|"streamable-http", command/args/env 或 url/headers } 数组；secret 用 ${ENV_VAR}。安装生成的 preset 后，这里的 command 会以本机命令启动。',
       scaffoldMcpInvalid: 'MCP JSON 格式不正确。',
       scaffoldCopy: '复制',
       scaffoldCopied: '已复制',
@@ -590,6 +601,7 @@ window.__ModuleLoader__.load({
       onboardingLater: '稍后',
       onboardingDone: '设置完成；之后可在设置里随时修改。',
       onboardingReopen: '重新打开设置',
+      onboardingReopenHint: '你跳过了首次设置，可以随时在这里重新打开。',
       onboardingBudgetRequired: '请先确认一个正整数预算。',
       healthTitle: '控制面健康',
       healthOk: '核心检查全部通过',
@@ -819,6 +831,30 @@ window.__ModuleLoader__.load({
       return `¥${number.toFixed(2)}`
     }
 
+    /**
+     * 把原始 fetch 错误映射成可操作文案。error 形如 "HTTP 401"、"TypeError: Failed to fetch"
+     * 或自定义 message；这里只按状态码 / 网络错误分类，保留原始信息供诊断。
+     * @param {any} error 原始错误（可能是 Error 或字符串）
+     * @param {(key: string) => string} t 词典函数
+     * @returns {string} 人话文案 + 原始信息
+     */
+    function humanizeError(error, t) {
+      const raw = String((error && error.message) || error || '')
+      const status = /HTTP\s+(\d{3})/iu.exec(raw)?.[1]
+      const base = status === '401'
+        ? t('errorUnauthorized')
+        : status === '403'
+          ? t('errorForbidden')
+          : status === '404' || status === '503' || status === '500'
+            ? t('errorUnavailable')
+            : /Failed to fetch|NetworkError|ECONNREFUSED|ENOTFOUND/iu.test(raw)
+              ? t('errorNetwork')
+              : null
+      // 有原始信息时附上，方便复制诊断；没有映射到已知类别就原样返回。
+      if (!base) return raw || t('error')
+      return raw && !/^HTTP\s+\d{3}\s*$/u.test(raw) ? `${base}（${raw}）` : base
+    }
+
     /** 趋势图纵轴：把峰值向上取整到 1/2/5×10^n 的刻度，避免每根柱子都顶满。 */
     function niceAxisMax(value) {
       const number = Number(value)
@@ -989,9 +1025,10 @@ window.__ModuleLoader__.load({
         ),
       )
       // 阈值刻度直接画在水位条上，省掉一排 chip；0%/100% 分别是条两端，不重复画。
+      // 刻度只靠颜色区分，读屏不可达，这里加 aria-label 说明这是警告/超限阈值线。
       if (!props.ticks) return bar
-      const tick = (ratio, color) => (typeof ratio === 'number' && ratio > 0 && ratio < 1 ? h('i', { key: ratio, style: { ...styles.barTick, left: `${ratio * 100}%`, background: color } }) : null)
-      return h('div', { style: styles.barWrap }, bar, tick(props.warnAt, 'var(--dsw-alias-state-warn-primary)'), tick(props.errorAt, 'var(--dsw-alias-state-error-primary)'))
+      const tick = (ratio, color, label) => (typeof ratio === 'number' && ratio > 0 && ratio < 1 ? h('i', { key: ratio, role: 'presentation', 'aria-label': label, style: { ...styles.barTick, left: `${ratio * 100}%`, background: color } }) : null)
+      return h('div', { style: styles.barWrap, role: 'img', 'aria-label': filled.map((row) => `${row.label} ${formatPercent(row.share)}`).join('，') }, bar, tick(props.warnAt, 'var(--dsw-alias-state-warn-primary)', t('warnAt')), tick(props.errorAt, 'var(--dsw-alias-state-error-primary)', t('errorAt')))
     }
 
     // ── 内置 ContextMeter 的视觉规格（trigger / panel / bar / rows） ────────
@@ -1416,11 +1453,31 @@ window.__ModuleLoader__.load({
       }
 
     // ── 数据 hooks ─────────────────────────────────────────────────────────
+    // 同一 URL 的 GET 请求在极短时间内合并：Overview 打开时 CtxPanel 的 useLive(/live)
+    // 与 CtxDock 的 fetchLive(/live) 会同时拉同一个会话，这里在飞行期去重，避免双拉。
+    const inflightJson = new Map()
+    const fetchJson = (path, options) => {
+      const key = `${options && options.method === 'POST' ? 'POST' : 'GET'}\u0000${path}`
+      const existing = inflightJson.get(key)
+      if (existing) return existing
+      const promise = fetch(path, { headers: { accept: 'application/json' }, ...(options || {}) })
+        .then((response) => {
+          if (!response.ok) throw new Error(`HTTP ${response.status}`)
+          return response.json()
+        })
+        .finally(() => {
+          // 完成后从 map 移除，避免长期占用内存；下一次请求重新建立。
+          setTimeout(() => inflightJson.delete(key), 0)
+        })
+      inflightJson.set(key, promise)
+      return promise
+    }
+
     function useStatus(path) {
       const [state, setState] = react.useState({ phase: 'loading' })
       const load = react.useCallback(() => {
         setState({ phase: 'loading' })
-        fetch(path, { headers: { accept: 'application/json' } })
+        fetchJson(path)
           .then((response) => {
             if (!response.ok) throw new Error(`HTTP ${response.status}`)
             return response.json()
@@ -1438,7 +1495,9 @@ window.__ModuleLoader__.load({
     const usageListeners = new Set()
     let usageTimer = null
     let usageLast = 0
-    const USAGE_THROTTLE_MS = 2000
+    // 会话内容变化（流式输出）会触发一轮 live/inventory/analytics/insights/detail 请求，
+    // 3s 节流在「更新跟手」与「请求风暴」之间折中；空闲时 MutationObserver 不触发，不会轮询。
+    const USAGE_THROTTLE_MS = 3000
     function emitUsageActivity() {
       for (const listener of usageListeners) {
         try {
@@ -1760,11 +1819,7 @@ window.__ModuleLoader__.load({
       pathRef.current = path
       const reload = react.useCallback(() => {
         const requestedPath = path
-        fetch(path, { headers: { accept: 'application/json' } })
-          .then((response) => {
-            if (!response.ok) throw new Error(`HTTP ${response.status}`)
-            return response.json()
-          })
+        fetchJson(path)
           .then((payload) => {
             if (pathRef.current !== requestedPath) return
             if (payload && payload.ok) setState({ data: payload, at: new Date().toISOString(), error: null })
@@ -1828,8 +1883,7 @@ window.__ModuleLoader__.load({
       const fetchLive = react.useCallback(() => {
         if (!sessionId) return
         const requestedSession = sessionId
-        fetch(`${STATUS_PATH}/live?sessionId=${encodeURIComponent(String(sessionId))}`, { headers: { accept: 'application/json' } })
-          .then((response) => (response.ok ? response.json() : null))
+        fetchJson(`${STATUS_PATH}/live?sessionId=${encodeURIComponent(String(sessionId))}`)
           .then((payload) => {
             if (sessionRef.current !== requestedSession) return
             if (payload && payload.ok) setData(payload)
@@ -2925,7 +2979,8 @@ window.__ModuleLoader__.load({
         if (dismiss) {
           setBusy(true)
           try {
-            await post('/onboarding', { dismissed: true })
+            // “稍后”不是永久关闭：只记录 deferredAt，下次进入仍会再次出现（见 onboarding 文案）。
+            await post('/onboarding', { deferred: true })
             if (typeof props.onDone === 'function') props.onDone()
           } catch (failure) {
             setError(String(failure?.message || failure))
@@ -2993,6 +3048,33 @@ window.__ModuleLoader__.load({
           h('button', { type: 'button', style: { ...styles.button, ...styles.buttonPrimary }, disabled: busy, onClick: () => finish(false), 'data-embodiment-onboarding-finish': '1' }, busy ? t('saving') : t('onboardingFinish')),
           h('button', { type: 'button', style: styles.button, disabled: busy, onClick: () => finish(true), 'data-embodiment-onboarding-later': '1' }, t('onboardingLater')),
         ),
+      )
+    }
+
+    function OnboardingReopen(props) {
+      const t = props.t
+      const [busy, setBusy] = react.useState(false)
+      const [error, setError] = react.useState('')
+      const reopen = () => {
+        setBusy(true)
+        setError('')
+        fetch(`${STATUS_PATH}/onboarding`, {
+          method: 'POST',
+          headers: { 'content-type': 'application/json' },
+          body: JSON.stringify({ reset: true }),
+        })
+          .then(async (response) => {
+            const payload = await response.json().catch(() => ({}))
+            if (!response.ok) throw new Error(payload.error || `HTTP ${response.status}`)
+            if (typeof props.onDone === 'function') props.onDone()
+          })
+          .catch((failure) => setError(String(failure?.message || failure)))
+          .finally(() => setBusy(false))
+      }
+      return h('div', { style: styles.banner, 'data-embodiment-onboarding-reopen': '1' },
+        h('span', null, t('onboardingReopenHint')),
+        h('button', { type: 'button', style: styles.button, disabled: busy, onClick: reopen, 'data-embodiment-onboarding-reopen-btn': '1' }, t('onboardingReopen')),
+        error ? h('span', { style: styles.error }, error) : null,
       )
     }
 
@@ -3276,7 +3358,7 @@ window.__ModuleLoader__.load({
       const kpi = props.kpi || {}
       const items = [
         { key: 'sessions', label: t('kpiSessions'), value: formatTokens(kpi.sessions), sub: props.coverage ? t('coverageShort').replace('{scanned}', props.coverage.scanned).replace('{total}', props.coverage.total) : '' },
-        { key: 'tokens', label: t('kpiTokens'), value: compactTokens(kpi.tokens), sub: `≈ ${formatTokens(kpi.tokens)} tok` },
+        { key: 'tokens', label: t('kpiTokens'), value: compactTokens(kpi.tokens), sub: `≈ ${formatTokens(kpi.tokens)} tokens` },
         { key: 'cache', label: t('kpiCache'), value: formatPercent(kpi.cacheHit, 1), sub: `${compactTokens(kpi.cacheRead || 0)} cache` },
         { key: 'tools', label: t('kpiTools'), value: formatTokens(kpi.toolCalls), sub: '' },
         { key: 'active', label: t('kpiActive'), value: formatDurationMs(kpi.activeMs), sub: '' },
@@ -3320,7 +3402,7 @@ window.__ModuleLoader__.load({
           ),
           h('div', { style: styles.billingRows }, rows.map((row) => h('div', { key: row.key, style: styles.billingRow, 'data-embodiment-billing-row': row.key },
             h('span', { style: styles.billingRowLabel }, row.label),
-            h('span', { style: styles.billingRowTokens }, `${compactTokens(row.tokens)} tok`),
+            h('span', { style: styles.billingRowTokens }, `${compactTokens(row.tokens)} tokens`),
             h('span', { style: styles.billingRowCost }, formatCost(row.cost)),
           ))),
         ),
@@ -3332,12 +3414,16 @@ window.__ModuleLoader__.load({
       const t = props.t
       const daily = Array.isArray(props.daily) ? props.daily : []
       const max = Math.max(1, ...daily.map((day) => Number(day.tokens) || 0))
-      return h('div', { style: styles.chartWrap, 'data-embodiment-daily': '1' },
-        h('div', { style: styles.cardHead }, h('h3', { style: styles.cardTitle }, t('dailyTitle')), h('span', { style: styles.cardSub }, `${compactTokens(daily.reduce((sum, day) => sum + (Number(day.tokens) || 0), 0))} tok`)),
+      const total = daily.reduce((sum, day) => sum + (Number(day.tokens) || 0), 0)
+      const ariaLabel = daily.length === 0
+        ? t('dailyTitle')
+        : `${t('dailyTitle')}：${daily.map((day) => `${String(day.date).slice(5)} ${formatTokens(Number(day.tokens) || 0)}`).join('，')}`
+      return h('div', { style: styles.chartWrap, 'data-embodiment-daily': '1', role: 'img', 'aria-label': ariaLabel },
+        h('div', { style: styles.cardHead }, h('h3', { style: styles.cardTitle }, t('dailyTitle')), h('span', { style: styles.cardSub }, `${compactTokens(total)} tokens`)),
         h('div', { style: styles.chartBars }, daily.map((day) => {
           const value = Number(day.tokens) || 0
           const ratio = value / max
-          return h('div', { key: day.date, style: styles.chartBarCol, title: `${day.date} · ${formatTokens(value)} tok · ${day.requests} req` },
+          return h('div', { key: day.date, style: styles.chartBarCol, title: `${day.date} · ${formatTokens(value)} tokens · ${day.requests} req` },
             h('div', { style: { ...styles.chartBar, ...(value === 0 ? styles.chartBarZero : null), height: `${Math.max(2, ratio * 100)}%` } }),
             h('span', { style: styles.chartLabel }, String(day.date).slice(5)),
           )
@@ -3426,7 +3512,7 @@ window.__ModuleLoader__.load({
             h('p', { style: styles.sessionTitle }, item.title || shortSessionId(item.id)),
             h('span', { style: styles.sessionMeta }, `${base(item.cwd)} · ${item.lastActivityAt ? new Date(item.lastActivityAt).toLocaleString() : '—'}`),
             h('div', { style: styles.sessionStats },
-              h('span', null, `${compactTokens(item.tokens)} tok`),
+              h('span', null, `${compactTokens(item.tokens)} tokens`),
               h('span', null, `${formatTokens(item.turns)} ${t('turnsLabel')}`),
               h('span', null, `${formatTokens(item.requests)} ${t('requestsLabel')}`),
               item.cost !== null && item.cost !== undefined ? h('span', { style: item.cost > 0 && item.cost === maxCost ? { color: 'var(--dsw-alias-state-warn-primary)' } : null, title: totalCost > 0 ? `${Math.round(((item.cost || 0) / totalCost) * 100)}%` : '' }, `${t('costEstimateLabel')} ${formatCost(item.cost)}`) : null,
@@ -3494,7 +3580,7 @@ window.__ModuleLoader__.load({
               : `${t('trendPeak')} ${compactTokens(maxTotal)} / ${compactTokens(budget)}（${formatPercent(peakShare, 0)}）`,
           ),
         ),
-        h('div', { style: styles.trendBody },
+        h('div', { style: styles.trendBody, role: 'img', 'aria-label': `${t('trendTitle')}：${series.map((entry, index) => `#${index + 1} ${t('trendPrompt')} ${formatTokens(entry.prompt)} ${t('trendOutput')} ${formatTokens(entry.output)}`).join('，')}` },
           h('div', { style: styles.trendAxis },
             h('span', null, compactTokens(axisMax)),
             h('span', null, compactTokens(axisMax / 2)),
@@ -3525,7 +3611,7 @@ window.__ModuleLoader__.load({
           h('li', { key: `${item.at}-${item.turn}`, style: styles.logItem },
             h('div', { style: styles.logLine },
               h('span', { style: styles.logTime }, item.at ? new Date(item.at).toLocaleTimeString() : '—'),
-              h('span', { style: styles.logMain }, `${formatTokens(item.shadowedTokens)} tok`),
+              h('span', { style: styles.logMain }, `${formatTokens(item.shadowedTokens)} tokens`),
               h('span', { style: styles.logSession }, `${t('durationLabel')} ${formatDurationMs(item.durationMs)}`),
             ),
           ),
@@ -3554,7 +3640,7 @@ window.__ModuleLoader__.load({
             h('span', { style: { ...styles.eventKind, color: success ? 'var(--dsw-alias-state-success-primary)' : 'var(--dsw-alias-state-error-primary)' } }, success ? t('eventSuccess') : t('eventFailure')),
             h('div', { style: styles.eventMain },
               h('div', null, entry.before || entry.after ? `${t('beforeAfter')}: ${formatTokens(entry.before)} → ${formatTokens(entry.after)}${entry.target ? ` · ${t('targetLine')} ${formatTokens(entry.target)}` : ''}` : `${t('targetLine')} ${formatTokens(entry.target)}`),
-              h('div', { style: styles.sessionMeta }, `${entry.trigger || '—'}${entry.rounds !== null && entry.rounds !== undefined ? ` · ${t('roundsLabel')} ${entry.rounds}` : ''}${entry.durationMs !== null && entry.durationMs !== undefined ? ` · ${t('durationLabel')} ${formatDurationMs(entry.durationMs)}` : ''}${entry.shadowed ? ` · ${formatTokens(entry.shadowed)} tok` : ''}`),
+              h('div', { style: styles.sessionMeta }, `${entry.trigger || '—'}${entry.rounds !== null && entry.rounds !== undefined ? ` · ${t('roundsLabel')} ${entry.rounds}` : ''}${entry.durationMs !== null && entry.durationMs !== undefined ? ` · ${t('durationLabel')} ${formatDurationMs(entry.durationMs)}` : ''}${entry.shadowed ? ` · ${formatTokens(entry.shadowed)} tokens` : ''}`),
               entry.message ? h('div', { style: styles.logMessage }, entry.message) : null,
             ),
             h('span', { style: styles.eventAside }, formatTime(entry.at)),
@@ -3853,7 +3939,7 @@ window.__ModuleLoader__.load({
       const headerParts = []
       if (headerSession && headerSession.title) headerParts.push(`${t('sessionLabel')} ${headerSession.title}`)
       if (headerUsed !== null && headerBudget !== null && headerBudget > 0) {
-        headerParts.push(`${t('ratio')} ${compactTokens(headerUsed)} / ${compactTokens(headerBudget)}（${formatPercent(headerRatio, 0)}）`)
+        headerParts.push(`${t('ratio')} ${compactTokens(headerUsed)} / ${compactTokens(headerBudget)}（${formatPercent(headerRatio, 0)}，${t('pluginBudgetTag')}）`)
         headerParts.push(`${t('remaining')} ${compactTokens(Math.max(0, headerBudget - headerUsed))}`)
       } else if (headerMeta && typeof headerMeta.tokens === 'number') {
         // 历史会话可能不在当前进程的 live 表里；此时至少给出该会话累计 tokens，而不是让头部空着。
@@ -3967,7 +4053,7 @@ window.__ModuleLoader__.load({
       }
       if (state.phase === 'error') {
         body.push(h('div', { key: 'error', style: styles.emptyState },
-          h('p', { style: styles.error }, `${t('error')}: ${state.message}`),
+          h('p', { style: styles.error }, humanizeError(state.message, t)),
           h('button', { type: 'button', style: styles.button, onClick: reloadAll }, t('retry')),
         ))
         return renderPanel()
@@ -3982,7 +4068,7 @@ window.__ModuleLoader__.load({
         }
         if (analyticsState.error && !analytics) {
           body.push(h('div', { key: 'analyticsError', style: styles.emptyState },
-            h('p', { style: styles.error }, `${t('analyticsError')}: ${analyticsState.error}`),
+            h('p', { style: styles.error }, humanizeError(analyticsState.error, t)),
             h('button', { type: 'button', style: styles.button, onClick: reloadAnalytics }, t('retry')),
           ))
         } else if (!analytics) {
@@ -4003,6 +4089,10 @@ window.__ModuleLoader__.load({
         body.push(guard('events', h(EventsCard, { t, logs: control.log || [], detail })))
       } else {
         if (data && data.health) body.push(guard('health', h(HealthCard, { t, health: data.health, control, onDone: reloadAll })))
+        // 首次引导跳过/完成后，仍可从设置里重新打开（onboardingReopen 此前已定义但从未渲染）。
+        if (data && data.onboarding && (data.onboarding.dismissed || data.onboarding.completed)) {
+          body.push(guard('onboarding-reopen', h(OnboardingReopen, { t, data, onDone: reloadAll })))
+        }
         // 设置页三列各自兜一层：某一列抛错时另外两列照常可用。
         body.push(guard('settings', h('div', { style: styles.cols },
           guard('control', h(ControlSection, { t, control, onToggled: load })),

@@ -2,6 +2,21 @@
 
 格式参考 Keep a Changelog；版本遵循 SemVer。DSH 兼容版本写在每个条目的 Compatibility 下。
 
+## [0.26.0] - 2026-11-11
+
+### Changed
+
+- **性能**：`/insights` 与 `/analytics` 现在共享同一份 5s 短缓存结果，Overview 打开时不再重复 `listSessions` + 折叠 + 排序；前端 `/live` 增加飞行期去重（CtxPanel 与 CtxDock 不再双拉同一会话），MutationObserver 节流从 2s 放宽到 3s；compaction-log 超限时截到低水位（256KB）而非刚好 400 行，避免在 512KB 边界反复全量读写。
+- **首次引导「稍后」语义修正**：此前「稍后」按钮写入 `dismissed:true`（永久关闭），与文案矛盾；现在改为 `deferredAt`（短时不再打扰，之后仍会再出现）。新增 `POST /onboarding { reset:true }` 与设置页的「重新打开设置」入口（`onboardingReopen` 此前已定义但从未渲染）。
+- **错误提示人话化**：401/403/5xx 与网络错误映射为可操作文案（附原始信息供诊断），不再只显示 `HTTP 401`。
+- **数字口径统一**：`tok` 缩写统一为 `tokens`；头部上下文标注「插件预算」，与「费用（估）」口径一致。
+- **可访问性**：日图/趋势图容器加 `role="img"` + `aria-label`；分段上下文条的警告/超限阈值线补 `aria-label`，消除颜色唯一信号。
+- **安全加固**：`metrics.js` 工具名计数改用 `Object.create(null)`（防 `__proto__` 原型污染）；PERMISSIONS 补两条披露（scaffold MCP `command` 不做白名单、导出含本机绝对路径）。
+
+### Compatibility
+
+- 无变化：`0.2.0-rc.2` / `0.2.1-rc.2` / `0.2.1-rc.3` / `0.2.1-rc.5` = compatible；`0.2.2-rc.1` = unknown。
+
 ## [0.25.0] - 2026-11-10
 
 ### Changed

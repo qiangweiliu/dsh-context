@@ -2,7 +2,7 @@
 
 本文描述 `agent-embodiment` 的内部结构、集成点和验证方式。面向用户的功能说明见 [README.md](../README.md)；约束与已知限制见 [LIMITATIONS.md](LIMITATIONS.md)。
 
-当前版本：`0.25.0`
+当前版本：`0.26.0`
 
 ## 1. 两个半侧
 

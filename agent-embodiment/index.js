@@ -1651,6 +1651,32 @@ export function apply(ctx, config) {
     })
   }
 
+  /**
+   * POST /status/session-budget {sessionId, tokens}：面板里设置/清除单个会话的预算覆盖，
+   * 等价于在会话里执行 `/embody <tokens>` / `/embody reset`。tokens 传 null 或 0 表示清除。
+   */
+  const sessionBudgetHandler = (request, response) => {
+    const send = jsonSender(response)
+    if (!requireMethod(request, response, 'POST')) return
+    readJson(request, response, (input) => {
+      if (!input || typeof input !== 'object' || Array.isArray(input)) {
+        return send(400, { ok: false, error: 'expected a JSON object' })
+      }
+      const sessionId = typeof input.sessionId === 'string' ? input.sessionId.trim() : ''
+      if (!sessionId) return send(400, { ok: false, error: 'sessionId is required' })
+      const clear = input.tokens === null || input.tokens === 0 || input.tokens === undefined
+      if (!clear && (!Number.isInteger(input.tokens) || input.tokens <= 0)) {
+        return send(400, { ok: false, error: 'tokens must be a positive integer, or null to clear' })
+      }
+      // 清除走 clearSessionBudget（setSessionBudget 只接受正整数）；清除是幂等的，
+      // 即使本来没有覆盖也返回成功，避免面板上「清除」按钮报错。
+      if (clear) clearSessionBudget(sessionId)
+      else if (!setSessionBudget(sessionId, input.tokens)) return send(400, { ok: false, error: 'could not update session budget' })
+      bumpStatusRevision()
+      return send(202, { ok: true, sessionId, tokens: clear ? null : input.tokens, sessionBudgets: listSessionBudgets() })
+    })
+  }
+
   /** GET /status/export?format=json|csv：导出当前扫描范围的分析结果。 */
   const exportHandler = async (request, response) => {
     if (!requireMethod(request, response, 'GET')) return
@@ -2061,6 +2087,7 @@ export function apply(ctx, config) {
         server.register({ kind: 'exact', path: `${STATUS_PATH}/analytics`, handler: authed(analyticsHandler) }),
         server.register({ kind: 'exact', path: `${STATUS_PATH}/insights`, handler: authed(insightsHandler) }),
         server.register({ kind: 'exact', path: `${STATUS_PATH}/onboarding`, handler: authed(onboardingHandler) }),
+        server.register({ kind: 'exact', path: `${STATUS_PATH}/session-budget`, handler: authed(sessionBudgetHandler) }),
         server.register({ kind: 'exact', path: `${STATUS_PATH}/export`, handler: authed(exportHandler) }),
         server.register({ kind: 'exact', path: `${STATUS_PATH}/data/reset`, handler: authed(dataResetHandler) }),
         server.register({ kind: 'exact', path: `${STATUS_PATH}/session-detail`, handler: authed(sessionDetailHandler) }),

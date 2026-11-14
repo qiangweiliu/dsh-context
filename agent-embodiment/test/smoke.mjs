@@ -248,6 +248,25 @@ scaffoldPreview?.handler(makeJsonRequest('POST', {}, { 'content-type': 'text/pla
 await plainDone
 check('POST 非 application/json 返回 415', plainResponse.statusCode === 415, plainResponse.statusCode)
 
+// 面板里的「本会话预算」入口：POST /status/session-budget 与 /embody <tokens> 等价。
+const sessionBudgetRoute = webServer.routes.get('/api/agent-embodiment/status/session-budget')
+if (sessionBudgetRoute) {
+  const setBudget = await callJson(sessionBudgetRoute, 'POST', { sessionId: 'smoke-budget', tokens: 4242 })
+  const setPayload = JSON.parse(setBudget.body || '{}')
+  check('session-budget：设置返回 202 并回显预算', setBudget.statusCode === 202 && setPayload.tokens === 4242, { status: setBudget.statusCode, tokens: setPayload.tokens })
+  const listAfterSet = setPayload.sessionBudgets || []
+  check('session-budget：设置后出现在 sessionBudgets 里', listAfterSet.some((row) => row && row.tokens === 4242), listAfterSet)
+  const clearBudget = await callJson(sessionBudgetRoute, 'POST', { sessionId: 'smoke-budget', tokens: null })
+  const clearPayload = JSON.parse(clearBudget.body || '{}')
+  check('session-budget：tokens=null 清除覆盖', clearBudget.statusCode === 202 && clearPayload.tokens === null, { status: clearBudget.statusCode, tokens: clearPayload.tokens })
+  const badBudget = await callJson(sessionBudgetRoute, 'POST', { sessionId: 'smoke-budget', tokens: -5 })
+  check('session-budget：非法 tokens 返回 400', badBudget.statusCode === 400, badBudget.statusCode)
+  const noSession = await callJson(sessionBudgetRoute, 'POST', { tokens: 1000 })
+  check('session-budget：缺 sessionId 返回 400', noSession.statusCode === 400, noSession.statusCode)
+} else {
+  check('session-budget 路由已注册', false, 'route missing')
+}
+
 const listResponse = makeResponse()
 scaffoldTemplates?.handler({ method: 'GET' }, listResponse)
 const listPayload = listResponse.body ? JSON.parse(listResponse.body) : {}

@@ -251,6 +251,13 @@ window.__ModuleLoader__.load({
       onboardingLater: 'Later',
       onboardingDone: 'Setup complete. You can change it any time in Settings.',
       onboardingReopen: 'Reopen setup',
+      sessionBudget: 'Session budget',
+      sessionBudgetHint: 'Overrides the budget for this session only; takes precedence over the control row and host default.',
+      sessionBudgetNoSession: 'Open a session first to set its budget.',
+      sessionBudgetCurrent: 'Current override',
+      sessionBudgetSaved: 'Saved',
+      sessionBudgetFailed: 'Save failed',
+      clear: 'Clear',
       onboardingReopenHint: 'You skipped first-run setup. You can reopen it any time.',
       onboardingBudgetRequired: 'Confirm a positive budget first.',
       healthTitle: 'Control health',
@@ -281,6 +288,8 @@ window.__ModuleLoader__.load({
       savingsMethod: 'before→after per compaction, Flash input rate; not a full billing reconciliation',
       dataScope: 'Scope: latest {scanned}/{total} sessions (limit {limit})',
       exportJson: 'Export JSON',
+      exportConfirmHint: 'The export includes local absolute paths (cwd). Download anyway?',
+      exportConfirmYes: 'Download',
       exportCsv: 'Export CSV',
       clearData: 'Clear local data',
       clearDataHint: 'Deletes local compaction logs and/or session toggles. Profile config is not touched.',
@@ -601,6 +610,13 @@ window.__ModuleLoader__.load({
       onboardingLater: '稍后',
       onboardingDone: '设置完成；之后可在设置里随时修改。',
       onboardingReopen: '重新打开设置',
+      sessionBudget: '本会话预算',
+      sessionBudgetHint: '只覆盖当前会话的预算，优先级高于控制行与宿主默认值。',
+      sessionBudgetNoSession: '先打开一个会话，才能设置它的预算。',
+      sessionBudgetCurrent: '当前覆盖',
+      sessionBudgetSaved: '已保存',
+      sessionBudgetFailed: '保存失败',
+      clear: '清除',
       onboardingReopenHint: '你跳过了首次设置，可以随时在这里重新打开。',
       onboardingBudgetRequired: '请先确认一个正整数预算。',
       healthTitle: '控制面健康',
@@ -631,6 +647,8 @@ window.__ModuleLoader__.load({
       savingsMethod: '按每次压缩前→后差值、Flash 输入价估算；不是完整账单对账',
       dataScope: '统计范围：最近 {scanned}/{total} 个会话（上限 {limit}）',
       exportJson: '导出 JSON',
+      exportConfirmHint: '导出文件包含本机绝对路径（cwd），确认下载？',
+      exportConfirmYes: '确认下载',
       exportCsv: '导出 CSV',
       clearData: '清理本地数据',
       clearDataHint: '只删除本地压缩日志和/或会话开关，不改 profile 配置。',
@@ -3077,6 +3095,62 @@ window.__ModuleLoader__.load({
       )
     }
 
+    /**
+     * 本会话预算覆盖：面板里的等价入口，省得用户记 `/embody <tokens>` 命令。
+     * 写 `/status/session-budget`，tokens 传 null 表示清除（回到控制行/宿主默认）。
+     */
+    function SessionBudgetCard(props) {
+      const t = props.t
+      const current = Number(props.current) > 0 ? Number(props.current) : null
+      const [value, setValue] = react.useState(() => (current ? String(current) : ''))
+      const [busy, setBusy] = react.useState(false)
+      const [notice, setNotice] = react.useState(null)
+      const sessionId = props.sessionId || ''
+      const submit = (tokens) => {
+        if (busy || !sessionId) return
+        setBusy(true)
+        setNotice(null)
+        fetchJson(`${STATUS_PATH}/session-budget`, {
+          method: 'POST',
+          headers: { 'content-type': 'application/json' },
+          body: JSON.stringify({ sessionId, tokens }),
+        })
+          .then(() => {
+            setNotice({ kind: 'ok', text: t('sessionBudgetSaved') })
+            if (typeof props.onDone === 'function') props.onDone()
+          })
+          .catch((error) => setNotice({ kind: 'error', text: `${t('sessionBudgetFailed')}: ${String((error && error.message) || error)}` }))
+          .finally(() => setBusy(false))
+      }
+      const parsed = Number(value)
+      const valid = Number.isInteger(parsed) && parsed > 0
+      return h(
+        Card,
+        { title: t('sessionBudget'), t, style: styles.cardFill, id: 'session-budget' },
+        h('p', { style: styles.text }, sessionId ? t('sessionBudgetHint') : t('sessionBudgetNoSession')),
+        h(
+          'div',
+          { style: styles.fieldLabelRow },
+          h('input', {
+            type: 'number',
+            min: 1,
+            step: 1000,
+            value,
+            disabled: busy || !sessionId,
+            placeholder: String(props.budget || 128000),
+            onChange: (event) => setValue(event.target.value),
+            style: styles.input,
+            'data-embodiment-session-budget-input': '1',
+            'aria-label': t('sessionBudget'),
+          }),
+          h('button', { type: 'button', style: styles.buttonPrimary, disabled: busy || !sessionId || !valid, onClick: () => submit(parsed), 'data-embodiment-session-budget-save': '1' }, t('save')),
+          current ? h('button', { type: 'button', style: styles.button, disabled: busy || !sessionId, onClick: () => submit(null), 'data-embodiment-session-budget-clear': '1' }, t('clear')) : null,
+        ),
+        current ? h('p', { style: styles.kpiSub }, `${t('sessionBudgetCurrent')}: ${current}`) : null,
+        notice ? h('p', { style: notice.kind === 'error' ? styles.error : styles.text }, notice.text) : null,
+      )
+    }
+
     function HealthCard(props) {
       const t = props.t
       const health = props.health
@@ -3292,8 +3366,22 @@ window.__ModuleLoader__.load({
       const range = props.range || '7d'
       const coverage = props.coverage || {}
       const [confirm, setConfirm] = react.useState('')
+      const [exportConfirm, setExportConfirm] = react.useState('')
       const [busy, setBusy] = react.useState(false)
       const [notice, setNotice] = react.useState('')
+      // 二次确认通过后再真正触发下载：用临时 <a download> 保留文件名与浏览器原生下载行为。
+      const downloadExport = (format) => {
+        try {
+          const link = document.createElement('a')
+          link.href = `${STATUS_PATH}/export?format=${encodeURIComponent(format)}&range=${encodeURIComponent(range)}`
+          link.download = ''
+          link.rel = 'noopener'
+          document.body.appendChild(link)
+          link.click()
+          link.remove()
+        } catch {}
+        setExportConfirm('')
+      }
       const clear = (scope) => {
         if (confirm !== scope) {
           setConfirm(scope)
@@ -3325,9 +3413,17 @@ window.__ModuleLoader__.load({
         ),
         h('p', { style: styles.cardSub }, t('alertToggleHint')),
         h('div', { style: styles.actionRow },
-          h('a', { href: `${STATUS_PATH}/export?format=json&range=${encodeURIComponent(range)}`, download: '', style: styles.button, 'data-embodiment-export': 'json' }, t('exportJson')),
-          h('a', { href: `${STATUS_PATH}/export?format=csv&range=${encodeURIComponent(range)}`, download: '', style: styles.button, 'data-embodiment-export': 'csv' }, t('exportCsv')),
+          h('button', { type: 'button', style: styles.button, onClick: () => setExportConfirm('json'), 'data-embodiment-export': 'json' }, t('exportJson')),
+          h('button', { type: 'button', style: styles.button, onClick: () => setExportConfirm('csv'), 'data-embodiment-export': 'csv' }, t('exportCsv')),
         ),
+        // 导出文件里含本机绝对路径（cwd），下载前先确认一次，避免误点外传。
+        exportConfirm
+          ? h('div', { style: styles.actionRow, 'data-embodiment-export-confirm': exportConfirm },
+              h('span', { style: styles.cardSub }, t('exportConfirmHint')),
+              h('button', { type: 'button', style: styles.buttonPrimary, onClick: () => downloadExport(exportConfirm), 'data-embodiment-export-yes': '1' }, t('exportConfirmYes')),
+              h('button', { type: 'button', style: styles.button, onClick: () => setExportConfirm(''), 'data-embodiment-export-cancel': '1' }, t('cancel')),
+            )
+          : null,
         h('div', { style: styles.actionRow },
           ['logs', 'toggles', 'all'].map((scope) => h('button', { key: scope, type: 'button', style: styles.button, disabled: busy, onClick: () => clear(scope), 'data-embodiment-data-clear': scope }, scope === 'logs' ? t('clearLogs') : scope === 'toggles' ? t('clearToggles') : t('clearAllData'))),
         ),
@@ -4092,6 +4188,14 @@ window.__ModuleLoader__.load({
         if (data && data.onboarding && (data.onboarding.dismissed || data.onboarding.completed)) {
           body.push(guard('onboarding-reopen', h(OnboardingReopen, { t, data, onDone: reloadAll })))
         }
+        // 本会话预算：面板入口，等价 /embody <tokens>；无活动会话时只显示说明。
+        body.push(guard('session-budget', h(SessionBudgetCard, {
+          t,
+          sessionId: activeSession,
+          current: latestForSession && latestForSession.override,
+          budget: budget.tokens,
+          onDone: reloadAll,
+        })))
         // 设置页三列各自兜一层：某一列抛错时另外两列照常可用。
         body.push(guard('settings', h('div', { style: styles.cols },
           guard('control', h(ControlSection, { t, control, onToggled: load })),

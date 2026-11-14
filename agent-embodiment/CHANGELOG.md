@@ -14,6 +14,7 @@
 - `test/client-build.mjs`（6 项）：字节级防漂移——`client.js` 必须等于 `client-src/` 的拼接结果；片段目录里出现未登记进 ORDER 的文件也会失败，并提示跑 `npm run build:client`。
 - **写操作统一入口**：新增 `postJson()`，11 处裸 `fetch` 全部收口（inventory 的 7 个写接口、控制行启停、配置保存、定价保存、数据清理、导出重置、脚手架 preview/generate、dock 状态读取）。`fetchJson` 现在会把服务端 `{error}` 文案带进异常，用户看到的是具体原因而不是 `HTTP 400`。
 - 写后回读改为 `?fresh=1`，绕过 `/status` 的 800ms 缓存，避免「保存成功但面板还显示旧值」。
+- **测试分工收敛**：`static.mjs` 只保留跨文件契约（manifest / exports / 版本副本 / locale / slot 注册形状），并在文件头写明「不要在这里新增源码字符串断言」；`render.mjs` 新增 4 项 dock 行为断言（真执行 `composer.dock` 组件：验证已用比例标记、余额胶囊在无账号时不占位、渲染不抛错），删掉 2 条纯实现细节断言（`viewBox: '0 0 14 14'` 与 `radius = 5.5`）。单元净增 2 项（static 99 / render 29）。
 
 ### Compatibility
 

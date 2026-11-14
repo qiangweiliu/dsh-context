@@ -281,14 +281,14 @@ node --check profile.js
 
 ```text
 client-build   6/6
-static       101/101
+static        99/99
 metrics       56/56
 state         26/26
 persist        7/7
 profile       11/11
 scaffold     146/146
 insights      16/16
-render        25/25
+render        29/29
 fetch-chain    3/3
 mount-guard    7/7
 locale-keys    6/6
@@ -297,7 +297,7 @@ smoke         78/78
 prompt-state  11/11
 ```
 
-单元共 410 项、集成 144 项。
+单元共 412 项、集成 144 项。
 
 `client.js` 是**生成产物**：源码在 `client-src/`（11 个片段，按功能分：header / 词典 / 样式 / 核心组件 / dock / inventory / sections / charts / scaffold / panel / apply），`npm run build:client` 按固定顺序拼回单文件。DSH 浏览器侧只加载一个 `client.js` 且模块内只能 `require('react')`，所以发布物保持单文件。改完片段必须重新构建，`test/client-build.mjs` 会做字节级比对并在 CI 里失败提示。`test/render.mjs` 用最小 React mock 真正执行 `client.js` 的面板组件（四个 tab、ARIA 关系、键盘切换、卡片级错误边界）；`fetch-chain.mjs` 执行真实的 fetch 链；`mount-guard.mjs` 固定挂载幂等与 HMR 重挂；`locale-keys.mjs` 校验 en/zh 词典与 `t('key')` 调用点一致。
 

@@ -180,6 +180,42 @@ if (overview) {
   }
 }
 
+// 输入框下方的两个 dock 条目：直接执行注册的组件，断言真实 DOM 标记。
+// 这两条原先只断言源码里出现某个字符串（遇到重命名就误报），改成执行组件后更有意义。
+{
+  const react = makeReact({ 0: readyStatus, 1: 'overview' })
+  const loaded = loadClient(source, { react })
+  for (const inject of loaded.slotInjects) inject.callback()
+  const docks = loaded.slotRegistrations.filter((entry) => entry.definition?.name === 'conversation.composer.dock')
+  const usageDock = docks.find((entry) => entry.definition?.id === 'embody-usage')
+  const balanceDock = docks.find((entry) => entry.definition?.id === 'embody-balance')
+  check('注册了两个 composer.dock 条目（用量 + 余额）', docks.length === 2 && Boolean(usageDock) && Boolean(balanceDock), docks.map((entry) => entry.definition?.id))
+
+  let usageTree = null
+  let usageError = null
+  try {
+    const element = usageDock?.component({ t })
+    usageTree = element?.type ? element.type({ ...element.props, t }) : element
+  } catch (error) {
+    usageError = error
+  }
+  const usageMarkers = usageTree ? findAll(usageTree, (element) => element.props?.['data-embodiment-dock-percent'] !== undefined) : []
+  check('用量 dock 渲染出已用比例标记', usageMarkers.length > 0, usageError ? String(usageError.message) : usageMarkers.length)
+
+  let balanceTree = null
+  let balanceError = null
+  try {
+    const element = balanceDock?.component({ t })
+    balanceTree = element?.type ? element.type({ ...element.props, t }) : element
+  } catch (error) {
+    balanceError = error
+  }
+  const balanceMarker = balanceTree ? findAll(balanceTree, (element) => element.props?.['data-embodiment-balance'] === '1') : []
+  // 没有账号余额扩展、或用户关掉胶囊时，dock 必须整块不渲染（不占位、不留空 span）。
+  check('余额 dock 在无账号/未启用时渲染为空', balanceTree === null || balanceMarker.length === 0, balanceError ? String(balanceError.message) : balanceMarker.length)
+  check('余额 dock 渲染失败时也不会抛错', balanceError === null, balanceError ? String(balanceError.message) : null)
+}
+
 const failed = checks.filter((item) => !item.ok)
 console.log(`\n[render] ${checks.length - failed.length}/${checks.length} 项通过`)
 if (failed.length > 0) {

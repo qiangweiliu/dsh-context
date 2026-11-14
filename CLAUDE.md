@@ -32,7 +32,7 @@ node test/profile.mjs       # profile 识别、状态目录与旧目录迁移
 node test/render.mjs        # 用 mock React 真跑面板组件（行为级，抓 TDZ 这类渲染崩溃）
 ```
 
-当前基线（0.28.0）：client-build 6/6、static 101/101、metrics 56/56、state 26/26、persist 7/7、profile 11/11、scaffold 146/146、insights 16/16、render 25/25、fetch-chain 3/3、mount-guard 7/7、locale-keys 6/6（共 410）；集成 control 55/55、smoke 78/78、prompt-state 11/11。
+当前基线（0.28.0）：client-build 6/6、static 99/99、metrics 56/56、state 26/26、persist 7/7、profile 11/11、scaffold 146/146、insights 16/16、render 29/29、fetch-chain 3/3、mount-guard 7/7、locale-keys 6/6（共 412）；集成 control 55/55、smoke 78/78、prompt-state 11/11。
 
 CI 在 `.github/workflows/test.yml`：Node 20/22/24 三档跑单元 + `npm run lint`；另有 integration job 从 npm 安装 Cordis（4.0.5 / 4.1.0 两档）跑 control/smoke/prompt-state，不依赖本机 app.asar。两种 job 都带 npm 缓存与 `concurrency` 取消。
 

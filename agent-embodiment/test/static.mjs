@@ -5,6 +5,13 @@
  * locale 元数据、bundle patch 的结构、client.js 能否在 mock 的
  * __ModuleLoader__/cordis 上下文里 apply 并注册 settings.section。
  *
+ * **断言分工**（避免这里变成脆弱的源码匹配）：
+ *   - 这里只放「跨文件契约」：manifest/exports/version/locale/文档副本一致、slot 注册的形状。
+ *   - 「渲染出来长什么样」交给 test/render.mjs（真执行组件）；
+ *     「请求链/错误分支」交给 test/fetch-chain.mjs；「挂载幂等」交给 test/mount-guard.mjs。
+ *   - 因此不要在这里新增 `clientSource.includes('...')` 这类实现细节断言：
+ *     改个变量名就误报，而真正的行为回归它也抓不到。
+ *
  * 运行：node test/static.mjs
  * 需要真实 Cordis 的集成测试见 test/smoke.mjs（需先准备 test/deps）。
  */
@@ -192,8 +199,6 @@ check('sidebar.panellist 标题是上下文', panelEntry.label?.() === '上下�
 const dockEntry = bySlot('conversation.composer.dock').definition ?? {}
 check('client 注册 composer dock 指示器', dockEntry.name === 'conversation.composer.dock' && dockEntry.id === 'embody-usage', JSON.stringify(dockEntry))
 check('dock 指示器组件是函数', typeof bySlot('conversation.composer.dock').component === 'function', typeof bySlot('conversation.composer.dock').component)
-check('dock 按内置 ContextMeter 风格显示插件上下文已用比例', clientSource.includes('data-embodiment-dock-percent') && clientSource.includes('data-embodiment-dock-ring') && clientSource.includes('pluginContextAria'))
-check('dock 环形规格与内置 ContextMeter 一致（14px 视框 / 2px 描边）', clientSource.includes("viewBox: '0 0 14 14'") && clientSource.includes('const radius = 5.5'))
 const balanceEntry = client.slotRegistrations.find((entry) => entry.definition.id === 'embody-balance')?.definition ?? {}
 check('client 注册 DSH 余额 dock 胶囊', balanceEntry.name === 'conversation.composer.dock' && balanceEntry.order > dockEntry.order, JSON.stringify(balanceEntry))
 check('余额胶囊使用 data-embodiment-balance 标记', clientSource.includes("'data-embodiment-balance': '1'"))

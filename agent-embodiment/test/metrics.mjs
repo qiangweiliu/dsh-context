@@ -3,7 +3,7 @@
  *
  * 运行：node test/metrics.mjs
  */
-import { csvCell, csvDocument, estimateInputCost, foldSession, sessionDetail, summarizeFolds } from '../metrics.js'
+import { csvCell, csvDocument, estimateInputCost, foldSession, sessionDetail, summarizeFolds, isPeakTime } from '../metrics.js'
 
 const checks = []
 function check(name, condition, detail) {
@@ -120,6 +120,28 @@ const csvDoc = csvDocument(['id,title', '1,测试会话'])
 check('CSV 文档以 BOM 开头', csvDoc.charCodeAt(0) === 0xfeff, csvDoc.charCodeAt(0))
 check('CSV 文档保留表头与行、以换行结尾', csvDoc.slice(1) === 'id,title\n1,测试会话\n', JSON.stringify(csvDoc.slice(1)))
 check('CSV 文档接受空数组', csvDocument([]) === '\uFEFF\n', JSON.stringify(csvDocument([])))
+
+// 峰谷判定：工作日高峰上浮、周末与法定节假日不上浮。
+// 2026-03-05 是周四；2026-10-01 是周四但属国庆假期；2026-03-07 是周六。
+const at = (iso) => new Date(iso).getTime()
+check('工作日 10:00（北京时间）算高峰', isPeakTime(at('2026-03-05T10:00:00+08:00')) === true)
+check('工作日 12:30 不算高峰（午休）', isPeakTime(at('2026-03-05T12:30:00+08:00')) === false)
+check('工作日 15:00 算高峰', isPeakTime(at('2026-03-05T15:00:00+08:00')) === true)
+check('周六 10:00 不算高峰', isPeakTime(at('2026-03-07T10:00:00+08:00')) === false)
+check('国庆（2026-10-01 周四 10:00）不算高峰', isPeakTime(at('2026-10-01T10:00:00+08:00')) === false)
+check('春节（2026-02-17 周二 15:00）不算高峰', isPeakTime(at('2026-02-17T15:00:00+08:00')) === false)
+check('节假日表可覆盖（自定义空表时该日恢复高峰）', isPeakTime(at('2026-10-01T10:00:00+08:00'), new Set()) === true)
+
+// 自定义价支持峰谷两档：给了 peak/offPeak 就按各自时段取价，没给则全天同价。
+// estimateInputCost 返回把 tokens 按输入价折算后的金额（number）。
+const peakRows = [{ match: /custom-model/i, input: 10, cacheRead: 1, cacheWrite: 10, output: 20, peak: { input: 30, cacheRead: 3, cacheWrite: 30, output: 60 }, offPeak: { input: 10, cacheRead: 1, cacheWrite: 10, output: 20 } }]
+const peakCost = estimateInputCost(1000000, 'custom-model', peakRows, at('2026-03-05T10:00:00+08:00'))
+const offPeakCost = estimateInputCost(1000000, 'custom-model', peakRows, at('2026-03-05T20:00:00+08:00'))
+check('自定义价：1M 输入在高峰期按 peak 档计价（30 CNY）', Math.abs(peakCost - 30) < 1e-9, peakCost)
+check('自定义价：1M 输入在空闲时段按平档计价（10 CNY）', Math.abs(offPeakCost - 10) < 1e-9, offPeakCost)
+const flatRows = [{ match: /custom-model/i, input: 7, cacheRead: 1, cacheWrite: 7, output: 14 }]
+check('自定义价：没给峰谷时全天同价', Math.abs(estimateInputCost(1000000, 'custom-model', flatRows, at('2026-03-05T10:00:00+08:00')) - estimateInputCost(1000000, 'custom-model', flatRows, at('2026-03-05T20:00:00+08:00'))) < 1e-9)
+check('自定义价：节假日按平档计价（国庆 10:00）', Math.abs(estimateInputCost(1000000, 'custom-model', peakRows, at('2026-10-01T10:00:00+08:00')) - 10) < 1e-9)
 
 const failed = checks.filter((item) => !item.ok)
 console.log(`\n[metrics] ${checks.length - failed.length}/${checks.length} 项通过`)

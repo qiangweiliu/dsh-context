@@ -300,13 +300,31 @@ function validateConfig(input) {
           issues.push({ message: 'input and output prices are required', path: ['modelPricing', index] })
           break
         }
+        // 可选峰谷两档：只要给出 peak/offPeak 里任一档，就按各自时段取价；
+        // 缺省的字段回落到平档值，没给 peak/offPeak 的行仍是全天同价。
+        const rateBand = (value) => {
+          if (value === undefined) return null
+          if (typeof value !== 'object' || value === null || Array.isArray(value)) return 'invalid'
+          const fields = ['input', 'cacheRead', 'cacheWrite', 'output']
+          if (!fields.every((field) => okNumber(value[field]))) return 'invalid'
+          if (typeof value.input !== 'number' || typeof value.output !== 'number') return 'invalid'
+          return { input: value.input, cacheRead: value.cacheRead ?? 0, cacheWrite: value.cacheWrite ?? value.input, output: value.output }
+        }
+        const peak = rateBand(row.peak)
+        const offPeak = rateBand(row.offPeak)
+        if (peak === 'invalid' || offPeak === 'invalid') {
+          issues.push({ message: 'peak/offPeak must contain non-negative input and output numbers', path: ['modelPricing', index] })
+          break
+        }
         rows.push({
           match: row.match,
           input: row.input,
           cacheRead: row.cacheRead ?? 0,
           cacheWrite: row.cacheWrite ?? row.input,
           output: row.output,
-        })
+          ...(peak ? { peak } : {}),
+          ...(offPeak ? { offPeak } : {}),
+        });
       }
       config.modelPricing = rows
     }
@@ -1417,12 +1435,26 @@ export function apply(ctx, config) {
         }
         const numbers = ['input', 'cacheRead', 'cacheWrite', 'output'].map((key) => row[key] === undefined ? 0 : row[key])
         if (numbers.some((value) => typeof value !== 'number' || !Number.isFinite(value) || value < 0)) return null
+        // 峰谷两档：给了就带上，字段缺省回落平档；校验规则与 Config schema 一致。
+        const band = (value) => {
+          if (value === undefined) return null
+          if (!value || typeof value !== 'object' || Array.isArray(value)) return 'invalid'
+          const bandNumbers = ['input', 'cacheRead', 'cacheWrite', 'output'].map((key) => value[key] === undefined ? 0 : value[key])
+          if (bandNumbers.some((item) => typeof item !== 'number' || !Number.isFinite(item) || item < 0)) return 'invalid'
+          if (typeof value.input !== 'number' || typeof value.output !== 'number') return 'invalid'
+          return { input: bandNumbers[0], cacheRead: bandNumbers[1], cacheWrite: bandNumbers[2], output: bandNumbers[3] }
+        }
+        const peak = band(row.peak)
+        const offPeak = band(row.offPeak)
+        if (peak === 'invalid' || offPeak === 'invalid') return null
         rows.push({
           match: row.match.trim(),
           input: numbers[0],
           cacheRead: numbers[1],
           cacheWrite: numbers[2],
           output: numbers[3],
+          ...(peak ? { peak } : {}),
+          ...(offPeak ? { offPeak } : {}),
         })
       }
       patch.modelPricing = rows

@@ -42,13 +42,51 @@ export const DEFAULT_MODEL_PRICING = [
 
 const BEIJING_OFFSET_MS = 8 * 60 * 60 * 1000
 
-/** 官方高峰时段：北京时间周一至周五 09:00-12:00、14:00-18:00。 */
-export function isPeakTime(time) {
+/**
+ * 中国法定节假日（2026，北京时间）。节假日全天按空闲价估算——即使正好落在工作日的
+ * 09:00–12:00 / 14:00–18:00 里，也不算高峰。
+ *
+ * 这份表是**静态数据**，每年由维护者按国务院办公厅放假通知更新；它不是权威账单依据，
+ * 只用于让估算更贴近官方计费（官方按实际时段，节假日与调休日不上浮）。
+ */
+export const CN_HOLIDAYS = [
+  // 元旦
+  '2026-01-01', '2026-01-02', '2026-01-03',
+  // 春节（2026-02-17 除夕前后）
+  '2026-02-16', '2026-02-17', '2026-02-18', '2026-02-19', '2026-02-20', '2026-02-21', '2026-02-22',
+  // 清明
+  '2026-04-04', '2026-04-05', '2026-04-06',
+  // 劳动节
+  '2026-05-01', '2026-05-02', '2026-05-03', '2026-05-04', '2026-05-05',
+  // 端午（2026-06-19）
+  '2026-06-19', '2026-06-20', '2026-06-21',
+  // 中秋（2026-09-25）
+  '2026-09-25', '2026-09-26', '2026-09-27',
+  // 国庆
+  '2026-10-01', '2026-10-02', '2026-10-03', '2026-10-04', '2026-10-05', '2026-10-06', '2026-10-07',
+]
+
+const HOLIDAY_SET = new Set(CN_HOLIDAYS)
+
+/** 北京时间的日期键（YYYY-MM-DD），用于节假日查表。 */
+const beijingDateKey = (local) => {
+  const year = local.getUTCFullYear()
+  const month = String(local.getUTCMonth() + 1).padStart(2, '0')
+  const day = String(local.getUTCDate()).padStart(2, '0')
+  return `${year}-${month}-${day}`
+}
+
+/**
+ * 官方高峰时段：北京时间周一至周五 09:00-12:00、14:00-18:00，节假日不上浮。
+ * `holidays` 可传入自定义表（测试或跨年更新时用），默认用内置的 `CN_HOLIDAYS`。
+ */
+export function isPeakTime(time, holidays = HOLIDAY_SET) {
   const stamp = Number(time)
   if (!Number.isFinite(stamp)) return false
   const local = new Date(stamp + BEIJING_OFFSET_MS)
   const day = local.getUTCDay()
   if (day === 0 || day === 6) return false
+  if (holidays && typeof holidays.has === 'function' && holidays.has(beijingDateKey(local))) return false
   const minutes = local.getUTCHours() * 60 + local.getUTCMinutes()
   return (minutes >= 9 * 60 && minutes < 12 * 60) || (minutes >= 14 * 60 && minutes < 18 * 60)
 }

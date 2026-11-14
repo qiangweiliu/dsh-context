@@ -437,6 +437,17 @@ npm 运行依赖：无；生命周期脚本：无
 - 打包：`npm pack --dry-run` 22 个文件（未重新实测字节数，结构同 0.25.0）。
 - 边界：`client.js` 拆模块、static 字符串断言换行为测试、Desktop 0.2.2-rc.1 端到端仍未做，留后续版本。
 
+## E35. v0.26.1 面板渲染修复与 Desktop 0.2.2-rc.3 验收（2026-11-14）
+
+- 触发：用户在 WSL 与 Desktop 上都遇到「侧栏有『上下文』入口、主区域空白」。加边界后页面给出 `本卡片渲染失败: t is not defined`，由此定位根因。
+- 根因：`SegmentedBar` 的阈值刻度 aria-label 直接调 `t()`，组件作用域无词典函数。空会话走 `MeterBar` 分支，故此前所有测试（含 headless 探测）都命中不到该分支。
+- 修复：文案改由调用方 `tickLabels` 传入；组件不再引用 `t`。同时把挂载幂等改为版本号 + 旧 bundle disposer 清理（解决 HMR 后空白），`CtxPage` 外增边界（失败可读）。
+- WSL 验证（`dsh 0.2.1-rc.5`，隔离 profile `web`）：同步 → 安装 → 启动 → 状态接口 `version=0.26.1`、`profile=web`；headless Edge（1776×1250）点开面板：`panelCount=1`、`tabs=4`、`visible`、`0 error / 0 exception`。
+- Desktop 验证（`@deepseek-ai/dsh-desktop 0.2.2-rc.3`，`C:\Users\40410\dsh-plugins\agent-embodiment` link 安装）：重启进程加载 0.26.1 后由用户确认面板四 tab 与内容正常；据此把 `0.2.2-rc.3` 加入 `dshReleases = compatible`。
+- 测试：单元 393（新增 fetch-chain 3 / mount-guard 7 / locale-keys 6），集成 139（control 55 / smoke 73 / prompt-state 11），lint 0（含 `no-undef`）。
+- 性能：`/status` 800ms 缓存绑定修订号（写入即失效，`?fresh=1` 绕过）；折叠缓存 TTL 60s、上限 60。
+- 边界：Desktop 的面板确认来自用户目视（Electron 未暴露 renderer CDP，无法自动断言 DOM）；`client.js` 拆模块、41 条源码字符串断言替换仍未做。
+
 ## 已知限制（unknown）
 
 - 未进行独立安全审计；本文件不声称“安全通过”。

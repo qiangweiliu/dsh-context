@@ -520,6 +520,7 @@ export function apply(ctx, config) {
       mkdirSync(dirname(ONBOARDING_PATH), { recursive: true })
       backupFile(ONBOARDING_PATH, 'onboarding')
       atomicWriteFile(ONBOARDING_PATH, JSON.stringify(onboarding, null, 2) + '\n')
+      bumpStatusRevision()
     } catch (error) {
       const logger = ctx.logger
       if (typeof logger?.warn === 'function') logger.warn('agent-embodiment: could not save onboarding: ' + (error instanceof Error ? error.message : String(error)))
@@ -596,6 +597,7 @@ export function apply(ctx, config) {
           }
           atomicWriteFile(COMPACTION_LOG_PATH, lines.slice(lines.length - keep).join('\n') + '\n')
         }
+        bumpStatusRevision()
       } catch (error) {
         const logger = ctx.logger
         if (typeof logger?.warn === 'function') logger.warn('agent-embodiment: could not append compaction log: ' + (error instanceof Error ? error.message : String(error)))
@@ -643,6 +645,7 @@ export function apply(ctx, config) {
       at: new Date().toISOString(),
     })
     while (measurements.size > MAX_MEASUREMENTS) measurements.delete(measurements.keys().next().value)
+    bumpStatusRevision()
   }
 
   /** @returns {{ kind: 'success', text: string } | { kind: 'error', text: string }} */
@@ -1131,15 +1134,16 @@ export function apply(ctx, config) {
     return output
   }
 
-  // 会话日志折叠很便宜但文件读取不便宜；按 sessionId 做短 TTL 缓存，页面切 tab/刷新不会反复读全量。
-  // 只保留最近 40 个会话，避免长进程里每个看过的会话都留一份完整折叠结果。
+  // 会话日志折叠很便宜但文件读取不便宜；按 sessionId 做 TTL 缓存，页面切 tab/刷新不会反复读全量。
+  // 非活跃会话用 60s（回看历史的场景多），活跃会话仍由调用方传 3s 以保持数字跟手。
   const foldCache = new Map()
-  const FOLD_CACHE_MAX = 40
+  const FOLD_CACHE_MAX = 60
+  const FOLD_CACHE_TTL_MS = 60000
   // analytics 结果的短 TTL 缓存：/analytics 与 /insights 在 Overview 同时请求同一范围时命中，
-  // 免去第二次 listSessions + 折叠。TTL 覆盖浏览器侧的 2s 节流刷新，又不至于长期陈旧。
+  // 免去第二次 listSessions + 折叠。
   const analyticsCache = new Map()
   const ANALYTICS_CACHE_TTL_MS = 5000
-  const observeFold = async (sessionId, header, ttlMs = 20000) => {
+  const observeFold = async (sessionId, header, ttlMs = FOLD_CACHE_TTL_MS) => {
     const cached = foldCache.get(sessionId)
     if (cached && Date.now() - cached.at < ttlMs) return cached.fold
     if (!sessionQuery || typeof sessionQuery.observeSession !== 'function') throw new Error('sessionQuery.observeSession unavailable')
@@ -1255,8 +1259,33 @@ export function apply(ctx, config) {
   }
 
 
+  // /status 会被面板与 dock 在同一个刷新周期里各拉一次；序列化整个 measurements + 日志
+  // 有成本，这里做短缓存。但**写入后必须立即可见**，所以缓存同时绑定修订号：
+  // 任何会改变 payload 的写入（测量、压缩日志、引导状态）都递增修订号，命中条件才成立。
+  const STATUS_CACHE_MS = 800
+  let statusRevision = 0
+  const bumpStatusRevision = () => {
+    statusRevision += 1
+  }
+  let statusCache = { at: 0, revision: -1, text: '' }
+
   const statusHandler = (request, response) => {
     if (!requireMethod(request, response, 'GET')) return
+    const sendCached = (text) => {
+      response.statusCode = 200
+      response.setHeader('content-type', 'application/json; charset=utf-8')
+      response.setHeader('cache-control', 'no-store')
+      response.end(text)
+    }
+    const url = requestUrl(request)
+    if (
+      url.searchParams.get('fresh') !== '1'
+      && statusCache.text
+      && statusCache.revision === statusRevision
+      && Date.now() - statusCache.at < STATUS_CACHE_MS
+    ) {
+      return sendCached(statusCache.text)
+    }
     const latestMeasurement = [...measurements.values()].reverse()[0] ?? null
     const onboardingPayload = { ...onboarding, budgetTokens: config.contextWindowTokens }
     const control = controlSnapshot()
@@ -1302,10 +1331,8 @@ export function apply(ctx, config) {
         rows: Array.isArray(config.modelPricing) ? config.modelPricing : [],
       },
     })
-    response.statusCode = 200
-    response.setHeader('content-type', 'application/json; charset=utf-8')
-    response.setHeader('cache-control', 'no-store')
-    response.end(body)
+    statusCache = { at: Date.now(), revision: statusRevision, text: body }
+    sendCached(body)
   }
 
   // 所有写操作前自动备份（profile patch 与状态文件），保留最近 30 份；实现见状态目录初始化处。

@@ -2,7 +2,7 @@
 
 本文描述 `agent-embodiment` 的内部结构、集成点和验证方式。面向用户的功能说明见 [README.md](../README.md)；约束与已知限制见 [LIMITATIONS.md](LIMITATIONS.md)。
 
-当前版本：`0.26.0`
+当前版本：`0.26.1`
 
 ## 1. 两个半侧
 
@@ -287,13 +287,18 @@ persist        7/7
 profile       11/11
 scaffold     146/146
 insights      16/16
-render        23/23
+render        25/25
+fetch-chain    3/3
+mount-guard    7/7
+locale-keys    6/6
 control       55/55
 smoke         73/73
 prompt-state  11/11
 ```
 
-`test/render.mjs` 用最小 React mock 真正执行 `client.js` 的面板组件（四个 tab、ARIA 关系、键盘切换、卡片级错误边界），补上字符串断言覆盖不到的行为层；0.25.0 的 TDZ 面板崩溃就是它发现的。
+单元共 393 项、集成 139 项。`test/render.mjs` 用最小 React mock 真正执行 `client.js` 的面板组件（四个 tab、ARIA 关系、键盘切换、卡片级错误边界）；`fetch-chain.mjs` 执行真实的 fetch 链；`mount-guard.mjs` 固定挂载幂等与 HMR 重挂；`locale-keys.mjs` 校验 en/zh 词典与 `t('key')` 调用点一致。
+
+**这三类测试都是被真实故障逼出来的**：0.25.0 的 TDZ 面板空白（render）、0.26.0 的 `useStatus` 双重解析（fetch-chain）、0.26.1 的 `SegmentedBar` 引用未定义 `t`（由用户端报错暴露）。它们的共同点是“只有真实数据 + 真实 effect 才触发”，所以新增 UI 逻辑时优先补 fixture 覆盖率，而不是再加字符串断言。
 
 UI 证据与历史版本验收见 [EVIDENCE.md](EVIDENCE.md)。
 

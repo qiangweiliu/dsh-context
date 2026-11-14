@@ -2,6 +2,31 @@
 
 格式参考 Keep a Changelog；版本遵循 SemVer。DSH 兼容版本写在每个条目的 Compatibility 下。
 
+## [0.26.1] - 2026-11-14
+
+### Fixed
+
+- **面板渲染失败（用户实际遇到）**：`SegmentedBar` 的阈值刻度 aria-label 直接调用了 `t()`，但该组件作用域里没有词典函数。空会话走 `MeterBar` 分支所以测不出来，**有真实用量的会话**才抛 `ReferenceError: t is not defined`，整块面板降级。现在词典文案由调用方通过 `tickLabels` 传入，组件不再依赖 `t`。
+- **热更新后「侧栏有入口、主区域空白」**：挂载标记原先只存 boolean，HMR 更新 `client.js` 后新 bundle 的 `apply()` 直接返回，新组件没注册、旧注册又被清理。现在标记记录版本号，检测到旧版本时先调用旧 bundle 的 disposer 再重新注册。
+- `CtxPage` 外再包一层边界：整体渲染失败时显示「本卡片渲染失败：<原因>」并带重试，而不是空白。
+
+### Changed
+
+- `/status` 增加 800ms 短缓存，但**绑定修订号**：测量、压缩日志、引导状态任一写入都会让缓存立即失效，避免写入后读到旧数据（`?fresh=1` 可强制绕过）。
+- 折叠缓存 TTL 从 20s 提到 60s、上限 40→60 个会话；活跃会话仍按 3s 刷新。
+
+### Added
+
+- `test/fetch-chain.mjs`（3 项）：真正执行 `useStatus`/`fetchJson` 的异步链，抓「Response 已解析却再次 `.json()`」这类错误。
+- `test/mount-guard.mjs`（7 项）：固定挂载幂等与 HMR 重挂契约。
+- `test/locale-keys.mjs`（6 项）：校验 en/zh 词典键一致，且每个 `t('key')` 调用都在词典里。
+- `scripts/ui-check-panel.mjs`：按指定窗口尺寸打开 web 实例、点开「上下文」并断言四 tab/内容/无异常的标准检查脚本。
+- lint 启用 `no-undef`：变量未定义在 CI 直接失败。
+
+### Compatibility
+
+- 新增 `0.2.2-rc.3` = `compatible`（Windows Desktop 真实安装 + 重启 + 面板确认）；`0.2.2-rc.1` 仍为 `unknown`。
+
 ## [0.26.0] - 2026-11-11
 
 ### Changed

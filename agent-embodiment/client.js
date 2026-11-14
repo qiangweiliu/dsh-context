@@ -21,7 +21,7 @@ window.__ModuleLoader__.load({
 
     const NS = 'agentEmbodiment'
     /** 与 package.json 版本保持一致；宿主版本不同时提示刷新页面而不是重启 DSH。 */
-    const CLIENT_VERSION = '0.26.0'
+    const CLIENT_VERSION = '0.26.1'
     /**
      * API 路径必须相对页面 base 解析，而不是写死根路径：
      * 反向代理部署在 /app/dsh/ 这类前缀下时，根路径 /api/... 会打到网关根并 404。
@@ -995,9 +995,6 @@ window.__ModuleLoader__.load({
 
     /** 分段上下文条：外层长度=已用/上下文，内部颜色=四桶占比；首次渲染从 0 平滑增长。 */
     function SegmentedBar(props) {
-      // 阈值刻度的 aria-label 需要词典；这里显式取 props.t，缺失时退回原样键名，
-      // 避免像 0.26.0 那样在「有构成数据」时才走到 t() 而抛 ReferenceError（空会话测不出来）。
-      const t = typeof props.t === 'function' ? props.t : (key) => key
       const usedRatio = Math.max(0, Math.min(1, Number(props.usedRatio) || 0))
       const categories = Array.isArray(props.categories) ? props.categories : []
       const filled = categories.filter((row) => row.tokens > 0)
@@ -1028,10 +1025,12 @@ window.__ModuleLoader__.load({
         ),
       )
       // 阈值刻度直接画在水位条上，省掉一排 chip；0%/100% 分别是条两端，不重复画。
-      // 刻度只靠颜色区分，读屏不可达，这里加 aria-label 说明这是警告/超限阈值线。
+      // 刻度只靠颜色区分，读屏不可达，所以带 aria-label；文案由调用方通过 tickLabels 传入，
+      // 组件本身不碰词典（0.26.0 曾在这里直接调 t() 而抛 ReferenceError）。
       if (!props.ticks) return bar
-      const tick = (ratio, color, label) => (typeof ratio === 'number' && ratio > 0 && ratio < 1 ? h('i', { key: ratio, role: 'presentation', 'aria-label': label, style: { ...styles.barTick, left: `${ratio * 100}%`, background: color } }) : null)
-      return h('div', { style: styles.barWrap, role: 'img', 'aria-label': filled.map((row) => `${row.label} ${formatPercent(row.share)}`).join('，') }, bar, tick(props.warnAt, 'var(--dsw-alias-state-warn-primary)', t('warnAt')), tick(props.errorAt, 'var(--dsw-alias-state-error-primary)', t('errorAt')))
+      const labels = props.tickLabels || {}
+      const tick = (ratio, color, label) => (typeof ratio === 'number' && ratio > 0 && ratio < 1 ? h('i', { key: ratio, role: 'presentation', 'aria-label': label || '', style: { ...styles.barTick, left: `${ratio * 100}%`, background: color } }) : null)
+      return h('div', { style: styles.barWrap, role: 'img', 'aria-label': filled.map((row) => `${row.label} ${formatPercent(row.share)}`).join('，') }, bar, tick(props.warnAt, 'var(--dsw-alias-state-warn-primary)', labels.warn), tick(props.errorAt, 'var(--dsw-alias-state-error-primary)', labels.error))
     }
 
     // ── 内置 ContextMeter 的视觉规格（trigger / panel / bar / rows） ────────
@@ -3960,7 +3959,7 @@ window.__ModuleLoader__.load({
           ),
           h('p', { style: styles.subtitle, 'data-embodiment-header-status': '1' }, headerLine),
           hasHeaderComposition
-            ? h(SegmentedBar, { t, usedRatio: headerRatio ?? 0, categories: headerCategories, warnAt: headerWarnAt, errorAt: headerErrorAt, ticks: true })
+            ? h(SegmentedBar, { t, usedRatio: headerRatio ?? 0, categories: headerCategories, warnAt: headerWarnAt, errorAt: headerErrorAt, ticks: true, tickLabels: { warn: t('warnAt'), error: t('errorAt') } })
             : null,
           hasHeaderComposition ? h(LegendGrid, { categories: headerCategories, tokensLabel: t('tokens') }) : null,
           h('div', { style: styles.tabs, role: 'tablist', 'aria-label': t('tabsLabel'), onKeyDown: onTabKeyDown }, tabs.map(([key, label]) =>

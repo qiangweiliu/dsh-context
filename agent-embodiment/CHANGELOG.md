@@ -2,6 +2,21 @@
 
 格式参考 Keep a Changelog；版本遵循 SemVer。DSH 兼容版本写在每个条目的 Compatibility 下。
 
+## [0.28.0] - 2026-11-14
+
+### Changed
+
+- **`client.js` 拆分源码 + 轻量构建**：源码按功能拆到 `client-src/`（11 个片段：header / 词典 / 样式 / 核心 / dock / inventory / sections / charts / scaffold / panel / apply），`npm run build:client` 按固定顺序拼回单文件 `client.js`。发布物仍是单文件——DSH 浏览器侧只加载一个 `client.js` 且只能 `require('react')`，没有打包器可用。
+- `scripts/bump-version.mjs` 同时改写片段与产物里的 `CLIENT_VERSION`，避免拆开后版本号漂移。
+
+### Added
+
+- `test/client-build.mjs`（6 项）：字节级防漂移——`client.js` 必须等于 `client-src/` 的拼接结果；片段目录里出现未登记进 ORDER 的文件也会失败，并提示跑 `npm run build:client`。
+
+### Compatibility
+
+- 无行为变化：拆分后 `client.js` 与拆分前**逐字节一致**（234,775 字节），面板/路由/数据格式均未改动。
+
 ## [0.27.0] - 2026-11-14
 
 ### Added

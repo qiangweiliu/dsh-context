@@ -1,6 +1,6 @@
 {
   "$schema": "./node_modules/oxlint/configuration_schema.json",
-  "ignorePatterns": ["test/deps/**", "node_modules/**"],
+  "ignorePatterns": ["test/deps/**", "node_modules/**", "client-src/**"],
   "env": {
     "browser": true,
     "node": true,

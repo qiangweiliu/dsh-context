@@ -4,7 +4,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## 项目概览
 
-DeepSeek Harness（DSH）的 agent 具身与上下文管理插件仓库。市场显示名 `Agent Embodiment` / `智能体具身`；包名/目录 `agent-embodiment`；短品牌 `embody`。旧名 `ctx-mon-and-con` 仅用于历史记录和兼容别名。可发布的主体是 `agent-embodiment/`（npm 包名 `agent-embodiment`，当前 `package.json` 版本 `0.27.0`），其余目录是配套资产：
+DeepSeek Harness（DSH）的 agent 具身与上下文管理插件仓库。市场显示名 `Agent Embodiment` / `智能体具身`；包名/目录 `agent-embodiment`；短品牌 `embody`。旧名 `ctx-mon-and-con` 仅用于历史记录和兼容别名。可发布的主体是 `agent-embodiment/`（npm 包名 `agent-embodiment`，当前 `package.json` 版本 `0.28.0`），其余目录是配套资产：
 
 - `eval/`：提示词 / 推理档位对照评测（GSM8K、MATH Level 5），以及 Tier B 50 题深度套件与结果报告。
 - `research/`、`explore/`：对 DSH 插件机制、compaction、UI 的逆向调研与设计笔记。
@@ -32,7 +32,7 @@ node test/profile.mjs       # profile 识别、状态目录与旧目录迁移
 node test/render.mjs        # 用 mock React 真跑面板组件（行为级，抓 TDZ 这类渲染崩溃）
 ```
 
-当前基线（0.27.0）：static 101/101、metrics 56/56、state 26/26、persist 7/7、profile 11/11、scaffold 146/146、insights 16/16、render 25/25、fetch-chain 3/3、mount-guard 7/7、locale-keys 6/6（共 404）；集成 control 55/55、smoke 78/78、prompt-state 11/11。
+当前基线（0.28.0）：client-build 6/6、static 101/101、metrics 56/56、state 26/26、persist 7/7、profile 11/11、scaffold 146/146、insights 16/16、render 25/25、fetch-chain 3/3、mount-guard 7/7、locale-keys 6/6（共 410）；集成 control 55/55、smoke 78/78、prompt-state 11/11。
 
 CI 在 `.github/workflows/test.yml`：Node 20/22/24 三档跑单元 + `npm run lint`；另有 integration job 从 npm 安装 Cordis（4.0.5 / 4.1.0 两档）跑 control/smoke/prompt-state，不依赖本机 app.asar。两种 job 都带 npm 缓存与 `concurrency` 取消。
 
@@ -61,10 +61,11 @@ node --check profile.js
 npm run lint                # oxlint（devDependency；CI 也跑，0 error）
 ```
 
-### 版本号同步
+### 版本号同步与 client 构建
 
 ```bash
-node scripts/bump-version.mjs 0.25.0   # package.json / client.js / README / IMPLEMENTATION 一次改齐
+node scripts/bump-version.mjs 0.28.0   # package.json / client-src 与 client.js 的 CLIENT_VERSION / README / IMPLEMENTATION 一次改齐
+cd agent-embodiment && npm run build:client   # 改过 client-src/ 后必须重建 client.js
 ```
 
 ### 评测
@@ -119,7 +120,7 @@ UI 脚本通过 Windows Edge 的 CDP 连接（`scripts/lib/cdp.mjs`，默认 Edg
 - `profile.js`：按「哪个 profile 的依赖指向本插件目录」识别所属 profile，决定状态目录（`profiles/<name>/`）并从旧共享目录迁移状态文件；由 `test/profile.mjs` 覆盖。
 - `metrics.js`：把会话事件日志折叠成 turn/step/usage/费用/工具调用统计，供宿主状态路由消费。
 - `insights.js`：纯函数规则层，`buildInsights()` 生成可执行洞察、`buildHealth()` 生成健康检查；不依赖 Cordis、文件系统或 npm 包。
-- `client.js`：浏览器半侧，经 `window.__ModuleLoader__.load` 注册 5 个 slot 条目（4 类 slot）：`settings.section`、`main`（`key='embody'`）、`sidebar.panellist`、`conversation.composer.dock` 两次（用量指示器 + 余额胶囊）。侧栏名称是 `Context` / `上下文`；面板固定 Overview / Trend / Events / Settings 四个 tab，脚手架在 Settings → Labs。只用内联样式和 `--dsw-alias-*` token，不引 CSS/Tailwind。
+- `client.js`：**构建产物**，源码在 `client-src/`（11 个片段）。经 `window.__ModuleLoader__.load` 注册 5 个 slot 条目（4 类 slot）：`settings.section`、`main`（`key='embody'`）、`sidebar.panellist`、`conversation.composer.dock` 两次（用量指示器 + 余额胶囊）。侧栏名称是 `Context` / `上下文`；面板固定 Overview / Trend / Events / Settings 四个 tab，脚手架在 Settings → Labs。只用内联样式和 `--dsw-alias-*` token，不引 CSS/Tailwind。
 - `scaffold.js`：Agent Embodiment Scaffold 的纯函数生成器。把模板变成可安装的 DSH preset bundle（`.dsh/scaffolds/<slug>/`）、`.agents/skills/*/SKILL.md`（`sense-environment`、`verify-change`、角色/delegation skill，全部使用 DSH 原生工具）、SENSES/HANDS/LOOP、AGENTS 片段、MCP rows 和 eval cases/runner；不读写磁盘、不 import npm 包。合并 AGENTS.md 用 `mergeAgentsContent`（marker 幂等）。
 - `locale/{en,zh}.json`：市场 `meta.title` / `meta.description`。
 - `dsh.bundle.patch.yml`：只 `insert` 一行宿主插件行，不覆盖任何宿主行。
@@ -186,6 +187,7 @@ UI 脚本通过 Windows Edge 的 CDP 连接（`scripts/lib/cdp.mjs`，默认 Edg
 - 控制行未挂载时，工具/提示词开关不会生效：0.23.0 起面板会显示 `controlRequired` 提示并拒绝执行，但会话级开关仍会落盘。排查“开关没反应”先看 `control.active`。
 - `compressionStrategy` 与显式 `triggerAt`/`targetAt`/`keepTokens` 同时出现时以显式值为准；在 `cordis.patch.yml` 里改 preset 要保留不想丢的字段（整段替换）。
 - 面板组件必须能真的渲染：`test/render.mjs` 用 mock React 执行 `CtxPanel`，专门抓 TDZ / 未定义变量这类只在渲染时抛错的问题（0.25.0 的面板整块空白就是这么来的）。只加字符串断言不够。
+- **`client.js` 是生成产物**：改 UI 请改 `client-src/` 里的片段，然后跑 `npm run build:client`。`test/client-build.mjs` 会做字节级比对，忘记重建时 CI 直接失败并提示。片段之间共享同一作用域（不是模块），跨片段引用私有函数是可用的，但别在片段里 `import`。
 - `scripts/wsl-verify.sh` 默认 **dry-run**，加 `--apply` 才会安装、`pkill` 同 profile 实例、启动 web；只想跑测试别加 `--apply`。
 - 文档存在少量滞后：`docs/security-audit.md` 的主体仍是 0.21.0 审计（0.24.1 有增量复核章节）；以 `package.json` 的 `engines.dsh` / `dsh.compatibility` 为准。
 - `.probe/` 是本地调试残留，不要提交；`test/deps/` 由 `prepare-deps.mjs` 生成。

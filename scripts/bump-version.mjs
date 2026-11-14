@@ -43,7 +43,11 @@ patch('agent-embodiment/package.json', (text) => {
   return JSON.stringify(manifest, null, 2) + '\n'
 })
 
-patch('agent-embodiment/client.js', (text) => text.replace(/(const CLIENT_VERSION = ')[^']+(')/u, `$1${version}$2`))
+// client.js 由 client-src/ 拼接生成（npm run build:client），CLIENT_VERSION 在片段里，
+// 所以这里同时改写片段与产物：先改片段，再改 client.js，保持两者一致。
+for (const file of ['agent-embodiment/client-src/00-head.js', 'agent-embodiment/client.js']) {
+  patch(file, (text) => text.replace(/(const CLIENT_VERSION = ')[^']+(')/u, `$1${version}$2`))
+}
 
 for (const file of ['README.md', 'agent-embodiment/README.md']) {
   patch(file, (text) => text.replace(/(当前版本：`)[^`]+(`)/u, `$1${version}$2`))

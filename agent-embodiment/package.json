@@ -1,13 +1,14 @@
 {
   "name": "agent-embodiment",
-  "version": "0.27.0",
+  "version": "0.28.0",
   "description": "Cross-session context analytics with cost and savings estimates, compaction insights, session-level budget/prompt/tool controls, and optional agent scaffolds on top of DeepSeek Harness native compaction and tools.",
   "type": "module",
   "main": "index.js",
   "scripts": {
-    "test": "node test/static.mjs && node test/metrics.mjs && node test/state.mjs && node test/persist.mjs && node test/profile.mjs && node test/scaffold.mjs && node test/insights.mjs && node test/render.mjs && node test/fetch-chain.mjs && node test/mount-guard.mjs && node test/locale-keys.mjs",
+    "test": "node test/client-build.mjs && node test/static.mjs && node test/metrics.mjs && node test/state.mjs && node test/persist.mjs && node test/profile.mjs && node test/scaffold.mjs && node test/insights.mjs && node test/render.mjs && node test/fetch-chain.mjs && node test/mount-guard.mjs && node test/locale-keys.mjs",
     "test:integration": "node test/prepare-deps.mjs && node test/control.mjs && node test/smoke.mjs && node test/prompt-state.mjs",
-    "lint": "oxlint ."
+    "lint": "oxlint .",
+    "build:client": "node scripts/build-client.mjs"
   },
   "exports": {
     ".": "./index.js",

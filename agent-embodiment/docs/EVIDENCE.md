@@ -458,6 +458,14 @@ npm 运行依赖：无；生命周期脚本：无
 - 测试：单元 404（metrics 56）、集成 144（control 55 / smoke 78 / prompt-state 11）、lint 0。
 - 边界：节假日表为静态清单，跨年需更新；峰谷在 UI 里仍以平档编辑为主，峰谷两档通过配置文件写入。
 
+## E37. v0.28.0 client.js 拆分与防漂移（2026-11-14）
+
+- 背景：`client.js` 单文件 4310 行、75 个顶层函数，改一处要在 4000 行里定位；但 DSH 浏览器侧只加载一个文件且只能 `require('react')`，无法用打包器。
+- 做法：按顶层锚点拆成 11 个片段（`client-src/00-head.js` … `90-apply.js`），`scripts/build-client.mjs` 按固定 ORDER 拼接；一次性拆分脚本 `scripts/client-split.mjs` 在拆完时断言**拼接结果与原文逐字节相同**（234,775 字节）。
+- 防漂移：`test/client-build.mjs` 比对 `client.js` 与片段拼接结果，并检查片段目录里没有未登记进 ORDER 的文件；`scripts/bump-version.mjs` 同时改写片段与产物里的 `CLIENT_VERSION`。
+- 验证：拆分前后 `client.js` 字节一致 → 单元 410（新增 client-build 6 项）、集成 144、lint 0（`client-src/**` 属片段，已在 oxlint 忽略）；WSL 实机面板 4 tab、0 异常。
+- 边界：片段之间仍共享同一作用域（不是模块），跨片段的私有函数仍是隐式可见的；真正按模块隔离需要打包器，留待以后。
+
 ## 已知限制（unknown）
 
 - 未进行独立安全审计；本文件不声称“安全通过”。

@@ -2,6 +2,22 @@
 
 格式参考 Keep a Changelog；版本遵循 SemVer。DSH 兼容版本写在每个条目的 Compatibility 下。
 
+## [0.27.0] - 2026-11-14
+
+### Added
+
+- **本会话预算的面板入口**：设置页新增「本会话预算」卡片（输入 / 保存 / 清除），对应新路由 `POST /status/session-budget`，等价于 `/embody <tokens>` 与 `/embody reset`；无活动会话时只显示说明。清除是幂等的，非法 tokens 或缺 `sessionId` 返回 400。
+- **导出二次确认**：JSON / CSV 导出含本机绝对路径（cwd），改为先确认再下载。
+
+### Changed
+
+- **峰谷价按节假日修正**：`isPeakTime()` 增加法定节假日表（`CN_HOLIDAYS`，2026 静态清单），节假日全天不上浮；`isPeakTime(time, holidays)` 可传自定义表。
+- **自定义价支持峰谷两档**：`modelPricing` 的行可带 `peak` / `offPeak` 子对象，缺省字段回落平档；`Config` schema 与 `POST /status/config` 两条校验路径都会保留峰谷，不再被拍平。
+
+### Compatibility
+
+- 兼容矩阵未变（`0.2.2-rc.3` 已为 `compatible`）。节假日表是静态数据，跨年需按放假通知更新。
+
 ## [0.26.1] - 2026-11-14
 
 ### Fixed

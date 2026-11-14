@@ -448,6 +448,16 @@ npm 运行依赖：无；生命周期脚本：无
 - 性能：`/status` 800ms 缓存绑定修订号（写入即失效，`?fresh=1` 绕过）；折叠缓存 TTL 60s、上限 60。
 - 边界：Desktop 的面板确认来自用户目视（Electron 未暴露 renderer CDP，无法自动断言 DOM）；`client.js` 拆模块、41 条源码字符串断言替换仍未做。
 
+## E36. v0.27.0 峰谷价修正与面板读写入口（2026-11-14）
+
+- 环境：Windows 工作区（Node 22.23.3）；集成用 `E:\tool\dsh\resources\app.asar` 的 Cordis。
+- 峰谷价：`isPeakTime()` 增加 `CN_HOLIDAYS`（2026 法定节假日静态表），节假日全天按空闲价；`estimateInputCost` / 逐条成本都走同一判定。`test/metrics.mjs` 新增 11 项（工作日高峰/午休/周末/国庆/春节/自定义表覆盖、自定义峰谷两档、平档回落）。
+- 自定义价：`modelPricing` 行接受 `peak` / `offPeak`；`Config` schema 与 `POST /status/config` 均保留峰谷（此前被拍平为全天同价），非法峰谷段返回校验错误。
+- 面板入口：新增 `POST /status/session-budget`（设置/清除会话预算覆盖，清除幂等），设置页新增「本会话预算」卡片；`test/smoke.mjs` 增加 5 项断言（设置 202、出现在 `sessionBudgets`、清除、非法 tokens 400、缺 sessionId 400）。
+- 导出：JSON/CSV 改为二次确认后下载（文件含 cwd 绝对路径）。
+- 测试：单元 404（metrics 56）、集成 144（control 55 / smoke 78 / prompt-state 11）、lint 0。
+- 边界：节假日表为静态清单，跨年需更新；峰谷在 UI 里仍以平档编辑为主，峰谷两档通过配置文件写入。
+
 ## 已知限制（unknown）
 
 - 未进行独立安全审计；本文件不声称“安全通过”。

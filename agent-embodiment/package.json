@@ -1,6 +1,6 @@
 {
   "name": "agent-embodiment",
-  "version": "0.26.1",
+  "version": "0.27.0",
   "description": "Cross-session context analytics with cost and savings estimates, compaction insights, session-level budget/prompt/tool controls, and optional agent scaffolds on top of DeepSeek Harness native compaction and tools.",
   "type": "module",
   "main": "index.js",

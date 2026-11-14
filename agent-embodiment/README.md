@@ -4,7 +4,7 @@
 
 > **与 DSH 原生能力的关系**：token 计量、自动压缩、系统提示词装配、文件/命令/Web/子 agent 等由 DSH 本体提供；本插件不重复实现这些引擎，而是复用官方 seam，补上可观测性与用户控制。单轮任务能力不会因为安装本插件而提升。
 
-包名：`agent-embodiment` · 市场标题：`Agent Embodiment` / `智能体具身` · 当前版本：`0.26.1`
+包名：`agent-embodiment` · 市场标题：`Agent Embodiment` / `智能体具身` · 当前版本：`0.27.0`
 
 ## 安装 / 升级 / 回滚
 

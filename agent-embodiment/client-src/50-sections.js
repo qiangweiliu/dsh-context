@@ -651,6 +651,16 @@
       return h('div', { style: styles.card, 'data-embodiment-pricing': '1', 'data-embodiment-card': 'pricing' },
         h('div', { style: styles.cardHead }, h('h3', { style: styles.cardTitle }, t('pricingTitle')), h('span', { style: styles.cardSub }, t('costCustom'))),
         h('p', { style: styles.text }, t('pricingHint')),
+        // 节假日只读展示：内置表按年内置，跨年用配置 `holidays` 补充即可，不必改代码。
+        pricing && pricing.holidays
+          ? h('p', { style: styles.cardSub, 'data-embodiment-holidays': '1' },
+              t('pricingHolidays')
+                .replace('{builtin}', String(pricing.holidays.builtin ?? 0))
+                .replace('{custom}', String((pricing.holidays.custom || []).length))
+                .replace('{total}', String(pricing.holidays.total ?? 0)),
+              pricing.holidays.ignoreBuiltin ? ` · ${t('pricingHolidaysIgnoreBuiltin')}` : '',
+            )
+          : null,
         rows.length === 0 ? h('p', { style: styles.emptyText }, t('pricingEmpty')) : h('div', { style: styles.pricingRows },
           rows.map((row, index) => h('div', { key: index, style: styles.pricingRow },
             cell(row, index, 'match', t('pricingMatch')),

@@ -59,7 +59,7 @@ import {
   clearSessionBudget,
 } from './state.js'
 
-import { DEFAULT_MODEL_PRICING, PRICING_CURRENCY, PRICING_META, PRICING_SOURCE, PRICING_UPDATED_AT, csvCell, csvDocument, estimateInputCost, foldSession, isPeakTime, sessionDetail, summarizeFolds } from './metrics.js'
+import { DEFAULT_MODEL_PRICING, PRICING_CURRENCY, PRICING_META, PRICING_SOURCE, PRICING_UPDATED_AT, configureHolidays, csvCell, csvDocument, estimateInputCost, foldSession, holidayInfo, isPeakTime, sessionDetail, summarizeFolds } from './metrics.js'
 import { atomicWriteFile, backupFile as backupStateFile, latestBackupJson as latestStateBackup } from './persist.js'
 import { buildHealth, buildInsights } from './insights.js'
 import { SCAFFOLD_TEMPLATES, mergeAgentsContent, planScaffold } from './scaffold.js'
@@ -137,6 +137,10 @@ const DEFAULT_CONFIG = {
   // 追加的用户价格表：[{ match: '正则', input, cacheRead, cacheWrite, output }]，单位 CNY / 1M tokens。
   // 排在内置表之前，因此同名模型可以用它覆盖或补充。
   modelPricing: [],
+  // 额外的法定节假日（YYYY-MM-DD），与内置表合并；用于跨年不必改代码/发版。
+  holidays: [],
+  // true 时忽略内置节假日表，只用 `holidays`（完全接管）。
+  holidaysIgnoreBuiltin: false,
   // 首次运行/修复时，允许把控制行补挂进 agent preset；默认关闭，必须由用户显式同意。
   autoMountControl: false,
 }
@@ -329,6 +333,20 @@ function validateConfig(input) {
       config.modelPricing = rows
     }
   }
+  if (raw.holidays !== undefined) {
+    if (!Array.isArray(raw.holidays) || raw.holidays.length > 400) {
+      issues.push({ message: 'expected an array of YYYY-MM-DD strings (max 400)', path: ['holidays'] })
+    } else if (!raw.holidays.every((value) => typeof value === 'string' && /^\d{4}-\d{2}-\d{2}$/u.test(value.trim()))) {
+      issues.push({ message: 'each holiday must be YYYY-MM-DD', path: ['holidays'] })
+    } else {
+      config.holidays = [...new Set(raw.holidays.map((value) => value.trim()))].sort()
+    }
+  }
+  if (raw.holidaysIgnoreBuiltin !== undefined) {
+    if (typeof raw.holidaysIgnoreBuiltin !== 'boolean') {
+      issues.push({ message: 'expected a boolean', path: ['holidaysIgnoreBuiltin'] })
+    } else config.holidaysIgnoreBuiltin = raw.holidaysIgnoreBuiltin
+  }
   if (raw.compressionStrategy !== undefined) {
     if (!Object.prototype.hasOwnProperty.call(COMPRESSION_STRATEGIES, raw.compressionStrategy)) {
       issues.push({ message: `expected one of ${Object.keys(COMPRESSION_STRATEGIES).join(', ')}`, path: ['compressionStrategy'] })
@@ -457,6 +475,10 @@ export function apply(ctx, config) {
   const effectivePricing = Array.isArray(config.modelPricing) && config.modelPricing.length > 0
     ? [...config.modelPricing, ...DEFAULT_MODEL_PRICING]
     : DEFAULT_MODEL_PRICING
+
+  // 节假日表：默认「内置 ∪ 配置补充」，`holidaysIgnoreBuiltin` 时完全用配置。
+  // 放在这里是为了让 metrics.js 的成本估算与状态路由用同一份判定。
+  configureHolidays({ add: config.holidays, ignoreBuiltin: config.holidaysIgnoreBuiltin })
 
   // 状态目录：0.21.0 从 ctx-mon-and-con 改名；首次启动把旧目录的状态文件复制过来。
   // 0.25.0 起按 profile 再分一层（识别依据：哪个 profile 的依赖真的指向本插件目录），
@@ -1347,6 +1369,8 @@ export function apply(ctx, config) {
         models: PRICING_META,
         custom: Array.isArray(config.modelPricing) && config.modelPricing.length > 0,
         rows: Array.isArray(config.modelPricing) ? config.modelPricing : [],
+        // 节假日：内置表 + 配置补充；面板只读展示，避免每年改代码发版。
+        holidays: holidayInfo(),
       },
     })
     statusCache = { at: Date.now(), revision: statusRevision, text: body }
@@ -1458,6 +1482,16 @@ export function apply(ctx, config) {
         })
       }
       patch.modelPricing = rows
+    }
+    if (input.holidays !== undefined) {
+      if (!Array.isArray(input.holidays) || input.holidays.length > 400) return null
+      const dates = input.holidays.map((value) => (typeof value === 'string' ? value.trim() : value))
+      if (!dates.every((value) => typeof value === 'string' && /^\d{4}-\d{2}-\d{2}$/u.test(value))) return null
+      patch.holidays = [...new Set(dates)].sort()
+    }
+    if (input.holidaysIgnoreBuiltin !== undefined) {
+      if (typeof input.holidaysIgnoreBuiltin !== 'boolean') return null
+      patch.holidaysIgnoreBuiltin = input.holidaysIgnoreBuiltin
     }
     const warn = ratios.warnAt ?? config.warnAt
     const error = ratios.errorAt ?? config.errorAt

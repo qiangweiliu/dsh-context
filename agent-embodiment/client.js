@@ -21,7 +21,7 @@ window.__ModuleLoader__.load({
 
     const NS = 'agentEmbodiment'
     /** 与 package.json 版本保持一致；宿主版本不同时提示刷新页面而不是重启 DSH。 */
-    const CLIENT_VERSION = '0.28.0'
+    const CLIENT_VERSION = '0.29.0'
     /**
      * API 路径必须相对页面 base 解析，而不是写死根路径：
      * 反向代理部署在 /app/dsh/ 这类前缀下时，根路径 /api/... 会打到网关根并 404。
@@ -309,6 +309,8 @@ window.__ModuleLoader__.load({
       topCost: 'Top cost',
       pricingTitle: 'Model pricing',
       pricingHint: 'CNY per 1M tokens. Rows are evaluated top-down; the first match wins. Unknown models stay blank.',
+      pricingHolidays: 'Holidays: {builtin} built-in + {custom} custom = {total} days (off-peak all day)',
+      pricingHolidaysIgnoreBuiltin: 'built-in table ignored',
       pricingMatch: 'Model regex',
       pricingInput: 'Input',
       pricingCacheRead: 'Cache read',
@@ -668,6 +670,8 @@ window.__ModuleLoader__.load({
       topCost: '费用最高',
       pricingTitle: '模型价格',
       pricingHint: '人民币 / 每百万 tokens；自上而下匹配，第一条命中生效；未知模型保持空白。',
+      pricingHolidays: '节假日：内置 {builtin} 天 + 自定义 {custom} 天 = {total} 天（全天按空闲价）',
+      pricingHolidaysIgnoreBuiltin: '已忽略内置表',
       pricingMatch: '模型正则',
       pricingInput: '输入',
       pricingCacheRead: '缓存命中',
@@ -3320,6 +3324,16 @@ window.__ModuleLoader__.load({
       return h('div', { style: styles.card, 'data-embodiment-pricing': '1', 'data-embodiment-card': 'pricing' },
         h('div', { style: styles.cardHead }, h('h3', { style: styles.cardTitle }, t('pricingTitle')), h('span', { style: styles.cardSub }, t('costCustom'))),
         h('p', { style: styles.text }, t('pricingHint')),
+        // 节假日只读展示：内置表按年内置，跨年用配置 `holidays` 补充即可，不必改代码。
+        pricing && pricing.holidays
+          ? h('p', { style: styles.cardSub, 'data-embodiment-holidays': '1' },
+              t('pricingHolidays')
+                .replace('{builtin}', String(pricing.holidays.builtin ?? 0))
+                .replace('{custom}', String((pricing.holidays.custom || []).length))
+                .replace('{total}', String(pricing.holidays.total ?? 0)),
+              pricing.holidays.ignoreBuiltin ? ` · ${t('pricingHolidaysIgnoreBuiltin')}` : '',
+            )
+          : null,
         rows.length === 0 ? h('p', { style: styles.emptyText }, t('pricingEmpty')) : h('div', { style: styles.pricingRows },
           rows.map((row, index) => h('div', { key: index, style: styles.pricingRow },
             cell(row, index, 'match', t('pricingMatch')),

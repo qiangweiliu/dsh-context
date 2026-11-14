@@ -66,7 +66,43 @@ export const CN_HOLIDAYS = [
   '2026-10-01', '2026-10-02', '2026-10-03', '2026-10-04', '2026-10-05', '2026-10-06', '2026-10-07',
 ]
 
-const HOLIDAY_SET = new Set(CN_HOLIDAYS)
+const HOLIDAY_SET_DEFAULT = new Set(CN_HOLIDAYS)
+
+/**
+ * 用户自定义的节假日补充（配置文件 `holidays`，YYYY-MM-DD）。
+ * 默认与内置表**合并**：每年只需补新日期，不必复制整张表；
+ * `ignoreBuiltin: true` 时完全接管（内置表不再生效）。
+ */
+let configuredHolidays = new Set()
+let ignoreBuiltinHolidays = false
+let activeHolidaySet = null
+
+const DATE_KEY = /^\d{4}-\d{2}-\d{2}$/u
+
+/** 配置节假日表；非法日期项会被丢弃，不抛错（配置层已校验，这里只做兜底）。 */
+export function configureHolidays(options = {}) {
+  const add = Array.isArray(options.add) ? options.add : []
+  configuredHolidays = new Set(add.filter((value) => typeof value === 'string' && DATE_KEY.test(value.trim())).map((value) => value.trim()))
+  ignoreBuiltinHolidays = options.ignoreBuiltin === true
+  activeHolidaySet = null
+}
+
+const holidaySet = () => {
+  if (activeHolidaySet) return activeHolidaySet
+  const base = ignoreBuiltinHolidays ? [] : [...HOLIDAY_SET_DEFAULT]
+  activeHolidaySet = new Set([...base, ...configuredHolidays])
+  return activeHolidaySet
+}
+
+/** 供状态路由展示：内置/自定义各多少天、是否忽略内置。 */
+export function holidayInfo() {
+  return {
+    builtin: ignoreBuiltinHolidays ? 0 : HOLIDAY_SET_DEFAULT.size,
+    custom: [...configuredHolidays].sort(),
+    ignoreBuiltin: ignoreBuiltinHolidays,
+    total: holidaySet().size,
+  }
+}
 
 /** 北京时间的日期键（YYYY-MM-DD），用于节假日查表。 */
 const beijingDateKey = (local) => {
@@ -78,9 +114,9 @@ const beijingDateKey = (local) => {
 
 /**
  * 官方高峰时段：北京时间周一至周五 09:00-12:00、14:00-18:00，节假日不上浮。
- * `holidays` 可传入自定义表（测试或跨年更新时用），默认用内置的 `CN_HOLIDAYS`。
+ * `holidays` 可传入自定义集合（测试用）；默认用「内置 ∪ 配置补充」的当前集合。
  */
-export function isPeakTime(time, holidays = HOLIDAY_SET) {
+export function isPeakTime(time, holidays = holidaySet()) {
   const stamp = Number(time)
   if (!Number.isFinite(stamp)) return false
   const local = new Date(stamp + BEIJING_OFFSET_MS)

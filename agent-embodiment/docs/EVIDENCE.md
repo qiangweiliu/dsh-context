@@ -466,6 +466,17 @@ npm 运行依赖：无；生命周期脚本：无
 - 验证：拆分前后 `client.js` 字节一致 → 单元 410（新增 client-build 6 项）、集成 144、lint 0（`client-src/**` 属片段，已在 oxlint 忽略）；WSL 实机面板 4 tab、0 异常。
 - 边界：片段之间仍共享同一作用域（不是模块），跨片段的私有函数仍是隐式可见的；真正按模块隔离需要打包器，留待以后。
 
+## E38. v0.29.0 节假日可配置与 0.2.2-rc.1 隔离验收（2026-11-14）
+
+- 节假日可配置：新增 `holidays` / `holidaysIgnoreBuiltin` 配置；`metrics.js` 增加 `configureHolidays()` 与 `holidayInfo()`，`isPeakTime()` 默认取「内置 ∪ 配置」。`test/metrics.mjs` 新增 5 项（补充日期生效、合并语义、ignoreBuiltin 生效与失效、重置）、`test/static.mjs` 新增 5 项（格式校验、去重排序、非数组/非布尔拒绝）。
+- 面板：模型价格卡只读展示「内置 31 天 + 自定义 0 天 = 31 天」；WSL 实机 `pricing.holidays = {builtin:31, custom:[], ignoreBuiltin:false, total:31}`。
+- **0.2.2-rc.1 隔离验收**：在 WSL 用 `npm install @deepseek-ai/dsh@0.2.2-rc.1` 装进 `/tmp/dsh-rc1`（654 包），独立 `DSH_HOME=/tmp/dsh-home-rc1`，用 `--from-default-profile web` 建 `rc1` profile，`plugin add` 链接本插件（bundles 已登记），端口 3081 启动成功。
+  - 状态接口：`version: "0.29.0"`、`budget.tokens: 128000`、`releases` 六项齐全。
+  - 面板（headless Edge 1776×1250）：`tabs=4`、`version=0.29.0`、**0 error / 0 exception**，正文含「上下文 v0.29.0 正常 刷新 看清上下文花在哪…」。
+  - 据此把 `0.2.2-rc.1` 从 `unknown` 改为 `compatible`。
+- 观察（非缺陷）：该隔离实例的状态接口 `profile` 字段返回 `web` 而不是 `rc1`——profile 识别走的是「哪个 profile 的依赖指向本插件」，用默认模板克隆出的 profile 仍带模板名；状态目录因此落在 `profiles/web`，在隔离 `DSH_HOME` 下不影响隔离性，但与目录名不一致，留待后续统一。
+- 测试：单元 422（static 104 / metrics 61）、集成 144、lint 0。
+
 ## 已知限制（unknown）
 
 - 未进行独立安全审计；本文件不声称“安全通过”。

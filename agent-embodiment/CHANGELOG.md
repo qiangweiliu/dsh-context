@@ -2,6 +2,21 @@
 
 格式参考 Keep a Changelog；版本遵循 SemVer。DSH 兼容版本写在每个条目的 Compatibility 下。
 
+## [0.29.0] - 2026-11-14
+
+### Added
+
+- **节假日表可配置**：新增配置 `holidays`（`YYYY-MM-DD` 数组，最多 400 条）与 `holidaysIgnoreBuiltin`（布尔）。默认与内置表**合并**，跨年只需在 `cordis.patch.yml` 里补新日期，不必改代码发版；`holidaysIgnoreBuiltin: true` 时完全用配置表。重复日期自动去重排序，非法格式在校验层拒绝。
+- 状态接口的 `pricing.holidays` 暴露 `{ builtin, custom, ignoreBuiltin, total }`；设置页的模型价格卡只读展示「内置 N 天 + 自定义 M 天 = T 天」，忽略内置时加标注。
+
+### Changed
+
+- `metrics.js` 新增 `configureHolidays()` / `holidayInfo()`；`isPeakTime()` 默认使用「内置 ∪ 配置」的当前集合，逐条成本估算与 `estimateInputCost` 共用同一判定。
+
+### Compatibility
+
+- `0.2.2-rc.1` 由 `unknown` 改为 `compatible`：隔离实例验收（独立 npm 安装目录、独立 `DSH_HOME`、独立 profile、端口 3081）启动成功，状态接口返回 `version: 0.29.0`，面板四 tab 渲染、0 error / 0 exception。
+
 ## [0.28.0] - 2026-11-14
 
 ### Changed

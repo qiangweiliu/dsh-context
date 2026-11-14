@@ -3,7 +3,7 @@
  *
  * 运行：node test/metrics.mjs
  */
-import { csvCell, csvDocument, estimateInputCost, foldSession, sessionDetail, summarizeFolds, isPeakTime } from '../metrics.js'
+import { csvCell, csvDocument, estimateInputCost, foldSession, sessionDetail, summarizeFolds, isPeakTime, configureHolidays } from '../metrics.js'
 
 const checks = []
 function check(name, condition, detail) {
@@ -142,6 +142,17 @@ check('自定义价：1M 输入在空闲时段按平档计价（10 CNY）', Math
 const flatRows = [{ match: /custom-model/i, input: 7, cacheRead: 1, cacheWrite: 7, output: 14 }]
 check('自定义价：没给峰谷时全天同价', Math.abs(estimateInputCost(1000000, 'custom-model', flatRows, at('2026-03-05T10:00:00+08:00')) - estimateInputCost(1000000, 'custom-model', flatRows, at('2026-03-05T20:00:00+08:00'))) < 1e-9)
 check('自定义价：节假日按平档计价（国庆 10:00）', Math.abs(estimateInputCost(1000000, 'custom-model', peakRows, at('2026-10-01T10:00:00+08:00')) - 10) < 1e-9)
+
+// 节假日可配置：默认「内置 ∪ 配置补充」，ignoreBuiltin 时只用配置。
+configureHolidays({ add: ['2026-12-25'] })
+check('配置补充的节假日不算高峰（2026-12-25 周五）', isPeakTime(at('2026-12-25T10:00:00+08:00')) === false)
+check('合并语义：内置表仍生效（国庆仍是假日）', isPeakTime(at('2026-10-01T10:00:00+08:00')) === false)
+configureHolidays({ add: [], ignoreBuiltin: true })
+check('ignoreBuiltin 后内置表失效（国庆恢复高峰）', isPeakTime(at('2026-10-01T10:00:00+08:00')) === true)
+configureHolidays({ add: ['2026-10-01'], ignoreBuiltin: true })
+check('ignoreBuiltin 时仍认配置里的日期', isPeakTime(at('2026-10-01T10:00:00+08:00')) === false)
+configureHolidays()
+check('重置后回到内置表', isPeakTime(at('2026-10-01T10:00:00+08:00')) === false && isPeakTime(at('2026-12-25T10:00:00+08:00')) === true)
 
 const failed = checks.filter((item) => !item.ok)
 console.log(`\n[metrics] ${checks.length - failed.length}/${checks.length} 项通过`)

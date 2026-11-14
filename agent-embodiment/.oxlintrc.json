@@ -1,7 +1,13 @@
 {
   "$schema": "./node_modules/oxlint/configuration_schema.json",
   "ignorePatterns": ["test/deps/**", "node_modules/**"],
+  "env": {
+    "browser": true,
+    "node": true,
+    "es2024": true
+  },
   "rules": {
-    "unicorn/no-useless-fallback-in-spread": "off"
+    "unicorn/no-useless-fallback-in-spread": "off",
+    "no-undef": "error"
   }
 }

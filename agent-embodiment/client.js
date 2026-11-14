@@ -995,6 +995,9 @@ window.__ModuleLoader__.load({
 
     /** 分段上下文条：外层长度=已用/上下文，内部颜色=四桶占比；首次渲染从 0 平滑增长。 */
     function SegmentedBar(props) {
+      // 阈值刻度的 aria-label 需要词典；这里显式取 props.t，缺失时退回原样键名，
+      // 避免像 0.26.0 那样在「有构成数据」时才走到 t() 而抛 ReferenceError（空会话测不出来）。
+      const t = typeof props.t === 'function' ? props.t : (key) => key
       const usedRatio = Math.max(0, Math.min(1, Number(props.usedRatio) || 0))
       const categories = Array.isArray(props.categories) ? props.categories : []
       const filled = categories.filter((row) => row.tokens > 0)
@@ -1477,11 +1480,8 @@ window.__ModuleLoader__.load({
       const [state, setState] = react.useState({ phase: 'loading' })
       const load = react.useCallback(() => {
         setState({ phase: 'loading' })
+        // fetchJson 已把 Response 解析成 JSON 对象，这里直接取 payload。
         fetchJson(path)
-          .then((response) => {
-            if (!response.ok) throw new Error(`HTTP ${response.status}`)
-            return response.json()
-          })
           .then((data) => setState({ phase: 'ready', data }))
           .catch((error) => setState({ phase: 'error', message: String((error && error.message) || error) }))
       }, [path])
@@ -3960,7 +3960,7 @@ window.__ModuleLoader__.load({
           ),
           h('p', { style: styles.subtitle, 'data-embodiment-header-status': '1' }, headerLine),
           hasHeaderComposition
-            ? h(SegmentedBar, { usedRatio: headerRatio ?? 0, categories: headerCategories, warnAt: headerWarnAt, errorAt: headerErrorAt, ticks: true })
+            ? h(SegmentedBar, { t, usedRatio: headerRatio ?? 0, categories: headerCategories, warnAt: headerWarnAt, errorAt: headerErrorAt, ticks: true })
             : null,
           hasHeaderComposition ? h(LegendGrid, { categories: headerCategories, tokensLabel: t('tokens') }) : null,
           h('div', { style: styles.tabs, role: 'tablist', 'aria-label': t('tabsLabel'), onKeyDown: onTabKeyDown }, tabs.map(([key, label]) =>
@@ -4110,7 +4110,8 @@ window.__ModuleLoader__.load({
       return h(
         'div',
         { style: styles.page },
-        h('div', { style: styles.pageInner }, h(CtxPanel, { ...props, title: props.t('pageTitle') })),
+        // 再兜一层：面板整体渲染失败时给出可读提示，而不是让宿主边界把主区域整块清空。
+        h('div', { style: styles.pageInner }, h(CardBoundary, { t: props.t }, h(CtxPanel, { ...props, title: props.t('pageTitle') }))),
       )
     }
 
@@ -4143,24 +4144,43 @@ window.__ModuleLoader__.load({
      * 所以用 window 级标记做幂等；插件卸载时由 effect 清除，允许后续重新挂载。
      */
     const MOUNT_FLAG = '__agentEmbodimentMounted'
+    const MOUNT_DISPOSERS = '__agentEmbodimentSlotDisposers'
     let mounted = false
 
     /** @param {unknown} ctx - 浏览器 cordis 上下文（slots / locale） */
     function apply(ctx) {
-      if (mounted) return undefined
       const scope = typeof window !== 'undefined' ? window : null
-      if (scope && scope[MOUNT_FLAG]) return undefined
+      // 同一份 bundle 被重复 apply（静态 bundle + 后续激活）：跳过，避免重复导航/设置/dock。
+      if (mounted) return undefined
+      if (scope && scope[MOUNT_FLAG] === CLIENT_VERSION) return undefined
       mounted = true
       if (scope) {
-        scope[MOUNT_FLAG] = true
+        // HMR 热更新 client.js 时，必须先把上一个 bundle 留下的槽位注册释放掉。
+        // 否则新组件注册不上、旧注册又随旧模块被清理，表现为「侧栏还有入口、主区域空白」。
+        const previous = scope[MOUNT_DISPOSERS]
+        if (Array.isArray(previous)) {
+          for (const dispose of previous) {
+            try {
+              dispose()
+            } catch {}
+          }
+        }
+        scope[MOUNT_FLAG] = CLIENT_VERSION
+        scope[MOUNT_DISPOSERS] = []
         if (typeof ctx.effect === 'function') {
           ctx.effect(() => () => {
             mounted = false
             try {
               delete scope[MOUNT_FLAG]
+              delete scope[MOUNT_DISPOSERS]
             } catch {}
           }, 'agent-embodiment: mount guard')
         }
+      }
+      /** 记录槽位注册的释放函数，供下一个 bundle 挂载前清理。 */
+      const track = (dispose) => {
+        if (scope && Array.isArray(scope[MOUNT_DISPOSERS]) && typeof dispose === 'function') scope[MOUNT_DISPOSERS].push(dispose)
+        return dispose
       }
 
       ctx.effect(() => ctx.locale.register(NS, { en, zh }), 'agent-embodiment: dictionaries')
@@ -4221,21 +4241,23 @@ window.__ModuleLoader__.load({
 
       // 1) 设置 → 上下文
       ctx.slots.inject('settings.section', () =>
-        ctx.slots.register(
-          { name: 'settings.section', id: CONFIG_NAMESPACE, order: 40, locale: NS, label: () => t('nav'), inject: face },
-          CtxPanel,
+        track(
+          ctx.slots.register(
+            { name: 'settings.section', id: CONFIG_NAMESPACE, order: 40, locale: NS, label: () => t('nav'), inject: face },
+            CtxPanel,
+          ),
         ),
       )
 
       // 2) 左侧导航整页 + 图标
-      ctx.slots.inject('main', () => ctx.slots.register({ name: 'main', key: PANEL_ID, locale: NS, inject: face }, CtxPage))
+      ctx.slots.inject('main', () => track(ctx.slots.register({ name: 'main', key: PANEL_ID, locale: NS, inject: face }, CtxPage)))
       ctx.slots.inject('sidebar.panellist', () =>
-        ctx.slots.register({ name: 'sidebar.panellist', id: PANEL_ID, order: 20, locale: NS, label: () => t('panel') }, CtxIcon),
+        track(ctx.slots.register({ name: 'sidebar.panellist', id: PANEL_ID, order: 20, locale: NS, label: () => t('panel') }, CtxIcon)),
       )
 
       // 3) 输入框下方指示器（与内置 ContextMeter 同排版，可点开小明细）
       ctx.slots.inject('conversation.composer.dock', () =>
-        ctx.slots.register({ name: 'conversation.composer.dock', id: 'embody-usage', order: 10, locale: NS, inject: face }, (props) => {
+        track(ctx.slots.register({ name: 'conversation.composer.dock', id: 'embody-usage', order: 10, locale: NS, inject: face }, (props) => {
           const [active, setActive] = react.useState(false)
           react.useEffect(() => {
             let cancelled = false
@@ -4250,14 +4272,16 @@ window.__ModuleLoader__.load({
             }
           }, [])
           return h(CtxDock, { ...props, t, controlActive: active })
-        }),
+        })),
       )
 
       // 4) 同一个底部状态行里的 DSH 余额胶囊，排在 ctx 指示器之后。
       ctx.slots.inject('conversation.composer.dock', () =>
-        ctx.slots.register(
-          { name: 'conversation.composer.dock', id: 'embody-balance', order: 20, locale: NS, inject: face },
-          (props) => h(BalanceDock, { ...props, t, meta: accountMeta }),
+        track(
+          ctx.slots.register(
+            { name: 'conversation.composer.dock', id: 'embody-balance', order: 20, locale: NS, inject: face },
+            (props) => h(BalanceDock, { ...props, t, meta: accountMeta }),
+          ),
         ),
       )
     }

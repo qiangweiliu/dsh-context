@@ -1481,9 +1481,14 @@ window.__ModuleLoader__.load({
       const existing = inflightJson.get(key)
       if (existing) return existing
       const promise = fetch(path, { headers: { accept: 'application/json' }, ...(options || {}) })
-        .then((response) => {
-          if (!response.ok) throw new Error(`HTTP ${response.status}`)
-          return response.json()
+        .then(async (response) => {
+          // 服务端在 4xx/5xx 时会带 { error }；优先用它，别让用户看到光秃秃的 "HTTP 400"。
+          const payload = await response.json().catch(() => null)
+          if (!response.ok) {
+            const message = payload && typeof payload.error === 'string' && payload.error ? payload.error : `HTTP ${response.status}`
+            throw new Error(message)
+          }
+          return payload
         })
         .finally(() => {
           // 完成后从 map 移除，避免长期占用内存；下一次请求重新建立。
@@ -1492,6 +1497,13 @@ window.__ModuleLoader__.load({
       inflightJson.set(key, promise)
       return promise
     }
+
+    /** 写操作统一入口：POST JSON、解析响应、非 2xx 抛出服务端 error 文案。 */
+    const postJson = (path, body) => fetchJson(path, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify(body === undefined ? {} : body),
+    })
 
     function useStatus(path) {
       const [state, setState] = react.useState({ phase: 'loading' })
@@ -2057,29 +2069,18 @@ window.__ModuleLoader__.load({
         return false
       }
 
-      const readPromptResult = (response) =>
-        response
-          .json()
-          .catch(() => ({}))
-          .then((payload) => {
-            if (!response.ok || (payload && payload.ok === false)) {
-              throw new Error((payload && payload.error) || `HTTP ${response.status}`)
-            }
-            return payload || {}
-          })
+      // 全局 postJson 已按非 2xx 抛出服务端 error；这里再兜一层 `{ ok: false }`（旧接口约定）。
+      const requireOk = (payload) => {
+        if (payload && payload.ok === false) throw new Error(payload.error || t('saveFailed'))
+        return payload || {}
+      }
       const promptFailure = (failure) => setNotice(`${t('saveFailed')}: ${String((failure && failure.message) || failure)}`)
-      const postJson = (path, body) =>
-        fetch(`${STATUS_PATH}${path}`, {
-          method: 'POST',
-          headers: { 'content-type': 'application/json' },
-          body: JSON.stringify(body),
-        })
 
       const post = (body) => {
         if (!requireControl()) return
         setBusy(body)
-        postJson('/inventory/toggle', body)
-          .then((response) => response.json().catch(() => ({})))
+        postJson(`${STATUS_PATH}/inventory/toggle`, body)
+          .then((payload) => payload || {})
           .then(() => {
             setBusy(null)
             setTimeout(() => {
@@ -2105,8 +2106,8 @@ window.__ModuleLoader__.load({
 
       const restore = () => {
         if (!requireControl()) return
-        postJson('/inventory/reset', { layer: 'all' })
-          .then(readPromptResult)
+        postJson(`${STATUS_PATH}/inventory/reset`, { layer: 'all' })
+          .then(requireOk)
           .then(() => {
             setRestorePending(false)
             setNotice(null)
@@ -2131,8 +2132,8 @@ window.__ModuleLoader__.load({
       const postPrompt = (suffix, body) => {
         if (!requireControl()) return
         setPromptBusy(true)
-        postJson(`/inventory/prompt${suffix}`, body)
-          .then(readPromptResult)
+        postJson(`${STATUS_PATH}/inventory/prompt${suffix}`, body)
+          .then(requireOk)
           .then(() => {
             setPromptBusy(false)
             setEditDraft(null)
@@ -2151,8 +2152,8 @@ window.__ModuleLoader__.load({
       const postSessionPrompt = (name, text) => {
         if (!requireControl()) return
         setPromptBusy(true)
-        postJson('/inventory/prompt/session', { name, text, ...(props.sessionId ? { sessionId: props.sessionId } : {}) })
-          .then(readPromptResult)
+        postJson(`${STATUS_PATH}/inventory/prompt/session`, { name, text, ...(props.sessionId ? { sessionId: props.sessionId } : {}) })
+          .then(requireOk)
           .then(() => {
             setPromptBusy(false)
             setEditDraft(null)
@@ -2170,8 +2171,8 @@ window.__ModuleLoader__.load({
       const postSessionPromptReset = (name) => {
         if (!requireControl()) return
         setPromptBusy(true)
-        postJson('/inventory/prompt/session/reset', { name, ...(props.sessionId ? { sessionId: props.sessionId } : {}) })
-          .then(readPromptResult)
+        postJson(`${STATUS_PATH}/inventory/prompt/session/reset`, { name, ...(props.sessionId ? { sessionId: props.sessionId } : {}) })
+          .then(requireOk)
           .then(() => {
             setPromptBusy(false)
             setLocalEdits((prev) => {
@@ -2191,8 +2192,8 @@ window.__ModuleLoader__.load({
       const postExtraPrompt = (name, text, placement = 'system') => {
         if (!requireControl()) return
         setExtraBusy(true)
-        postJson('/inventory/extra-prompt', { name, text, placement })
-          .then(readPromptResult)
+        postJson(`${STATUS_PATH}/inventory/extra-prompt`, { name, text, placement })
+          .then(requireOk)
           .then((payload) => {
             setExtraBusy(false)
             if (!payload || !payload.ok) {
@@ -2213,8 +2214,8 @@ window.__ModuleLoader__.load({
 
       const postExtraPromptReset = (name) => {
         setExtraBusy(true)
-        postJson('/inventory/extra-prompt/reset', { name })
-          .then(readPromptResult)
+        postJson(`${STATUS_PATH}/inventory/extra-prompt/reset`, { name })
+          .then(requireOk)
           .then(() => {
             setExtraBusy(false)
             setExtraDeletePending(null)
@@ -2673,19 +2674,15 @@ window.__ModuleLoader__.load({
 
       const toggle = (enable) => {
         setState({ kind: 'saving' })
-        fetch(`${STATUS_PATH}/config/preset`, {
-          method: 'POST',
-          headers: { 'content-type': 'application/json' },
-          body: JSON.stringify({ enable }),
-        })
-          .then(async (response) => {
-            const payload = await response.json().catch(() => ({}))
-            if (response.status !== 202 || !payload.ok) throw new Error(payload.error || `HTTP ${response.status}`)
+        postJson(`${STATUS_PATH}/config/preset`, { enable })
+          .then(async (payload) => {
+            if (!payload || !payload.ok) throw new Error((payload && payload.error) || t('controlWriteFailed'))
             const deadline = Date.now() + 10000
             for (;;) {
               await new Promise((resolve) => setTimeout(resolve, 500))
               try {
-                const status = await (await fetch(STATUS_PATH)).json()
+                // 控制行启停后要读新值，绕过 /status 的短缓存。
+                const status = await fetchJson(`${STATUS_PATH}?fresh=1`)
                 if (status && status.control && status.control.active === enable) return true
               } catch {}
               if (Date.now() > deadline) return false
@@ -2825,19 +2822,15 @@ window.__ModuleLoader__.load({
           return
         }
         setResult({ kind: 'saving' })
-        fetch(`${STATUS_PATH}/config`, {
-          method: 'POST',
-          headers: { 'content-type': 'application/json' },
-          body: JSON.stringify({ contextWindowTokens: tokens, warnAt: warn, errorAt: error, triggerAt: trigger, targetAt: target, compressionStrategy: draft.strategy, analyticsLimit }),
-        })
-          .then(async (response) => {
-            const payload = await response.json().catch(() => ({}))
-            if (response.status !== 202 || !payload.ok) throw new Error(payload.error || `HTTP ${response.status}`)
+        postJson(`${STATUS_PATH}/config`, { contextWindowTokens: tokens, warnAt: warn, errorAt: error, triggerAt: trigger, targetAt: target, compressionStrategy: draft.strategy, analyticsLimit })
+          .then(async (payload) => {
+            if (!payload || !payload.ok) throw new Error((payload && payload.error) || t('saveRefused'))
             const deadline = Date.now() + 8000
             for (;;) {
               await new Promise((resolve) => setTimeout(resolve, 400))
               try {
-                const status = await (await fetch(STATUS_PATH)).json()
+                // 写配置会重挂插件，这里必须读最新值。
+                const status = await fetchJson(`${STATUS_PATH}?fresh=1`)
                 if (status && status.budget && status.budget.tokens === tokens) return true
               } catch {}
               if (Date.now() > deadline) return false
@@ -2983,15 +2976,8 @@ window.__ModuleLoader__.load({
       const [busy, setBusy] = react.useState(false)
       const [error, setError] = react.useState('')
       if (onboarding.completed || onboarding.dismissed) return null
-      const post = (path, body) => fetch(`${STATUS_PATH}${path}`, {
-        method: 'POST',
-        headers: { 'content-type': 'application/json' },
-        body: JSON.stringify(body),
-      }).then(async (response) => {
-        const payload = await response.json().catch(() => ({}))
-        if (!response.ok) throw new Error(payload.error || `HTTP ${response.status}`)
-        return payload
-      })
+      // 引导卡片的写操作统一走 postJson（错误文案来自服务端 error）。
+      const post = (path, body) => postJson(`${STATUS_PATH}${path}`, body)
       const finish = async (dismiss) => {
         if (dismiss) {
           setBusy(true)
@@ -3075,14 +3061,8 @@ window.__ModuleLoader__.load({
       const reopen = () => {
         setBusy(true)
         setError('')
-        fetch(`${STATUS_PATH}/onboarding`, {
-          method: 'POST',
-          headers: { 'content-type': 'application/json' },
-          body: JSON.stringify({ reset: true }),
-        })
-          .then(async (response) => {
-            const payload = await response.json().catch(() => ({}))
-            if (!response.ok) throw new Error(payload.error || `HTTP ${response.status}`)
+        postJson(`${STATUS_PATH}/onboarding`, { reset: true })
+          .then(() => {
             if (typeof props.onDone === 'function') props.onDone()
           })
           .catch((failure) => setError(String(failure?.message || failure)))
@@ -3168,12 +3148,11 @@ window.__ModuleLoader__.load({
       const repair = () => {
         setBusy(true)
         setNotice('')
-        fetch(`${STATUS_PATH}/config/preset`, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ enable: true }) })
-          .then((response) => response.json().catch(() => ({})).then((payload) => {
-            if (!response.ok) throw new Error(payload.error || `HTTP ${response.status}`)
+        postJson(`${STATUS_PATH}/config/preset`, { enable: true })
+          .then(() => {
             setNotice(t('healthFixed'))
             if (typeof props.onDone === 'function') setTimeout(props.onDone, 1200)
-          }))
+          })
           .catch((failure) => setNotice(String(failure?.message || failure)))
           .finally(() => setBusy(false))
       }
@@ -3322,10 +3301,8 @@ window.__ModuleLoader__.load({
             cacheWrite: Number(row.cacheWrite) || 0,
             output: Number(row.output) || 0,
           }))
-        fetch(`${STATUS_PATH}/config`, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ modelPricing: payload }) })
-          .then(async (response) => {
-            const data = await response.json().catch(() => ({}))
-            if (response.status !== 202) throw new Error(data.error || `HTTP ${response.status}`)
+        postJson(`${STATUS_PATH}/config`, { modelPricing: payload })
+          .then(() => {
             setNotice(t('pricingSaved'))
             if (typeof props.onSaved === 'function') setTimeout(props.onSaved, 1200)
           })
@@ -3388,10 +3365,8 @@ window.__ModuleLoader__.load({
           return
         }
         setBusy(true)
-        fetch(`${STATUS_PATH}/data/reset`, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ scope }) })
-          .then(async (response) => {
-            const data = await response.json().catch(() => ({}))
-            if (!response.ok) throw new Error(data.error || `HTTP ${response.status}`)
+        postJson(`${STATUS_PATH}/data/reset`, { scope })
+          .then(() => {
             setNotice(t('cleared'))
             setConfirm('')
             if (typeof props.onDone === 'function') props.onDone()
@@ -3798,16 +3773,8 @@ window.__ModuleLoader__.load({
           ...(mcp === undefined ? {} : { mcp }),
         }
       }
-      const post = async (path, body) => {
-        const response = await fetch(`${STATUS_PATH}/scaffold/${path}`, {
-          method: 'POST',
-          headers: { 'content-type': 'application/json' },
-          body: JSON.stringify(body),
-        })
-        const data = await response.json().catch(() => ({}))
-        if (!response.ok) throw new Error(data.error || `HTTP ${response.status}`)
-        return data
-      }
+      // 统一走 postJson：非 2xx（含 409 已存在）会抛出服务端 error，调用方直接展示。
+      const post = (path, body) => postJson(`${STATUS_PATH}/scaffold/${path}`, body)
       const preview = async () => {
         setBusy(true)
         setError('')
@@ -4364,8 +4331,7 @@ window.__ModuleLoader__.load({
           const [active, setActive] = react.useState(false)
           react.useEffect(() => {
             let cancelled = false
-            fetch(STATUS_PATH, { headers: { accept: 'application/json' } })
-              .then((response) => (response.ok ? response.json() : null))
+            fetchJson(STATUS_PATH)
               .then((payload) => {
                 if (!cancelled && payload && payload.control) setActive(Boolean(payload.control.active))
               })

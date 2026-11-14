@@ -41,16 +41,8 @@
           ...(mcp === undefined ? {} : { mcp }),
         }
       }
-      const post = async (path, body) => {
-        const response = await fetch(`${STATUS_PATH}/scaffold/${path}`, {
-          method: 'POST',
-          headers: { 'content-type': 'application/json' },
-          body: JSON.stringify(body),
-        })
-        const data = await response.json().catch(() => ({}))
-        if (!response.ok) throw new Error(data.error || `HTTP ${response.status}`)
-        return data
-      }
+      // 统一走 postJson：非 2xx（含 409 已存在）会抛出服务端 error，调用方直接展示。
+      const post = (path, body) => postJson(`${STATUS_PATH}/scaffold/${path}`, body)
       const preview = async () => {
         setBusy(true)
         setError('')

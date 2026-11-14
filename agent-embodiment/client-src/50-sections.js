@@ -5,19 +5,15 @@
 
       const toggle = (enable) => {
         setState({ kind: 'saving' })
-        fetch(`${STATUS_PATH}/config/preset`, {
-          method: 'POST',
-          headers: { 'content-type': 'application/json' },
-          body: JSON.stringify({ enable }),
-        })
-          .then(async (response) => {
-            const payload = await response.json().catch(() => ({}))
-            if (response.status !== 202 || !payload.ok) throw new Error(payload.error || `HTTP ${response.status}`)
+        postJson(`${STATUS_PATH}/config/preset`, { enable })
+          .then(async (payload) => {
+            if (!payload || !payload.ok) throw new Error((payload && payload.error) || t('controlWriteFailed'))
             const deadline = Date.now() + 10000
             for (;;) {
               await new Promise((resolve) => setTimeout(resolve, 500))
               try {
-                const status = await (await fetch(STATUS_PATH)).json()
+                // 控制行启停后要读新值，绕过 /status 的短缓存。
+                const status = await fetchJson(`${STATUS_PATH}?fresh=1`)
                 if (status && status.control && status.control.active === enable) return true
               } catch {}
               if (Date.now() > deadline) return false
@@ -157,19 +153,15 @@
           return
         }
         setResult({ kind: 'saving' })
-        fetch(`${STATUS_PATH}/config`, {
-          method: 'POST',
-          headers: { 'content-type': 'application/json' },
-          body: JSON.stringify({ contextWindowTokens: tokens, warnAt: warn, errorAt: error, triggerAt: trigger, targetAt: target, compressionStrategy: draft.strategy, analyticsLimit }),
-        })
-          .then(async (response) => {
-            const payload = await response.json().catch(() => ({}))
-            if (response.status !== 202 || !payload.ok) throw new Error(payload.error || `HTTP ${response.status}`)
+        postJson(`${STATUS_PATH}/config`, { contextWindowTokens: tokens, warnAt: warn, errorAt: error, triggerAt: trigger, targetAt: target, compressionStrategy: draft.strategy, analyticsLimit })
+          .then(async (payload) => {
+            if (!payload || !payload.ok) throw new Error((payload && payload.error) || t('saveRefused'))
             const deadline = Date.now() + 8000
             for (;;) {
               await new Promise((resolve) => setTimeout(resolve, 400))
               try {
-                const status = await (await fetch(STATUS_PATH)).json()
+                // 写配置会重挂插件，这里必须读最新值。
+                const status = await fetchJson(`${STATUS_PATH}?fresh=1`)
                 if (status && status.budget && status.budget.tokens === tokens) return true
               } catch {}
               if (Date.now() > deadline) return false
@@ -315,15 +307,8 @@
       const [busy, setBusy] = react.useState(false)
       const [error, setError] = react.useState('')
       if (onboarding.completed || onboarding.dismissed) return null
-      const post = (path, body) => fetch(`${STATUS_PATH}${path}`, {
-        method: 'POST',
-        headers: { 'content-type': 'application/json' },
-        body: JSON.stringify(body),
-      }).then(async (response) => {
-        const payload = await response.json().catch(() => ({}))
-        if (!response.ok) throw new Error(payload.error || `HTTP ${response.status}`)
-        return payload
-      })
+      // 引导卡片的写操作统一走 postJson（错误文案来自服务端 error）。
+      const post = (path, body) => postJson(`${STATUS_PATH}${path}`, body)
       const finish = async (dismiss) => {
         if (dismiss) {
           setBusy(true)
@@ -407,14 +392,8 @@
       const reopen = () => {
         setBusy(true)
         setError('')
-        fetch(`${STATUS_PATH}/onboarding`, {
-          method: 'POST',
-          headers: { 'content-type': 'application/json' },
-          body: JSON.stringify({ reset: true }),
-        })
-          .then(async (response) => {
-            const payload = await response.json().catch(() => ({}))
-            if (!response.ok) throw new Error(payload.error || `HTTP ${response.status}`)
+        postJson(`${STATUS_PATH}/onboarding`, { reset: true })
+          .then(() => {
             if (typeof props.onDone === 'function') props.onDone()
           })
           .catch((failure) => setError(String(failure?.message || failure)))
@@ -500,12 +479,11 @@
       const repair = () => {
         setBusy(true)
         setNotice('')
-        fetch(`${STATUS_PATH}/config/preset`, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ enable: true }) })
-          .then((response) => response.json().catch(() => ({})).then((payload) => {
-            if (!response.ok) throw new Error(payload.error || `HTTP ${response.status}`)
+        postJson(`${STATUS_PATH}/config/preset`, { enable: true })
+          .then(() => {
             setNotice(t('healthFixed'))
             if (typeof props.onDone === 'function') setTimeout(props.onDone, 1200)
-          }))
+          })
           .catch((failure) => setNotice(String(failure?.message || failure)))
           .finally(() => setBusy(false))
       }
@@ -654,10 +632,8 @@
             cacheWrite: Number(row.cacheWrite) || 0,
             output: Number(row.output) || 0,
           }))
-        fetch(`${STATUS_PATH}/config`, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ modelPricing: payload }) })
-          .then(async (response) => {
-            const data = await response.json().catch(() => ({}))
-            if (response.status !== 202) throw new Error(data.error || `HTTP ${response.status}`)
+        postJson(`${STATUS_PATH}/config`, { modelPricing: payload })
+          .then(() => {
             setNotice(t('pricingSaved'))
             if (typeof props.onSaved === 'function') setTimeout(props.onSaved, 1200)
           })
@@ -720,10 +696,8 @@
           return
         }
         setBusy(true)
-        fetch(`${STATUS_PATH}/data/reset`, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ scope }) })
-          .then(async (response) => {
-            const data = await response.json().catch(() => ({}))
-            if (!response.ok) throw new Error(data.error || `HTTP ${response.status}`)
+        postJson(`${STATUS_PATH}/data/reset`, { scope })
+          .then(() => {
             setNotice(t('cleared'))
             setConfirm('')
             if (typeof props.onDone === 'function') props.onDone()

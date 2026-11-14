@@ -111,9 +111,14 @@
       const existing = inflightJson.get(key)
       if (existing) return existing
       const promise = fetch(path, { headers: { accept: 'application/json' }, ...(options || {}) })
-        .then((response) => {
-          if (!response.ok) throw new Error(`HTTP ${response.status}`)
-          return response.json()
+        .then(async (response) => {
+          // 服务端在 4xx/5xx 时会带 { error }；优先用它，别让用户看到光秃秃的 "HTTP 400"。
+          const payload = await response.json().catch(() => null)
+          if (!response.ok) {
+            const message = payload && typeof payload.error === 'string' && payload.error ? payload.error : `HTTP ${response.status}`
+            throw new Error(message)
+          }
+          return payload
         })
         .finally(() => {
           // 完成后从 map 移除，避免长期占用内存；下一次请求重新建立。
@@ -122,6 +127,13 @@
       inflightJson.set(key, promise)
       return promise
     }
+
+    /** 写操作统一入口：POST JSON、解析响应、非 2xx 抛出服务端 error 文案。 */
+    const postJson = (path, body) => fetchJson(path, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify(body === undefined ? {} : body),
+    })
 
     function useStatus(path) {
       const [state, setState] = react.useState({ phase: 'loading' })

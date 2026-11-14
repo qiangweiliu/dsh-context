@@ -111,8 +111,7 @@
           const [active, setActive] = react.useState(false)
           react.useEffect(() => {
             let cancelled = false
-            fetch(STATUS_PATH, { headers: { accept: 'application/json' } })
-              .then((response) => (response.ok ? response.json() : null))
+            fetchJson(STATUS_PATH)
               .then((payload) => {
                 if (!cancelled && payload && payload.control) setActive(Boolean(payload.control.active))
               })

@@ -47,29 +47,18 @@
         return false
       }
 
-      const readPromptResult = (response) =>
-        response
-          .json()
-          .catch(() => ({}))
-          .then((payload) => {
-            if (!response.ok || (payload && payload.ok === false)) {
-              throw new Error((payload && payload.error) || `HTTP ${response.status}`)
-            }
-            return payload || {}
-          })
+      // 全局 postJson 已按非 2xx 抛出服务端 error；这里再兜一层 `{ ok: false }`（旧接口约定）。
+      const requireOk = (payload) => {
+        if (payload && payload.ok === false) throw new Error(payload.error || t('saveFailed'))
+        return payload || {}
+      }
       const promptFailure = (failure) => setNotice(`${t('saveFailed')}: ${String((failure && failure.message) || failure)}`)
-      const postJson = (path, body) =>
-        fetch(`${STATUS_PATH}${path}`, {
-          method: 'POST',
-          headers: { 'content-type': 'application/json' },
-          body: JSON.stringify(body),
-        })
 
       const post = (body) => {
         if (!requireControl()) return
         setBusy(body)
-        postJson('/inventory/toggle', body)
-          .then((response) => response.json().catch(() => ({})))
+        postJson(`${STATUS_PATH}/inventory/toggle`, body)
+          .then((payload) => payload || {})
           .then(() => {
             setBusy(null)
             setTimeout(() => {
@@ -95,8 +84,8 @@
 
       const restore = () => {
         if (!requireControl()) return
-        postJson('/inventory/reset', { layer: 'all' })
-          .then(readPromptResult)
+        postJson(`${STATUS_PATH}/inventory/reset`, { layer: 'all' })
+          .then(requireOk)
           .then(() => {
             setRestorePending(false)
             setNotice(null)
@@ -121,8 +110,8 @@
       const postPrompt = (suffix, body) => {
         if (!requireControl()) return
         setPromptBusy(true)
-        postJson(`/inventory/prompt${suffix}`, body)
-          .then(readPromptResult)
+        postJson(`${STATUS_PATH}/inventory/prompt${suffix}`, body)
+          .then(requireOk)
           .then(() => {
             setPromptBusy(false)
             setEditDraft(null)
@@ -141,8 +130,8 @@
       const postSessionPrompt = (name, text) => {
         if (!requireControl()) return
         setPromptBusy(true)
-        postJson('/inventory/prompt/session', { name, text, ...(props.sessionId ? { sessionId: props.sessionId } : {}) })
-          .then(readPromptResult)
+        postJson(`${STATUS_PATH}/inventory/prompt/session`, { name, text, ...(props.sessionId ? { sessionId: props.sessionId } : {}) })
+          .then(requireOk)
           .then(() => {
             setPromptBusy(false)
             setEditDraft(null)
@@ -160,8 +149,8 @@
       const postSessionPromptReset = (name) => {
         if (!requireControl()) return
         setPromptBusy(true)
-        postJson('/inventory/prompt/session/reset', { name, ...(props.sessionId ? { sessionId: props.sessionId } : {}) })
-          .then(readPromptResult)
+        postJson(`${STATUS_PATH}/inventory/prompt/session/reset`, { name, ...(props.sessionId ? { sessionId: props.sessionId } : {}) })
+          .then(requireOk)
           .then(() => {
             setPromptBusy(false)
             setLocalEdits((prev) => {
@@ -181,8 +170,8 @@
       const postExtraPrompt = (name, text, placement = 'system') => {
         if (!requireControl()) return
         setExtraBusy(true)
-        postJson('/inventory/extra-prompt', { name, text, placement })
-          .then(readPromptResult)
+        postJson(`${STATUS_PATH}/inventory/extra-prompt`, { name, text, placement })
+          .then(requireOk)
           .then((payload) => {
             setExtraBusy(false)
             if (!payload || !payload.ok) {
@@ -203,8 +192,8 @@
 
       const postExtraPromptReset = (name) => {
         setExtraBusy(true)
-        postJson('/inventory/extra-prompt/reset', { name })
-          .then(readPromptResult)
+        postJson(`${STATUS_PATH}/inventory/extra-prompt/reset`, { name })
+          .then(requireOk)
           .then(() => {
             setExtraBusy(false)
             setExtraDeletePending(null)

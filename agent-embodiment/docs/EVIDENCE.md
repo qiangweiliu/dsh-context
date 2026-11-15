@@ -486,6 +486,13 @@ npm 运行依赖：无；生命周期脚本：无
 - **补测试的路由**（此前零覆盖）：`GET /export`（JSON / CSV，含 UTF-8 BOM 与缺 `sessionQuery` 时 503 失败关闭）、`POST /config`（501 分支 + 202 成功路径 + `holidays` 校验）、`POST /config/preset`、`POST /data/reset`、`POST /onboarding`（405 只写 + reset 生效）、`POST /inventory/toggle`（非法参数 + 全局提示词开关被拒）、`POST /inventory/prompt/reset`、`POST /inventory/extra-prompt`(+reset)。smoke 78→103。
 - 测试：单元 430、集成 169、lint 0。
 
+## E40. v0.31.0 节假日覆盖提醒与词典清理（2026-11-15）
+
+- **跨年静默偏差**：内置 `CN_HOLIDAYS` 只有 2026 年；到 2027 年若用户没在 `config.holidays` 补日期，节假日会被按工作日计价，且界面上看不出来。现在 `buildHealth()` 输出 `holidays` 检查项（`values: { year, years, builtinYears }`），未覆盖当年时面板健康卡显示「节假日表」为提醒态；该项与 `measurement` 都属于软提醒，不参与 `healthy` 判定，避免每年元旦整块面板变「异常」。
+- 面板只读行加了「去 cordis.patch.yml 改 `holidays`」的指引，健康项也有了本地化标签（`healthHolidays`）。
+- **死词典键清理**：用脚本比对 `t('literal')` 引用与词典键，37 个未引用键里 4 个（`compareTokens/Requests/Cost/Compactions`）实际是 `SessionCompare` 通过数组 + `t(key)` 动态使用的——先把它们改成字面量引用，再删掉其余 33 个。未引用键归零，`client.js` 235.5 KB（-2.7 KB）。
+- 测试：单元 439（metrics 66 / insights 20）、集成 169、lint 0。
+
 ## 已知限制（unknown）
 
 - 未进行独立安全审计；本文件不声称“安全通过”。

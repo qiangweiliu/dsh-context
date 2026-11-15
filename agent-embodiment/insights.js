@@ -207,14 +207,27 @@ export function buildHealth(input = {}) {
   const push = (id, ok, values) => checks.push({ id, ok: Boolean(ok), values: values || {} })
 
   push('control', Boolean(control.active), { mode: control.mode || null })
-  if (control.presetMountable) push('preset', Boolean(control.presetMounted), {})
+  if (control.presetMountable) push('preset', Boolean(control.presetMountable && control.presetMounted), {})
   push('config', Boolean(input.configEditable), {})
   push('budget', Boolean(onboarding.budgetConfirmed), { tokens: number(input.onboarding && input.onboarding.budgetTokens) })
   push('measurement', Boolean(input.latest && number(input.latest.totalTokens) > 0), {
     at: input.latest && input.latest.at ? input.latest.at : null,
   })
+  // 节假日表覆盖：内置表按年份维护，跨年不补就会把节假日按工作日计价（静默偏差）。
+  // 这只是提醒，不影响 healthy —— 否则每年元旦整个面板都会报「异常」。
+  const holidayYears = input.holidays && Array.isArray(input.holidays.years) ? input.holidays.years : null
+  if (holidayYears) {
+    const year = number(input.year) || new Date().getFullYear()
+    push('holidays', holidayYears.includes(String(year)), {
+      year,
+      years: holidayYears,
+      builtinYears: Array.isArray(input.holidays.builtinYears) ? input.holidays.builtinYears : [],
+    })
+  }
 
-  const required = checks.filter((check) => check.id !== 'measurement')
+  // 只有这两项是「软提醒」：未覆盖年份、最近一次没有测量，都不改变整体健康判定。
+  const soft = new Set(['measurement', 'holidays'])
+  const required = checks.filter((check) => !soft.has(check.id))
   return {
     healthy: required.every((check) => check.ok),
     checks,

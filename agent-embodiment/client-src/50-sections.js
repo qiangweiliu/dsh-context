@@ -475,6 +475,7 @@
         config: t('healthConfig'),
         budget: t('healthBudget'),
         measurement: t('healthMeasurement'),
+        holidays: t('healthHolidays'),
       }
       const repair = () => {
         setBusy(true)
@@ -583,10 +584,10 @@
         sessions.map((session) => h('option', { key: session.id, value: session.id }, `${session.title || shortSessionId(session.id)} · ${compactTokens(session.tokens)}`)),
       )
       const rows = [
-        ['compareTokens', (session) => compactTokens(session.tokens)],
-        ['compareRequests', (session) => formatTokens(session.requests)],
-        ['compareCost', (session) => formatCost(session.cost)],
-        ['compareCompactions', (session) => formatTokens(session.compactions)],
+        [t('compareTokens'), (session) => compactTokens(session.tokens)],
+        [t('compareRequests'), (session) => formatTokens(session.requests)],
+        [t('compareCost'), (session) => formatCost(session.cost)],
+        [t('compareCompactions'), (session) => formatTokens(session.compactions)],
       ]
       return h('div', { style: styles.card, 'data-embodiment-compare': '1' },
         h('div', { style: styles.cardHead }, h('h3', { style: styles.cardTitle }, t('compareTitle')), h('span', { style: styles.cardSub }, t('compareEmpty'))),
@@ -595,7 +596,7 @@
           h('label', { style: styles.field }, h('span', { style: styles.label }, t('compareB')), select(right.id, setRightId)),
         ),
         h('div', { style: styles.compareRows }, rows.map(([key, read]) => h('div', { key, style: styles.compareRow },
-          h('span', { style: styles.billingRowLabel }, t(key)),
+          h('span', { style: styles.billingRowLabel }, key),
           h('span', { style: styles.compareValue }, read(left)),
           h('span', { style: styles.compareValue }, read(right)),
         ))),
@@ -705,6 +706,9 @@
                 .replace('{total}', String(pricing.holidays.total ?? 0)),
               pricing.holidays.ignoreBuiltin ? ` · ${t('pricingHolidaysIgnoreBuiltin')}` : '',
             )
+          : null,
+        pricing && pricing.holidays
+          ? h('p', { style: styles.cardSub, 'data-embodiment-holidays-where': '1' }, t('pricingHolidaysWhere'))
           : null,
         rows.length === 0 ? h('p', { style: styles.emptyText }, t('pricingEmpty')) : h('div', { style: styles.pricingRows },
           h('p', { style: styles.pricingBandLabel }, t('pricingBandsHint')),

@@ -95,6 +95,28 @@ check('健康检查包含 preset/config/budget', ['preset', 'config', 'budget'].
 const noPreset = buildHealth({ control: { active: true, presetMountable: false }, configEditable: true, onboarding: { budgetConfirmed: true } })
 check('不可挂载的 profile 不把 preset 算成失败', noPreset.healthy === true, noPreset)
 
+// 节假日表覆盖：跨年不补日期会静默把节假日按工作日计价，这里只做软提醒，不影响 healthy。
+const holidayMiss = buildHealth({
+  control: { active: true, presetMountable: false },
+  configEditable: true,
+  onboarding: { budgetConfirmed: true },
+  holidays: { years: ['2026'], builtinYears: ['2026'] },
+  year: 2027,
+})
+const holidayCheck = holidayMiss.checks.find((item) => item.id === 'holidays')
+check('内置节假日表未覆盖当年时给出 holidays 提醒', Boolean(holidayCheck) && holidayCheck.ok === false && holidayCheck.values.year === 2027, holidayCheck)
+check('节假日提醒不改变整体 healthy', holidayMiss.healthy === true, holidayMiss.healthy)
+
+const holidayCovered = buildHealth({
+  control: { active: true, presetMountable: false },
+  configEditable: true,
+  onboarding: { budgetConfirmed: true },
+  holidays: { years: ['2026', '2027'], builtinYears: ['2026'] },
+  year: 2027,
+})
+check('补充日期后 holidays 检查通过', holidayCovered.checks.find((item) => item.id === 'holidays')?.ok === true, holidayCovered.checks)
+check('未传 holidays 时不产生该检查项', noPreset.checks.every((item) => item.id !== 'holidays'), noPreset.checks.map((item) => item.id))
+
 const failed = checks.filter((item) => !item.ok)
 console.log(`\n[insights] ${checks.length - failed.length}/${checks.length} 项通过`)
 if (failed.length > 0) {

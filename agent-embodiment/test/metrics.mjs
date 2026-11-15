@@ -3,7 +3,7 @@
  *
  * 运行：node test/metrics.mjs
  */
-import { csvCell, csvDocument, estimateInputCost, foldSession, sessionDetail, summarizeFolds, isPeakTime, configureHolidays } from '../metrics.js'
+import { csvCell, csvDocument, estimateInputCost, foldSession, sessionDetail, summarizeFolds, isPeakTime, configureHolidays, beijingYear, holidayInfo } from '../metrics.js'
 
 const checks = []
 function check(name, condition, detail) {
@@ -153,6 +153,21 @@ configureHolidays({ add: ['2026-10-01'], ignoreBuiltin: true })
 check('ignoreBuiltin 时仍认配置里的日期', isPeakTime(at('2026-10-01T10:00:00+08:00')) === false)
 configureHolidays()
 check('重置后回到内置表', isPeakTime(at('2026-10-01T10:00:00+08:00')) === false && isPeakTime(at('2026-12-25T10:00:00+08:00')) === true)
+
+// 节假日覆盖年份：健康检查靠它判断「要不要提醒跨年补日期」。
+configureHolidays()
+const baseInfo = holidayInfo()
+check('holidayInfo 暴露内置年份', JSON.stringify(baseInfo.builtinYears) === JSON.stringify(['2026']), baseInfo.builtinYears)
+check('holidayInfo 的 years 覆盖内置年份', baseInfo.years.includes('2026'), baseInfo.years)
+configureHolidays({ add: ['2027-01-01', '2027-02-06'] })
+check('补充日期后 years 出现 2027', holidayInfo().years.includes('2027'), holidayInfo().years)
+check('builtinYears 不因自定义日期改变', JSON.stringify(holidayInfo().builtinYears) === JSON.stringify(['2026']), holidayInfo().builtinYears)
+configureHolidays()
+
+check('beijingYear 按北京时间换算年份', beijingYear(Date.parse('2026-12-31T16:30:00Z')) === 2027 && beijingYear(Date.parse('2026-12-31T15:30:00Z')) === 2026, [
+  beijingYear(Date.parse('2026-12-31T16:30:00Z')),
+  beijingYear(Date.parse('2026-12-31T15:30:00Z')),
+])
 
 const failed = checks.filter((item) => !item.ok)
 console.log(`\n[metrics] ${checks.length - failed.length}/${checks.length} 项通过`)

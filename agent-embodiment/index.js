@@ -59,7 +59,7 @@ import {
   clearSessionBudget,
 } from './state.js'
 
-import { DEFAULT_MODEL_PRICING, PRICING_CURRENCY, PRICING_META, PRICING_SOURCE, PRICING_UPDATED_AT, configureHolidays, csvCell, csvDocument, estimateInputCost, foldSession, holidayInfo, isPeakTime, sessionDetail, summarizeFolds } from './metrics.js'
+import { DEFAULT_MODEL_PRICING, PRICING_CURRENCY, PRICING_META, PRICING_SOURCE, PRICING_UPDATED_AT, beijingYear, configureHolidays, csvCell, csvDocument, estimateInputCost, foldSession, holidayInfo, isPeakTime, sessionDetail, summarizeFolds } from './metrics.js'
 import { atomicWriteFile, backupFile as backupStateFile, latestBackupJson as latestStateBackup } from './persist.js'
 import { buildHealth, buildInsights } from './insights.js'
 import { SCAFFOLD_TEMPLATES, mergeAgentsContent, planScaffold } from './scaffold.js'
@@ -1329,12 +1329,15 @@ export function apply(ctx, config) {
     const latestMeasurement = [...measurements.values()].reverse()[0] ?? null
     const onboardingPayload = { ...onboarding, budgetTokens: config.contextWindowTokens }
     const control = controlSnapshot()
+    const holidayState = holidayInfo()
     const health = buildHealth({
       control,
       configEditable: Boolean(configEditor && typeof configEditor.edit === 'function'),
       onboarding: onboardingPayload,
       latest: latestMeasurement,
       version: PLUGIN_VERSION,
+      holidays: holidayState,
+      year: beijingYear(Date.now()),
     })
     const body = JSON.stringify({
       plugin: 'agent-embodiment',

@@ -94,14 +94,22 @@ const holidaySet = () => {
   return activeHolidaySet
 }
 
-/** 供状态路由展示：内置/自定义各多少天、是否忽略内置。 */
+/** 供状态路由展示：内置/自定义各多少天、覆盖哪些年份、是否忽略内置。 */
 export function holidayInfo() {
+  const years = (list) => [...new Set(list.map((date) => date.slice(0, 4)))].sort()
   return {
     builtin: ignoreBuiltinHolidays ? 0 : HOLIDAY_SET_DEFAULT.size,
     custom: [...configuredHolidays].sort(),
     ignoreBuiltin: ignoreBuiltinHolidays,
     total: holidaySet().size,
+    builtinYears: ignoreBuiltinHolidays ? [] : years([...HOLIDAY_SET_DEFAULT]),
+    years: years([...holidaySet()]),
   }
+}
+
+/** 北京时间当前年份（健康检查用它判断内置表是否已覆盖今年）。 */
+export function beijingYear(time = Date.now()) {
+  return new Date(Number(time) + BEIJING_OFFSET_MS).getUTCFullYear()
 }
 
 /** 北京时间的日期键（YYYY-MM-DD），用于节假日查表。 */

@@ -2,6 +2,22 @@
 
 格式参考 Keep a Changelog；版本遵循 SemVer。DSH 兼容版本写在每个条目的 Compatibility 下。
 
+## [0.31.0] - 2026-11-15
+
+### Added
+
+- **节假日覆盖健康检查**：`holidayInfo()` 增加 `builtinYears` / `years`，新增 `beijingYear()`；`buildHealth()` 在传入节假日信息时加一项 `holidays` 检查——内置表没覆盖当前年份就提示「补 `config.holidays`」，避免跨年后节假日被按工作日静默计价。该检查与 `measurement` 同属**软提醒**，不改变整体 `healthy`，否则每年元旦面板都会报异常。
+- 设置页的节假日只读行补一句指引（`pricingHolidaysWhere`）：告诉用户去 `cordis.patch.yml` 的插件 config 改 `holidays`；健康检查列表新增本地化标签 `healthHolidays`。
+
+### Changed
+
+- **清理 33 个死词典键**（en/zh 各 33 行，共 66 行）：`ctxBrand`、`budget`、`triggerAt`、`preview*`、`undo*`、`notify*`、`compare*` 之外的 `topCost`/`toolImpact`/`costLabel` 等。未引用键从 37 → **0**，`client.js` 235.5 KB（-2.7 KB）。
+- `SessionCompare` 的对比行改成字面量 `t('compareTokens')` 等，消除「动态 key 被误判为死键」的盲区（这 4 个键确实在用，没删）。
+
+### Tests
+
+- 单元 439（metrics 61→66：节假日年份、`beijingYear`；insights 16→20：未覆盖年份提醒、软提醒不影响 healthy、补充后通过、未传时不产生检查项）。
+
 ## [0.30.0] - 2026-11-15
 
 ### Fixed

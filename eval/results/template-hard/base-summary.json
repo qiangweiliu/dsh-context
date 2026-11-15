@@ -1,0 +1,17 @@
+{
+  "startedAt": "2026-11-15T13:02:27.547Z",
+  "elapsedSeconds": 139,
+  "out": "/mnt/c/Users/40410/Desktop/context/eval/results/template-hard/base.jsonl",
+  "profile": "headless",
+  "condition": "base",
+  "byCategory": {
+    "long-context": {
+      "n": 6,
+      "graded": 6,
+      "correct": 4,
+      "manual": 0,
+      "failed": 0,
+      "seconds": 139.1
+    }
+  }
+}

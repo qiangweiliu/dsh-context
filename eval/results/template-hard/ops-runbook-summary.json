@@ -1,0 +1,17 @@
+{
+  "startedAt": "2026-11-15T13:07:21.034Z",
+  "elapsedSeconds": 75,
+  "out": "/mnt/c/Users/40410/Desktop/context/eval/results/template-hard/ops-runbook.jsonl",
+  "profile": "headless",
+  "condition": "scaffold",
+  "byCategory": {
+    "long-context": {
+      "n": 3,
+      "graded": 3,
+      "correct": 0,
+      "manual": 0,
+      "failed": 0,
+      "seconds": 74.7
+    }
+  }
+}

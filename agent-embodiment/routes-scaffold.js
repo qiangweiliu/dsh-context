@@ -7,7 +7,7 @@
  *
  * 行为与抽取前逐字一致；差异只在依赖改为显式注入。
  */
-import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs'
+import { existsSync, mkdirSync, readFileSync, realpathSync, writeFileSync } from 'node:fs'
 import { dirname, isAbsolute, join, resolve, sep } from 'node:path'
 
 import { SCAFFOLD_TEMPLATES, mergeAgentsContent, planScaffold } from './scaffold.js'
@@ -16,18 +16,49 @@ import { SCAFFOLD_TEMPLATES, mergeAgentsContent, planScaffold } from './scaffold
 const SCAFFOLD_BODY_LIMIT = 64 * 1024
 
 /**
+ * 路径比较用的归一化：Windows 上大小写不敏感、且存在 8.3 短名（`PROGRA~1`）与
+ * `\\?\` / `\\.\` 设备前缀。原先守卫是纯字符串前缀比较，实测 `c:\windows\system32`
+ * 与 `C:\WINDOWS` 都能绕过（返回 false）。这里统一做三件事：
+ *   1. 去掉 `\\?\` / `\\.\` 前缀；
+ *   2. resolve 之后在 Windows 上转小写；
+ *   3. 去掉尾部分隔符，避免 `C:\Windows\` 与 `C:\Windows` 被当成不同路径。
+ */
+function normalizeForCompare(input) {
+  let text = String(input ?? '')
+  if (text.startsWith('\\\\?\\')) text = text.slice(4)
+  else if (text.startsWith('\\\\.\\')) text = text.slice(4)
+  let resolved
+  try {
+    resolved = resolve(text)
+  } catch {
+    resolved = text
+  }
+  while (resolved.length > 1 && (resolved.endsWith(sep) || resolved.endsWith('/'))) {
+    resolved = resolved.slice(0, -1)
+  }
+  return process.platform === 'win32' ? resolved.toLowerCase() : resolved
+}
+
+/** `child` 等于 `parent` 或位于其下（两者都已归一化）。 */
+function isAtOrUnder(child, parent) {
+  const normalizedParent = normalizeForCompare(parent)
+  if (child === normalizedParent) return true
+  return child.startsWith(normalizedParent.endsWith(sep) ? normalizedParent : normalizedParent + sep)
+}
+
+/**
  * 拒绝系统目录、home 及其祖先、DSH 配置目录和常见凭据目录。
  *
  * @param {string} root 已 resolve 的目标目录
  * @param {{ home: string, dshHome: string }} roots
  */
 export function isProtectedScaffoldPath(root, roots) {
-  const home = roots.home
-  const dshHome = roots.dshHome
+  const home = normalizeForCompare(roots.home)
+  const target = normalizeForCompare(root)
   const systemPrefixes = ['/etc', '/usr', '/bin', '/sbin', '/boot', '/dev', '/proc', '/sys', '/var', '/root']
-  const privateDirs = ['.ssh', '.gnupg', '.aws', '.kube', '.config', '.local'].map((name) => join(home, name))
-  // Windows 没有 /etc、/usr；用盘符根 + 系统目录环境变量覆盖 C:\Windows、Program Files 等。
-  if (dirname(root) === root) return true
+  const privateDirs = ['.ssh', '.gnupg', '.aws', '.kube', '.config', '.local'].map((name) => join(roots.home, name))
+  // 盘符根 / 文件系统根（dirname(root) === root）
+  if (dirname(String(root ?? '')) === String(root ?? '')) return true
   if (process.platform === 'win32') {
     const windowsDirs = [
       process.env.SystemRoot,
@@ -36,21 +67,21 @@ export function isProtectedScaffoldPath(root, roots) {
       process.env['ProgramFiles(x86)'],
       process.env.ProgramData,
     ].filter((dir) => typeof dir === 'string' && dir.length > 0)
-    if (windowsDirs.some((dir) => {
-      const resolved = resolve(dir)
-      return root === resolved || root.startsWith(resolved + sep)
-    })) return true
+    if (windowsDirs.some((dir) => isAtOrUnder(target, dir))) return true
   }
-  if (root === home) return true
+  if (target === home) return true
+  // 8.3 短名（PROGRA~1、WINDOW~1）：没有文件系统展开就无法确定真实目录，
+  // 一律按受保护处理，宁可让用户换一个目录也不要猜。
+  if (/(^|[\\/])[^\\/]{1,8}~\d/u.test(String(root ?? ''))) return true
   // home 的任意祖先（/home、C:\Users、C:\ 等）都不允许。
-  let cursor = home
+  let cursor = roots.home
   while (dirname(cursor) !== cursor) {
     cursor = dirname(cursor)
-    if (root === cursor) return true
+    if (target === normalizeForCompare(cursor)) return true
   }
-  if (systemPrefixes.some((prefix) => root === resolve(prefix) || root.startsWith(resolve(prefix) + sep))) return true
-  if (root === dshHome || root.startsWith(dshHome + sep)) return true
-  return privateDirs.some((dir) => root === dir || root.startsWith(dir + sep))
+  if (systemPrefixes.some((prefix) => isAtOrUnder(target, prefix))) return true
+  if (isAtOrUnder(target, roots.dshHome)) return true
+  return privateDirs.some((dir) => isAtOrUnder(target, dir))
 }
 
 /**
@@ -115,6 +146,18 @@ export function createScaffoldRoutes(deps) {
       const root = resolve(input.targetDir.trim())
       if (isProtectedScaffoldPath(root, roots)) {
         return send(400, { ok: false, error: 'targetDir points at a protected location; choose a workspace directory' })
+      }
+      // 目标已存在时按真实路径再判一次：junction / symlink 可以让字符串前缀检查通过，
+      // 但实际写入落在受保护目录里。
+      if (existsSync(root)) {
+        try {
+          const real = realpathSync.native ? realpathSync.native(root) : realpathSync(root)
+          if (isProtectedScaffoldPath(real, roots)) {
+            return send(400, { ok: false, error: 'targetDir resolves to a protected location (symlink); choose a workspace directory' })
+          }
+        } catch {
+          // 无法解析真实路径时继续按字符串判定结果处理
+        }
       }
       let plan
       try {

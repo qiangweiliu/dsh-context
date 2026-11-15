@@ -9,6 +9,9 @@
  */
 import { existsSync } from 'node:fs'
 
+/** 单条会话提示词文本上限（整份 session-toggles.json 每次重写并按份备份，需设上限）。 */
+const MAX_SESSION_PROMPT_TEXT_BYTES = 32 * 1024
+
 /**
  * @param {{
  *   jsonSender: Function,
@@ -100,6 +103,9 @@ export function createSessionRoutes(deps) {
     if (!requireMethod(request, response, 'POST')) return
     readJson(request, response, (input) => {
       if (typeof input?.name !== 'string' || input.name.length === 0 || typeof input.text !== 'string') return send(400, { ok: false, error: 'name/text are required' })
+      if (Buffer.byteLength(input.text, 'utf8') > MAX_SESSION_PROMPT_TEXT_BYTES) {
+        return send(400, { ok: false, error: `text is too large; limit is ${MAX_SESSION_PROMPT_TEXT_BYTES} bytes` })
+      }
       const targetId = typeof input.sessionId === 'string' && input.sessionId.length > 0 ? input.sessionId : latestSessionId()
       if (!targetId) return send(409, { ok: false, error: 'no session yet' })
       setSessionPromptText(targetId, input.name, input.text)

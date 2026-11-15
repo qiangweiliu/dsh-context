@@ -4,7 +4,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## 项目概览
 
-DeepSeek Harness（DSH）的 agent 具身与上下文管理插件仓库。市场显示名 `Agent Embodiment` / `智能体具身`；包名/目录 `agent-embodiment`；短品牌 `embody`。旧名 `ctx-mon-and-con` 仅用于历史记录和兼容别名。可发布的主体是 `agent-embodiment/`（npm 包名 `agent-embodiment`，当前 `package.json` 版本 `0.45.0`），其余目录是配套资产：
+DeepSeek Harness（DSH）的 agent 具身与上下文管理插件仓库。市场显示名 `Agent Embodiment` / `智能体具身`；包名/目录 `agent-embodiment`；短品牌 `embody`。旧名 `ctx-mon-and-con` 仅用于历史记录和兼容别名。可发布的主体是 `agent-embodiment/`（npm 包名 `agent-embodiment`，当前 `package.json` 版本 `0.46.0`），其余目录是配套资产：
 
 - `eval/`：提示词 / 推理档位对照评测（GSM8K、MATH Level 5），以及 Tier B 50 题深度套件与结果报告。
 - `research/`、`explore/`：对 DSH 插件机制、compaction、UI 的逆向调研与设计笔记。
@@ -30,6 +30,7 @@ node test/prompt-assembly.mjs # system-prompt 装配（禁用剔除 / 覆盖优�
 node test/persist.mjs       # 原子写、写前备份与备份读取
 node test/scaffold.mjs      # 脚手架生成计划、YAML 与 AGENTS 合并
 node test/templates.mjs     # 6 个模板的 bundle 结构离线校验（不需要模型）
+node test/security.mjs      # 独立审计 F1–F9 的回归断言（YAML 键注入 / 路径绕过 / 缓存上界 / 文本上限）
 node test/insights.mjs      # 健康检查与洞察规则
 node test/profile.mjs       # profile 识别、状态目录与旧目录迁移
 node test/render.mjs        # 用 mock React 真跑面板组件（行为级，抓 TDZ 这类渲染崩溃）
@@ -41,7 +42,7 @@ node test/routes-session.mjs  # 会话预算/清理/提示词 6 条路由的直�
 node test/routes-status.mjs   # 状态/live/导出三条路由的直接单测（含缓存 revision 失效）
 ```
 
-当前基线（0.45.0）：client-build 6/6、static 113/113、metrics 66/66、state 26/26、compaction-plan 17/17、prompt-assembly 28/28、persist 7/7、profile 18/18、scaffold 170/170、templates 126/126、insights 34/34、render 36/36、fetch-chain 3/3、mount-guard 7/7、locale-keys 6/6、analytics 27/27、runtime 35/35、docs-guard 12/12、routes-scaffold 17/17、routes-session 28/28、routes-status 24/24（共 807）；集成 control 55/55、smoke 115/115、prompt-state 11/11（共 181）。
+当前基线（0.46.0）：client-build 6/6、static 113/113、metrics 66/66、state 26/26、compaction-plan 17/17、prompt-assembly 28/28、persist 7/7、profile 18/18、scaffold 170/170、templates 126/126、security 21/21、insights 34/34、render 36/36、fetch-chain 3/3、mount-guard 7/7、locale-keys 6/6、analytics 27/27、runtime 35/35、docs-guard 12/12、routes-scaffold 17/17、routes-session 28/28、routes-status 24/24（共 828）；集成 control 55/55、smoke 115/115、prompt-state 11/11（共 181）。
 
 CI 在 `.github/workflows/test.yml`：Node 20/22/24 三档跑单元 + `npm run lint`；另有 integration job 从 npm 安装 Cordis（4.0.5 / 4.1.0 两档）跑 control/smoke/prompt-state，不依赖本机 app.asar。两种 job 都带 npm 缓存与 `concurrency` 取消。
 
@@ -73,7 +74,7 @@ npm run lint                # oxlint（devDependency；CI 也跑，0 error）
 ### 版本号同步与 client 构建
 
 ```bash
-node scripts/bump-version.mjs 0.45.0   # package.json / client-src 与 client.js 的 CLIENT_VERSION / README / IMPLEMENTATION 一次改齐
+node scripts/bump-version.mjs 0.46.0   # package.json / client-src 与 client.js 的 CLIENT_VERSION / README / IMPLEMENTATION 一次改齐
 cd agent-embodiment && npm run build:client   # 改过 client-src/ 后必须重建 client.js
 ```
 
@@ -133,6 +134,7 @@ UI 脚本通过 Windows Edge 的 CDP 连接（`scripts/lib/cdp.mjs`，默认 Edg
 - `compaction-plan.js`（0.41.0）：压缩范围规划（阈值数学）。`control.js` 的 `planRegion` 改为薄适配层。
 - `prompt-assembly.js`（0.42.0）：`system-prompt/assemble` 的 section 重建（纯函数）。`control.js` 的 hook 从 86 行降到 20 行，`control.js` 640 → 575 行；剩余大块是 `syncGates` 的门禁同步与两个 inventory `sub.effect`。
 - `routes-inventory.js`（0.43.0）：inventory 路由组 + `withLivePromptState`。`index.js` 1787 → 1681 行。
+- 0.46.0 是**安全与验证**版本，没有新增模块：修复独立审计的 9 条问题（`test/security.mjs` 21 项回归），并把「模板转正」评估如实记录为负结果。
 - `state.js`：两个半侧共享的进程内状态。Cordis realm 隔离使二者互相 `import` 服务不可行，但同一包内 `./state.js` 的 ESM 模块缓存是同一份实例。
 - `persist.js`：状态文件的原子写、写前备份与备份读取（`atomicWriteFile` / `backupFile` / `latestBackupJson`），不依赖 Cordis，由 `test/persist.mjs` 单独覆盖；状态文件损坏时 `index.js` 会回落到最近备份。
 - `profile.js`：按「哪个 profile 的依赖指向本插件目录」识别所属 profile，决定状态目录（`profiles/<name>/`）并从旧共享目录迁移状态文件；由 `test/profile.mjs` 覆盖。
@@ -207,7 +209,7 @@ UI 脚本通过 Windows Edge 的 CDP 连接（`scripts/lib/cdp.mjs`，默认 Edg
 - 面板组件必须能真的渲染：`test/render.mjs` 用 mock React 执行 `CtxPanel`，专门抓 TDZ / 未定义变量这类只在渲染时抛错的问题（0.25.0 的面板整块空白就是这么来的）。只加字符串断言不够。
 - **`client.js` 是生成产物**：改 UI 请改 `client-src/` 里的片段，然后跑 `npm run build:client`。`test/client-build.mjs` 会做字节级比对，忘记重建时 CI 直接失败并提示。片段之间共享同一作用域（不是模块），跨片段引用私有函数是可用的，但别在片段里 `import`。
 - `scripts/wsl-verify.sh` 默认 **dry-run**，加 `--apply` 才会安装、`pkill` 同 profile 实例、启动 web；只想跑测试别加 `--apply`。
-- `docs/security-audit.md` 主体是 0.21.0 审计，另有 0.24.1 与 **0.32.0** 增量复核章节；以 `package.json` 的 `engines.dsh` / `dsh.compatibility` 为准。
+- `docs/security-audit.md` 主体是 0.21.0 审计，另有 0.24.1、0.32.0 增量复核与 **0.46.0 独立审计修复**（§8，含对前文的 4 处更正）；原始独立报告在 `agent-embodiment/docs/security-audit-independent-0.45.md`。以 `package.json` 的 `engines.dsh` / `dsh.compatibility` 为准。
 - `.probe/` 是本地调试残留，不要提交；`test/deps/` 由 `prepare-deps.mjs` 生成。
 
 ## 文档地图
@@ -215,7 +217,7 @@ UI 脚本通过 Windows Edge 的 CDP 连接（`scripts/lib/cdp.mjs`，默认 Edg
 - `agent-embodiment/README.md`：用户功能与入口。
 - `agent-embodiment/docs/IMPLEMENTATION.md`：实现细节、路由清单、测试结果（最接近架构总览）。
 - `agent-embodiment/docs/LIMITATIONS.md`：行为边界与已知限制。
-- `agent-embodiment/docs/EVIDENCE.md`：逐版本 UI/运行证据（E16–E55 覆盖 0.19–0.45）。
+- `agent-embodiment/docs/EVIDENCE.md`：逐版本 UI/运行证据（E16–E56 覆盖 0.19–0.46）。
 - `agent-embodiment/docs/CORE-FUNCTION-AUDIT.md`：核心功能冲突、实现一致性与 P1/P2 审计结论。
 - `agent-embodiment/docs/RELEASE-PLAN.md`：0.22.0 → 1.0.0 的版本路线图、发布门禁、兼容矩阵与回滚步骤。
 - `agent-embodiment/docs/UI-PROPOSAL.md`：面板信息架构与视觉提案；§9 是 0.45.0 的实测核对（提案项现状、模块清单、未做的两项）。`static.mjs` 会断言该文档登记的组件都存在于 `client.js`。
@@ -223,6 +225,7 @@ UI 脚本通过 Windows Edge 的 CDP 连接（`scripts/lib/cdp.mjs`，默认 Edg
 - `agent-embodiment/PERMISSIONS.md`：访问面披露。
 - `research/arch.md`：DSH 插件/bundle/client 机制调研（写新插件集成时先看）；`research/context-core.md`：上下文与压缩子系统。
 - `eval/REPORT.md`：评测设计、结果与结论；`eval/PLUGIN-AB.md`：插件安装 / 不安装的 agent 能力对照（63 次运行）。
+- `eval/deep/TEMPLATE-PROMOTION.md`：模板转正评估（两个模板都判不转正，含出题与判分的 4 个坑）。
 - `eval/deep/`：Tier B 50 题深度套件（20 多轮记忆 / 15 长上下文 / 9 代码 / 6 仓库），用于 base / plugin / scaffold / compact 四组对照；`README.md` 是使用说明，`RESULTS.md` 与 `COMPARE.md` 是实测结果，旧版题目在 `archive/`。
 - `docs/context-length-plugin-plan.md`：插件设计起点与 seam 分析；`docs/market-submission.md`：市场上架排查记录；`docs/security-audit.md`：写操作/回滚路径审计。
 - `submission/qiangweiliu__dsh-context--agent-embodiment.yml`：市场收录 PR 的条目文件。

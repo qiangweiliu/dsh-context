@@ -1210,17 +1210,27 @@ export function apply(ctx, config) {
   // 面板可以把上下文/阈值写回 profile 的 patch 层，写完后 Loader 会按新配置重挂本插件。
   ctx.inject(['configEditor'], (sub) => {
     RUNTIME.setConfigEditor(sub?.configEditor ?? null)
+    // 记录被替换的原方法，dispose 时还原——否则这个猴子补丁会一直留在共享服务上，
+    // 插件卸载/重挂后仍然给每次 edit 多做一次备份。
+    let restoreEdit = null
     try {
-      if (RUNTIME.getConfigEditor() && typeof RUNTIME.getConfigEditor().edit === 'function' && !RUNTIME.getConfigEditor().__ctxBackedUp) {
-        const originalEdit = RUNTIME.getConfigEditor().edit.bind(RUNTIME.getConfigEditor())
-        RUNTIME.getConfigEditor().edit = (...args) => {
+      const editor = RUNTIME.getConfigEditor()
+      if (editor && typeof editor.edit === 'function' && !editor.__ctxBackedUp) {
+        const originalEdit = editor.edit.bind(editor)
+        editor.edit = (...args) => {
           try {
-            const patchPath = typeof RUNTIME.getConfigEditor().documentPath === 'string' ? RUNTIME.getConfigEditor().documentPath : null
+            const patchPath = typeof editor.documentPath === 'string' ? editor.documentPath : null
             backupFile(patchPath, 'cordis.patch')
           } catch {}
           return originalEdit(...args)
         }
-        RUNTIME.getConfigEditor().__ctxBackedUp = true
+        editor.__ctxBackedUp = true
+        restoreEdit = () => {
+          try {
+            editor.edit = originalEdit
+            delete editor.__ctxBackedUp
+          } catch {}
+        }
       }
     } catch {}
     setTimeout(() => {
@@ -1228,7 +1238,12 @@ export function apply(ctx, config) {
         autoMountControl()
       } catch {}
     }, 1200)
-    if (typeof sub.effect === 'function') sub.effect(() => () => { RUNTIME.setConfigEditor(null) }, 'agent-embodiment: config editor presence')
+    if (typeof sub.effect === 'function') {
+      sub.effect(() => () => {
+        if (restoreEdit) restoreEdit()
+        RUNTIME.setConfigEditor(null)
+      }, 'agent-embodiment: config editor presence')
+    }
   })
 
   /** 校验来自浏览器面板的配置补丁；不合法返回 null。 */

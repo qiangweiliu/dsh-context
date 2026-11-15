@@ -199,6 +199,11 @@ export function createStatusRoutes(deps) {
     try {
       const url = requestUrl(request)
       const payload = await analyticsPayload(url)
+      // 文件名只用归一化后的 rangeKey：payload.range 是区间对象（既可能变成 [object Object]，
+      // 也不该让请求里的任意字符串进文件名）。
+      const rangeLabel = typeof payload.rangeKey === 'string' && /^[a-z0-9]+$/u.test(payload.rangeKey)
+        ? payload.rangeKey
+        : (typeof payload.range === 'string' && /^[a-z0-9]+$/u.test(payload.range) ? payload.range : '7d')
       const format = (url.searchParams.get('format') || 'json').toLowerCase()
       if (format === 'csv') {
         const columns = ['id', 'title', 'cwd', 'model', 'tokens', 'input', 'cacheRead', 'cacheWrite', 'output', 'requests', 'toolCalls', 'compactions', 'activeMs', 'cost', 'lastActivityAt']
@@ -206,14 +211,14 @@ export function createStatusRoutes(deps) {
         for (const session of payload.sessions) lines.push(columns.map((column) => csvCell(session[column])).join(','))
         response.statusCode = 200
         response.setHeader('content-type', 'text/csv; charset=utf-8')
-        response.setHeader('content-disposition', `attachment; filename="agent-embodiment-${payload.range}.csv"`)
+        response.setHeader('content-disposition', `attachment; filename="agent-embodiment-${rangeLabel}.csv"`)
         response.setHeader('cache-control', 'no-store')
         response.end(csvDocument(lines))
         return
       }
       response.statusCode = 200
       response.setHeader('content-type', 'application/json; charset=utf-8')
-      response.setHeader('content-disposition', `attachment; filename="agent-embodiment-${payload.range}.json"`)
+      response.setHeader('content-disposition', `attachment; filename="agent-embodiment-${rangeLabel}.json"`)
       response.setHeader('cache-control', 'no-store')
       response.end(JSON.stringify(payload, null, 2))
     } catch (error) {

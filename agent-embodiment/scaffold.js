@@ -30,21 +30,29 @@ const scalar = (value) => {
   return JSON.stringify(value)
 }
 
+/**
+ * YAML 的**键**必须同样转义：用户可控的键（如 MCP 的 env 变量名）若含换行，
+ * 就能在生成的 bundle patch 里插入 `!!js ...` 表达式，安装该 bundle 时由 DSH 求值，
+ * 等于把任意代码写进产物。安全键原样输出以保持可读，其余 JSON 引号化。
+ */
+const SAFE_YAML_KEY = /^[A-Za-z_][A-Za-z0-9_.-]{0,63}$/u
+const yamlKey = (key) => (SAFE_YAML_KEY.test(key) ? key : JSON.stringify(key))
+
 function emitObject(object, indent) {
   const pad = ' '.repeat(indent)
   const lines = []
   for (const [key, value] of Object.entries(object)) {
     if (value === undefined) continue
     if (isRaw(value)) {
-      lines.push(`${pad}${key}: ${value.__raw}`)
+      lines.push(`${pad}${yamlKey(key)}: ${value.__raw}`)
       continue
     }
     if (Array.isArray(value)) {
       if (value.length === 0) {
-        lines.push(`${pad}${key}: []`)
+        lines.push(`${pad}${yamlKey(key)}: []`)
         continue
       }
-      lines.push(`${pad}${key}:`)
+      lines.push(`${pad}${yamlKey(key)}:`)
       for (const item of value) {
         if (isObject(item)) {
           const itemLines = emitObject(item, indent + 4)
@@ -62,14 +70,14 @@ function emitObject(object, indent) {
     }
     if (isObject(value)) {
       if (Object.keys(value).length === 0) {
-        lines.push(`${pad}${key}: {}`)
+        lines.push(`${pad}${yamlKey(key)}: {}`)
         continue
       }
-      lines.push(`${pad}${key}:`)
+      lines.push(`${pad}${yamlKey(key)}:`)
       lines.push(...emitObject(value, indent + 2))
       continue
     }
-    lines.push(`${pad}${key}: ${scalar(value)}`)
+    lines.push(`${pad}${yamlKey(key)}: ${scalar(value)}`)
   }
   return lines
 }
@@ -334,8 +342,16 @@ export function mergeAgentsContent(existing, agents) {
 }
 
 const normalizeName = (value, fallback) => {
-  const name = typeof value === 'string' && value.trim() !== '' ? value.trim() : fallback
-  return name.slice(0, 80)
+  const raw = typeof value === 'string' && value.trim() !== '' ? value.trim() : fallback
+  // name 会进 markdown 标题（`# <name>`）与 YAML 值：去掉换行与控制字符，
+  // 否则可以在 AGENTS.snippet.md / 合并后的 AGENTS.md 里插入额外标题或代码块。
+  // 去掉控制字符（逐字符过滤，避免在正则里写控制字符类）
+  const cleaned = [...String(raw)]
+    .map((ch) => (ch.charCodeAt(0) < 0x20 || ch.charCodeAt(0) === 0x7f ? ' ' : ch))
+    .join('')
+    .replace(/\s{2,}/gu, ' ')
+    .trim()
+  return cleaned.slice(0, 80)
 }
 
 const normalizeDescription = (value, fallback) => {
@@ -358,6 +374,10 @@ const mcpMap = (value, label) => {
   if (!isObject(value)) throw new Error(`scaffold: mcp ${label} must be an object`)
   const out = {}
   for (const [key, item] of Object.entries(value)) {
+    // 键会原样写进 YAML：拒绝换行/冒号/引号这类能改动文档结构的字符。
+    if (!SAFE_YAML_KEY.test(key)) {
+      throw new Error(`scaffold: mcp ${label} key ${JSON.stringify(key)} is invalid; use letters, digits, _ . - (max 64)`)
+    }
     if (typeof item !== 'string') throw new Error(`scaffold: mcp ${label}.${key} must be a string`)
     out[key] = mcpValue(item)
   }

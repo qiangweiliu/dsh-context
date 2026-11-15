@@ -6,8 +6,8 @@
  * 读不到主文件时再从最近一份备份恢复。
  */
 
-import { copyFileSync, existsSync, mkdirSync, readFileSync, readdirSync, renameSync, statSync, unlinkSync, writeFileSync } from 'node:fs'
-import { join } from 'node:path'
+import { closeSync, copyFileSync, existsSync, fsyncSync, mkdirSync, openSync, readFileSync, readdirSync, renameSync, statSync, unlinkSync, writeFileSync } from 'node:fs'
+import { dirname, join } from 'node:path'
 
 /**
  * Write a file atomically: write a sibling temp file, then rename it over the target.
@@ -19,10 +19,35 @@ import { join } from 'node:path'
  */
 export function atomicWriteFile(filePath, text) {
   const temp = `${filePath}.tmp-${process.pid}-${Date.now()}`
+  let handle = null
   try {
-    writeFileSync(temp, text, 'utf8')
+    // temp + rename 只保证「要么旧内容，要么新内容」的可见性；不 fsync 时掉电后
+    // 仍可能看到重命名成功但内容为空/半截。这里显式 flush 文件与目录项。
+    handle = openSync(temp, 'w')
+    writeFileSync(handle, text, 'utf8')
+    try {
+      fsyncSync(handle)
+    } catch {}
+    closeSync(handle)
+    handle = null
     renameSync(temp, filePath)
+    try {
+      const dir = dirname(filePath)
+      const dirHandle = openSync(dir, 'r')
+      try {
+        fsyncSync(dirHandle)
+      } finally {
+        closeSync(dirHandle)
+      }
+    } catch {
+      // 目录 fsync 在部分平台不支持；失败不影响主流程
+    }
   } catch (error) {
+    if (handle !== null) {
+      try {
+        closeSync(handle)
+      } catch {}
+    }
     try {
       unlinkSync(temp)
     } catch {}

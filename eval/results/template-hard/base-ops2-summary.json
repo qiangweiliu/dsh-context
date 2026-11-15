@@ -1,0 +1,17 @@
+{
+  "startedAt": "2026-11-15T13:41:45.484Z",
+  "elapsedSeconds": 11,
+  "out": "/mnt/c/Users/40410/Desktop/context/eval/results/template-hard/base-ops2.jsonl",
+  "profile": "headless",
+  "condition": "base",
+  "byCategory": {
+    "long-context": {
+      "n": 3,
+      "graded": 3,
+      "correct": 0,
+      "manual": 0,
+      "failed": 3,
+      "seconds": 11.3
+    }
+  }
+}

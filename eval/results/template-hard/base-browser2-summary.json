@@ -1,0 +1,17 @@
+{
+  "startedAt": "2026-11-15T13:06:02.902Z",
+  "elapsedSeconds": 57,
+  "out": "/mnt/c/Users/40410/Desktop/context/eval/results/template-hard/base-browser2.jsonl",
+  "profile": "headless",
+  "condition": "base",
+  "byCategory": {
+    "long-context": {
+      "n": 3,
+      "graded": 3,
+      "correct": 2,
+      "manual": 0,
+      "failed": 0,
+      "seconds": 56.8
+    }
+  }
+}

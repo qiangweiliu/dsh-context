@@ -13,6 +13,20 @@ import { PRICING_CURRENCY, estimateInputCost } from './metrics.js'
 /** 分析结果缓存 TTL：Overview 同时请求 /analytics 与 /insights 时会命中同一范围。 */
 export const ANALYTICS_CACHE_TTL_MS = 5000
 
+/** 缓存条目上限：键是 (range, limit)，正常使用只有个位数，超出说明有人在扫参数。 */
+export const ANALYTICS_CACHE_MAX = 8
+
+/** `?range=` 的白名单值；其余一律按 7d 处理（同时用于缓存键与导出文件名）。 */
+export const RANGE_VALUES = ['today', '7d', '30d', 'all']
+
+/**
+ * 归一化 `?range=`：不在白名单里的一律回落 `7d`。
+ * 这件事必须做——原始字符串既会进缓存键，也会进 `content-disposition` 的文件名。
+ */
+export function normalizeRange(value) {
+  return RANGE_VALUES.includes(value) ? value : '7d'
+}
+
 /** `?range=` → 天数。未知值一律按 7 天。 */
 export function parseRange(value) {
   if (value === 'today') return 1
@@ -96,10 +110,11 @@ export function createAnalytics(deps) {
       error.statusCode = 503
       throw error
     }
-    const rangeParam = url?.searchParams?.get('range') ?? null
-    const days = parseRange(rangeParam)
+    // range 先归一化再进缓存键：否则 `?range=任意串` 会生成无限个键（同时每次触发全量扫描）。
+    const range = normalizeRange(url?.searchParams?.get('range') ?? null)
+    const days = parseRange(range)
     const limit = Math.min(200, Math.max(1, Number(url?.searchParams?.get('limit')) || getLimit()))
-    const cacheKey = `${rangeParam ?? '7d'}\u0000${limit}`
+    const cacheKey = `${range}\u0000${limit}`
     const cached = cache.get(cacheKey)
     if (cached && Date.now() - cached.at < ANALYTICS_CACHE_TTL_MS) return cached.payload
 
@@ -119,13 +134,18 @@ export function createAnalytics(deps) {
     const result = {
       ok: true,
       generatedAt: new Date().toISOString(),
-      range: rangeParam ?? '7d',
+      // rangeKey 是归一化后的字符串，供导出文件名等场景使用；
+      // 下面的 `...summary` 会把 `range` 覆盖成 {start, days} 区间对象（既有契约，保持不变）。
+      rangeKey: range,
+      range,
       coverage: { total: list.length, scanned: picked.length, withData: folds.filter(Boolean).length, limit },
       warnings: warnings.slice(0, 5),
       savings: savingsFromLogs(readCompactionLog(), summary.range.start, getPricing()),
       ...summary,
     }
     cache.set(cacheKey, { at: Date.now(), payload: result })
+    // 上限保护：Map 的迭代顺序即插入顺序，删最早的一条即可（够用的 LRU 近似）。
+    while (cache.size > ANALYTICS_CACHE_MAX) cache.delete(cache.keys().next().value)
     return result
   }
 

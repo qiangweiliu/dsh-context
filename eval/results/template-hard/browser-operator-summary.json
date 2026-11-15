@@ -1,0 +1,17 @@
+{
+  "startedAt": "2026-11-15T13:08:35.814Z",
+  "elapsedSeconds": 606,
+  "out": "/mnt/c/Users/40410/Desktop/context/eval/results/template-hard/browser-operator.jsonl",
+  "profile": "headless",
+  "condition": "scaffold",
+  "byCategory": {
+    "long-context": {
+      "n": 3,
+      "graded": 3,
+      "correct": 3,
+      "manual": 0,
+      "failed": 0,
+      "seconds": 606.1999999999999
+    }
+  }
+}

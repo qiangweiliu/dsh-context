@@ -8,6 +8,9 @@
  * 行为与抽取前一致：错误码、`note` 文案、全局层只支持工具、提示词只支持会话层。
  */
 
+/** 单条提示词文本上限：整份 session-toggles.json 会随每次写入重写并按份备份，不设限会被放大 30 倍。 */
+const MAX_PROMPT_TEXT_BYTES = 32 * 1024
+
 /**
  * @param {{
  *   jsonSender: Function,
@@ -154,8 +157,9 @@ export function createInventoryRoutes(deps) {
       runtime.setDisabledTools(next)
       setGlobalDisabledTools(next)
       send(202, { ok: true, layer, kind, name, enabled, note: 'writes profile config; plugin reloads' })
-      void found.editor
-        .edit(found.entry, (value) => ({ ...(value ?? {}), disabledTools: next }))
+      // 必须走同一个写队列：patch 是整段替换，并发 edit 会互相覆盖（丢 disabledTools 或 promptOverrides）。
+      void queuePromptWrite(() => found.editor
+        .edit(found.entry, (value) => ({ ...(value ?? {}), disabledTools: next })))
         .catch((error) => {
           log('warn', `inventory write failed: ${error instanceof Error ? error.message : String(error)}`)
         })
@@ -206,6 +210,9 @@ export function createInventoryRoutes(deps) {
     if (!requireMethod(request, response, 'POST')) return
     readJson(request, response, (input) => {
       if (typeof input?.name !== 'string' || input.name.length === 0 || typeof input.text !== 'string') return send(400, { ok: false, error: 'name/text are required' })
+      if (Buffer.byteLength(input.text, 'utf8') > MAX_PROMPT_TEXT_BYTES) {
+        return send(400, { ok: false, error: `text is too large; limit is ${MAX_PROMPT_TEXT_BYTES} bytes` })
+      }
       const next = { ...runtime.getPromptOverrides(), [input.name]: input.text }
       writePromptOverrides(next, response, send)
     })

@@ -83,4 +83,40 @@
 | 测试面 | 新增 `MockConfigEditor` / `MockSessionQuery` 隔离上下文，覆盖 `POST /config`、`/export`、`/data/reset`、`/onboarding`、`/extra-prompt` 等此前零覆盖的写路由（smoke 78→103） |
 | 剩余风险 | ①仍无独立第三方安全审查（1.0 前必补）；②`window` 探针为新增可读面，若将来放入更敏感字段需重新评估；③`holidays` 允许 400 条，配置补丁 16KB 上限足够，但极端长数组仍会整份替换 `modelPricing` 之外的配置段——写入前仍有自动备份（30 份）兜底 |
 
+## 8. 0.46.0 独立审计与修复（2026-11-15）
 
+第 1–7 节是作者自审（§7 已列「仍无独立第三方安全审查，1.0 前必补」）。本节就是那次补审：**独立审计**（全新上下文、未参与实现的审计者）的结论与本轮修复，原始报告见 `agent-embodiment/docs/security-audit-independent-0.45.md`。
+
+### 8.1 结果
+
+审计结论是「有条件发布」：鉴权、fail-closed、体积上限、文件级路径逃逸、备份回落都经实测成立；同时发现 1 高危 + 2 中危 + 6 低危。**全部 9 条已修复并加回归断言**（`agent-embodiment/test/security.mjs`，21 项）。
+
+| 编号 | 严重度 | 问题 | 修复 |
+| --- | --- | --- | --- |
+| F1 | high | MCP `env`/`headers` 的**键**未校验就进 YAML，可注入 `!!js` 表达式（bundle 安装时被 DSH 求值） | `mcpMap` 校验键名（`^[A-Za-z_][A-Za-z0-9_.-]{0,63}$`）；`emitObject` 所有键走 `yamlKey()` 引号化兜底 |
+| F2 | medium | 受保护路径是纯字符串前缀比较：`c:\windows\system32`、`C:\WINDOWS`、`\\?\C:\Windows`、`C:\PROGRA~1` 均绕过 | 归一化（去设备前缀 / Windows 转小写 / 去尾分隔符）+ 8.3 短名一律视为受保护 + 目标已存在时按 `realpath` 再判一次 |
+| F3 | medium | analytics 缓存以原始 `?range=` 为键，无上限无淘汰 | `normalizeRange()` 白名单（today/7d/30d/all）+ 缓存上限 8 条 LRU |
+| F4 | medium | 提示词文本无长度上限，整份状态文件每次重写并按份备份（×30 放大） | 全局与会话两处都加 32KB 单条上限（400） |
+| F5 | low | 全局工具开关绕过写队列，与提示词写入并发时互相覆盖 | 统一走 `queuePromptWrite` |
+| F6 | low | `atomicWriteFile` 是 temp+rename 但不 fsync | 文件与目录都 `fsyncSync`；失败仍回落到旧文件 |
+| F7 | low | `?range=` 原值进 `content-disposition` 文件名 | 只用归一化后的 `rangeKey`；顺带修掉「生产环境导出文件名是 `[object Object]`」这个真实 bug（`payload.range` 被 `...summary` 覆盖成区间对象） |
+| F8 | low | `name` 可含换行，能往 AGENTS.snippet.md 插标题 | `normalizeName` 去控制字符并压空白 |
+| F9 | low | `configEditor.edit` 猴子补丁不还原，卸载后仍给每次 edit 多做备份 | dispose 时还原原方法并删掉标记 |
+
+### 8.2 对第 1–7 节的更正
+
+独立审计指出本文档有 4 处结论不成立，已确认并更正：
+
+1. **「有 webServer 但无 connection 时路由放行」不再成立**：0.25.0 起是 403 fail-closed。`PERMISSIONS.md` 写的 403 才是对的，本文档旧表述作废。
+2. **「所有写路径只有 profile patch 与 `~/.dsh/agent-embodiment/**`」不成立**：`scaffold/generate` 接受任意绝对 `targetDir`，只是黑名单过滤；F2 证明黑名单曾有绕过。
+3. **「MCP 只写配置不执行」只对插件进程成立**：生成的 bundle patch 是 `!!js` 求值面（F1 的入口）。
+4. **「状态持久化原子写」方向对但强度不足**：原实现无 fsync（F6）。
+
+§7「剩余风险 ①仍无独立第三方安全审查」至此关闭。
+
+### 8.3 方法上的收获
+
+- 高危项不在「路由鉴权」这一层，而在**产物层**：把不可信输入写进「以后会被执行的配置文件」比直接执行更隐蔽。
+- 路径守卫这类「看起来是白名单、实际是字符串比较」的代码，在大小写不敏感的文件系统上等于没防护；跨平台插件必须显式归一化。
+- 独立视角的价值在于**不读作者结论**：这次审计一次就发现作者自审 7 节里没有的 4 类问题（缓存上界、文本上限、写队列绕过、文件名回显）。
+- 作者自审容易停在「我设计时想到了什么」，独立审计会问「实际传进去会怎样」——F1 和 F2 都是这样被找出来的。

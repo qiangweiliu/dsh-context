@@ -2,6 +2,43 @@
 
 格式参考 Keep a Changelog；版本遵循 SemVer。DSH 兼容版本写在每个条目的 Compatibility 下。
 
+## [0.46.0] - 2026-11-15
+
+### Security
+
+**独立审计（全新上下文、未参与实现）发现的 9 条问题全部修复。** 原始报告见 `docs/security-audit-independent-0.45.md`，修复说明见 `docs/security-audit.md` §8。
+
+- **F1（high）YAML 键注入**：MCP `env`/`headers` 的键未校验就写进 bundle patch，可插入 `!!js` 表达式，安装该 bundle 时由 DSH 求值（供应链式 RCE）。修复：`mcpMap` 校验键名；`emitObject` 所有键走 `yamlKey()` 引号化兜底。
+- **F2（medium）受保护路径绕过**：原实现是纯字符串前缀比较，`c:\windows\system32`、`C:\WINDOWS`、`\\?\C:\Windows`、`C:\PROGRA~1` 均返回「不受保护」。修复：归一化（去设备前缀 / Windows 转小写 / 去尾分隔符）、8.3 短名一律视为受保护、目标已存在时按 `realpath` 再判一次。
+- **F3（medium）analytics 缓存无上界**：以原始 `?range=` 为键，无淘汰。修复：`normalizeRange()` 白名单 + 缓存上限 8 条。
+- **F4（medium）提示词文本无上限**：整份状态文件每次重写并按份备份（×30 放大）。修复：全局与会话两处都加 32KB 单条上限。
+- **F5（low）全局工具开关绕过写队列**：并发写互相覆盖。修复：统一走 `queuePromptWrite`。
+- **F6（low）`atomicWriteFile` 未 fsync**：掉电后可能看到空/半截文件。修复：文件与目录都 `fsyncSync`。
+- **F7（low）`?range=` 原值进下载文件名**：修复为只用归一化后的 `rangeKey`。**顺带修掉一个真实 bug**：`payload.range` 被 `...summary` 覆盖成区间对象，生产环境导出文件名实际是 `[object Object]`（旧测试用假数据掩盖了）。
+- **F8（low）`name` 可含换行**：能往 AGENTS.snippet.md 插标题结构。修复：`normalizeName` 去控制字符并压空白。
+- **F9（low）`configEditor.edit` 猴子补丁不还原**：卸载后仍给每次 edit 多做备份。修复：dispose 时还原原方法。
+
+### Docs
+
+- `docs/security-audit.md` 新增 §8，并**更正前文 4 处不成立结论**（fail-closed 行为、写路径范围、MCP 求值面、原子写强度）。§7 列为 1.0 门禁的「仍无独立第三方安全审查」至此关闭。
+- `eval/deep/TEMPLATE-PROMOTION.md`（新增）：`ops-runbook` / `browser-operator` 的转正评估。**两个模板都判不转正**，并记录了本轮出题与判分的 4 个错误。
+
+### Tests
+
+- 新增 `test/security.mjs`（**21 项**）：把 F1–F9 逐条固定成回归断言——YAML 键注入被拒且合法键仍可用、路径 8 类绕过全被拦、乱传 `range` 撑不爆缓存、两处文本上限、写队列、fsync、猴子补丁可还原。
+- 单元 807 → **828**；集成 181 不变；lint 0。
+
+### 模板转正（负结果，已在 TEMPLATE-PROMOTION.md 详述）
+
+- 按模板定位新出 6 道定向题（运维 3 + 浏览器 3），判分用 `contains`。
+- 第一轮结论「ops-runbook 回归」**是我的判分 bug**：`forbidden` 用裸关键词，把「No reboot」这种正确否定判成违规；另有两个 gold 时间戳取错、一个参数题有多个合理答案。
+- 修正后离线重判（答案全文存在 jsonl 里，不需要重跑）：ops 两组都是 **3/3**（无区分度），浏览器 `base` **2/3** → `browser-operator` **3/3**（救回 1 道，n=1 不足以转正）。
+- 结论：两个模板继续标 `experimental`。缺的是更难的题，不是更多重复。
+
+### 环境限制
+
+- 评估途中 `opencode-go` 月度配额用尽（`GoUsageLimitError`，`resets in 3d 23h`），后续运行以 `status: exit-1` 失败。判分时必须区分 `failed`（运行失败）与 `correct: false`（答错）——本轮第一批 12 次运行曾被这个坑掩盖过一次。
+
 ## [0.45.0] - 2026-11-15
 
 ### Docs

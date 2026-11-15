@@ -1,0 +1,33 @@
+{
+  "startedAt": "2026-11-15T07:41:31.001Z",
+  "elapsedSeconds": 8,
+  "out": "/mnt/c/Users/40410/Desktop/context/eval/results/template-smoke/browser-operator.jsonl",
+  "profile": "headless",
+  "condition": "scaffold",
+  "byCategory": {
+    "multi-turn": {
+      "n": 1,
+      "graded": 1,
+      "correct": 0,
+      "manual": 0,
+      "failed": 1,
+      "seconds": 2.7
+    },
+    "long-context": {
+      "n": 1,
+      "graded": 1,
+      "correct": 0,
+      "manual": 0,
+      "failed": 1,
+      "seconds": 2.5
+    },
+    "code": {
+      "n": 1,
+      "graded": 1,
+      "correct": 0,
+      "manual": 0,
+      "failed": 1,
+      "seconds": 2.5
+    }
+  }
+}

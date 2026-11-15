@@ -534,6 +534,15 @@
           h('span', { style: { ...styles.badge, ...(insight.severity === 'warn' ? styles.badgeWarn : styles.badgeOk) } }, insight.severity === 'warn' ? '!' : 'i'),
           h('span', { style: styles.insightText }, insightText(t, insight)),
           h('button', { type: 'button', style: styles.copyBtn, onClick: () => props.onOpen && props.onOpen(insight.action || {}) }, t('insightOpen')),
+          // 有明确修复动作的洞察才显示第二个按钮：直接写配置，不需要用户自己去设置页找。
+          insight.apply && insight.apply.path
+            ? h('button', {
+              type: 'button',
+              style: { ...styles.copyBtn, marginLeft: 6 },
+              'data-embodiment-insight-apply': insight.id,
+              onClick: () => props.onApply && props.onApply(insight.apply),
+            }, t(insight.apply.label || 'insightApply'))
+            : null,
         ))),
       )
     }

@@ -79,6 +79,14 @@
         if (target && typeof target.focus === 'function') target.focus()
       }
 
+      // 洞察的「一键处理」：直接写配置/引导状态，成功后刷新面板数据。
+      const applyInsight = (apply) => {
+        if (!apply || typeof apply.path !== 'string') return
+        postJson(`${STATUS_PATH}${apply.path}`, apply.body || {})
+          .then(() => { reloadAll() })
+          .catch(() => { reloadAll() })
+      }
+
       const openAction = (action) => {
         if (!action) return
         if (action.sessionId) setSelected(action.sessionId)
@@ -240,7 +248,7 @@
         if (analytics) body.push(guard('billing', h(BillingCard, { t, kpi: analytics.kpi, pricing: data ? data.pricing : null })))
         if (analytics && analytics.savings) body.push(guard('savings', h(SavingsCard, { t, savings: analytics.savings })))
         if (insightsState.data && Array.isArray(insightsState.data.insights)) {
-          body.push(guard('insights', h(InsightCards, { t, insights: insightsState.data.insights, onOpen: openAction })))
+          body.push(guard('insights', h(InsightCards, { t, insights: insightsState.data.insights, onOpen: openAction, onApply: applyInsight })))
         }
         if (analyticsState.error && !analytics) {
           body.push(h('div', { key: 'analyticsError', style: styles.emptyState },

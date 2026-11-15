@@ -2,6 +2,29 @@
 
 格式参考 Keep a Changelog；版本遵循 SemVer。DSH 兼容版本写在每个条目的 Compatibility 下。
 
+## [0.43.0] - 2026-11-15
+
+### Added
+
+- **洞察一键处理**：`insights.js` 的规则除 `action`（跳转）外可带 `apply: { path, body, label }`，面板在对应洞察行渲染第二个按钮，点击直接写配置并刷新。首批三条：
+  - `near-limit-not-compacted` → `POST /status/config/preset {enable:true}`（启用控制行让压缩生效）
+  - `budget-unconfirmed` → `POST /status/onboarding {budgetConfirmed:true}`
+  - `analytics-truncated` → `POST /status/config {analyticsLimit:200}`
+- 新增 `eval/deep/template-smoke.mjs`：为指定模板生成脚手架并跑固定 3 题（`--ids` 可换），输出 `SUMMARY.md` / `summary.json`。用于给 experimental 模板一个最低限度的可用性信号。
+
+### Changed
+
+- **inventory 路由组外置到 `routes-inventory.js`**：读取装配清单、按会话/全局开关工具与提示词、重置、提示词文本编辑，以及 `withLivePromptState`（把落盘覆盖叠加到装配快照上）。`index.js` 1787 → **1681 行**。
+
+### Tests
+
+- `insights.mjs` 29 → **34**（锁定 `apply` 契约：三条规则各自的目标路径与 body、全部指向 `/status/`、都带本地化 label）；`static.mjs` 111 → **112**（inventory 外置契约 + 全局工具重置断言移到新文件）。
+- 单元 673 → **680**；集成 181 不变；lint 0。
+
+### 未完成（环境限制）
+
+- 模板冒烟在本机无法产生有效结果：headless profile 走 `llm-deepseek` provider，需要 `DEEPSEEK_API_KEY`，而本机只配置了桌面用的 `llm-pi-ai` 路由（账号凭据），12 次运行全部在 2–5 秒内 `MISSING_CREDENTIAL` 退出。脚手架已改到持久目录（`~/.cache/embody-eval`），脚本可用，缺的只是模型凭据。
+
 ## [0.42.0] - 2026-11-15
 
 ### Changed

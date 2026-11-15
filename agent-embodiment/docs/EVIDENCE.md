@@ -604,6 +604,13 @@ npm 运行依赖：无；生命周期脚本：无
 - `static.mjs` 加了「不得再把 `const inventory = []` 写回 control.js」的契约断言，防止以后复制回去。
 - 测试：单元 673、集成 181、lint 0。
 
+## E53. v0.43.0 inventory 路由外置 + 洞察一键处理（2026-11-15）
+
+- **inventory 路由组**：`inventoryHandler` / `inventoryToggleHandler` / `inventoryResetHandler` / `promptEditHandler` / `promptResetHandler` + `withLivePromptState` 移入 `routes-inventory.js`，`index.js` 1787 → 1681 行。抽取时发现 `insightsHandler` 也依赖 `withLivePromptState`，因此工厂同时把它导出，避免留下悬空引用（lint 的 `no-undef` 直接抓到）。
+- **洞察一键处理**：客户端其实早就渲染了 `props.onOpen(insight.action)` 按钮，但 `openAction` 只处理 tab/锚点跳转，且 `insights.js` 的 `action` 全都是纯跳转——所以「点了没反应」的功能缺口在后端与执行端各一半。本轮加 `apply: {path, body, label}` 与 `applyInsight()`（POST + reloadAll），首批三条有明确修复动作的洞察接入。
+- **模板冒烟（未完成）**：写了 `eval/deep/template-smoke.mjs` 并跑通流程，但 12 次运行全部 `MISSING_CREDENTIAL`：headless profile 解析 `DEEPSEEK_API_KEY`，本机桌面走的是 `llm-pi-ai` 账号路由，两者不通用。顺带发现 WSL 的 `/tmp` 会在实例空闲后清空，条件目录必须放持久路径（已改到 `~/.cache/embody-eval`）。
+- 测试：单元 680、集成 181、lint 0。
+
 ## 已知限制（unknown）
 
 - 未进行独立安全审计；本文件不声称“安全通过”。

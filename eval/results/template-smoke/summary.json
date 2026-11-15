@@ -1,0 +1,138 @@
+[
+  {
+    "template": "ops-runbook",
+    "questions": 3,
+    "correct": 0,
+    "statuses": {
+      "exit-1": 3
+    },
+    "avgToolCalls": 0,
+    "avgSeconds": 3.3,
+    "error": null,
+    "perQuestion": [
+      {
+        "id": "deep-b-memory-01",
+        "status": "exit-1",
+        "correct": false,
+        "toolCalls": 0,
+        "seconds": 4.6
+      },
+      {
+        "id": "deep-b-long-01",
+        "status": "exit-1",
+        "correct": false,
+        "toolCalls": 0,
+        "seconds": 2.6
+      },
+      {
+        "id": "deep-b-code-csv",
+        "status": "exit-1",
+        "correct": false,
+        "toolCalls": 0,
+        "seconds": 2.6
+      }
+    ]
+  },
+  {
+    "template": "browser-operator",
+    "questions": 3,
+    "correct": 0,
+    "statuses": {
+      "exit-1": 3
+    },
+    "avgToolCalls": 0,
+    "avgSeconds": 2.6,
+    "error": null,
+    "perQuestion": [
+      {
+        "id": "deep-b-memory-01",
+        "status": "exit-1",
+        "correct": false,
+        "toolCalls": 0,
+        "seconds": 2.7
+      },
+      {
+        "id": "deep-b-long-01",
+        "status": "exit-1",
+        "correct": false,
+        "toolCalls": 0,
+        "seconds": 2.5
+      },
+      {
+        "id": "deep-b-code-csv",
+        "status": "exit-1",
+        "correct": false,
+        "toolCalls": 0,
+        "seconds": 2.5
+      }
+    ]
+  },
+  {
+    "template": "data-analyst",
+    "questions": 3,
+    "correct": 0,
+    "statuses": {
+      "exit-1": 3
+    },
+    "avgToolCalls": 0,
+    "avgSeconds": 2.9,
+    "error": null,
+    "perQuestion": [
+      {
+        "id": "deep-b-memory-01",
+        "status": "exit-1",
+        "correct": false,
+        "toolCalls": 0,
+        "seconds": 2.5
+      },
+      {
+        "id": "deep-b-long-01",
+        "status": "exit-1",
+        "correct": false,
+        "toolCalls": 0,
+        "seconds": 2.6
+      },
+      {
+        "id": "deep-b-code-csv",
+        "status": "exit-1",
+        "correct": false,
+        "toolCalls": 0,
+        "seconds": 3.5
+      }
+    ]
+  },
+  {
+    "template": "support-router",
+    "questions": 3,
+    "correct": 0,
+    "statuses": {
+      "exit-1": 3
+    },
+    "avgToolCalls": 0,
+    "avgSeconds": 2.5,
+    "error": null,
+    "perQuestion": [
+      {
+        "id": "deep-b-memory-01",
+        "status": "exit-1",
+        "correct": false,
+        "toolCalls": 0,
+        "seconds": 2.5
+      },
+      {
+        "id": "deep-b-long-01",
+        "status": "exit-1",
+        "correct": false,
+        "toolCalls": 0,
+        "seconds": 2.5
+      },
+      {
+        "id": "deep-b-code-csv",
+        "status": "exit-1",
+        "correct": false,
+        "toolCalls": 0,
+        "seconds": 2.5
+      }
+    ]
+  }
+]

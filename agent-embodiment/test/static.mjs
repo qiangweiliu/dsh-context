@@ -182,6 +182,7 @@ const scaffoldRoutesSource = readFileSync(new URL('../routes-scaffold.js', impor
 const analyticsSource = readFileSync(new URL('../analytics.js', import.meta.url), 'utf8')
 const statusRoutesSource = readFileSync(new URL('../routes-status.js', import.meta.url), 'utf8')
 const controlSource = readFileSync(new URL('../control.js', import.meta.url), 'utf8')
+const inventoryRoutesSource = readFileSync(new URL('../routes-inventory.js', import.meta.url), 'utf8')
 check('client.js 语法可编译', (() => {
   try {
     new Function(clientSource)
@@ -256,7 +257,8 @@ check('提示词装配使用 prompt-assembly.js', controlSource.includes('buildA
 check('analytics 编排与缓存已外置到 analytics.js', analyticsSource.includes('export function createAnalytics') && analyticsSource.includes('ANALYTICS_CACHE_TTL_MS') && indexSource.includes('createAnalytics({') && !indexSource.includes('const analyticsPayload = async'))
 check('服务句柄统一经 runtime 访问（不再有裸闭包变量）', !/ctx\.inject\(\['[^']*RUNTIME/u.test(indexSource) && indexSource.includes('RUNTIME.getConfigEditor()') && indexSource.includes('RUNTIME.setWebServerPresent(true)'))
 check('自动挂载只改已知 preset 并保留控制行配置', indexSource.includes('findKnownPresetEntry') && indexSource.includes('auto-mount skipped: no known agent preset id') && indexSource.includes('config: existingControl.config ?? CONTROL_ROW.config'))
-check('全局工具重置同步共享状态', indexSource.includes('setGlobalDisabledTools(next)') && indexSource.includes('setGlobalDisabledTools([])'))
+check('全局工具重置同步共享状态', inventoryRoutesSource.includes('setGlobalDisabledTools(next)') && inventoryRoutesSource.includes('setGlobalDisabledTools([])'))
+check('inventory 路由已外置到 routes-inventory.js', indexSource.includes('createInventoryRoutes({') && !indexSource.includes('const inventoryHandler = (request, response)'))
 check('Windows 脚手架路径拒绝盘符根与系统目录', scaffoldRoutesSource.includes('dirname(root) === root') && scaffoldRoutesSource.includes('SystemRoot') && scaffoldRoutesSource.includes('ProgramFiles'))
 check('脚手架路由从 index.js 抽出并以工厂注入', scaffoldRoutesSource.includes('export function createScaffoldRoutes') && indexSource.includes('createScaffoldRoutes({') && !indexSource.includes('function isProtectedScaffoldPath'))
 check('成本标签统一标注估算', clientSource.includes('costEstimateLabel') && clientSource.includes("t('costEstimateLabel')"))

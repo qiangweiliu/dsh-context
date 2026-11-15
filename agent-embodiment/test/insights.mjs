@@ -163,6 +163,36 @@ check(
 
 check('洞察结果最多 10 条', buildInsights({ analytics: { sessions: cacheSessions }, latest: { id: 'a', totalTokens: 120000 }, budget: { tokens: 128000 }, onboarding: {}, logs: [] }).length <= 10)
 
+// ── 洞察的一键处理（apply）──
+const applyOf = (list, id) => list.find((item) => item.id === id)?.apply || null
+const richInsights = buildInsights({
+  analytics: {
+    sessions: Array.from({ length: 6 }, (_, index) => ({
+      id: `s${index}`,
+      tokens: 120000,
+      cost: index === 0 ? 9 : 0.5,
+      compactions: index === 0 ? 3 : 0,
+      cacheHit: 0.05,
+    })),
+    coverage: { scanned: 40, total: 400, limit: 40 },
+    toolUsage: {},
+  },
+  latest: { id: 's0', totalTokens: 127000, breakdown: { toolsTokens: 90000 } },
+  inventory: { tools: [{ name: 'a', tokens: 900 }, { name: 'b', tokens: 800 }, { name: 'c', tokens: 700 }] },
+  budget: { tokens: 128000, errorAt: 0.9 },
+  onboarding: { budgetConfirmed: false },
+  pricing: { updatedAt: '2020-01-01', custom: false },
+  logs: [],
+})
+const enableCompaction = applyOf(richInsights, 'near-limit-not-compacted')
+check('接近上限未压缩洞察带一键启用压缩', enableCompaction?.path === '/status/config/preset' && enableCompaction.body?.enable === true, enableCompaction)
+const confirmBudget = applyOf(richInsights, 'budget-unconfirmed')
+check('预算未确认洞察带一键确认', confirmBudget?.path === '/status/onboarding' && confirmBudget.body?.budgetConfirmed === true, confirmBudget)
+const widen = applyOf(richInsights, 'analytics-truncated')
+check('分析截断洞察带一键放宽窗口', widen?.path === '/status/config' && widen.body?.analyticsLimit === 200, widen)
+check('apply 都指向 /status 下的路径', richInsights.filter((item) => item.apply).every((item) => item.apply.path.startsWith('/status/')), richInsights.filter((item) => item.apply).map((item) => item.apply.path))
+check('apply 都带本地化 label', richInsights.filter((item) => item.apply).every((item) => typeof item.apply.label === 'string' && item.apply.label.length > 0))
+
 const failed = checks.filter((item) => !item.ok)
 console.log(`\n[insights] ${checks.length - failed.length}/${checks.length} 项通过`)
 if (failed.length > 0) {

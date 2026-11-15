@@ -24,6 +24,7 @@ import { detectProfileName, migrateStateFiles, resolveStateRoots, stateDirFor } 
 import { createScaffoldRoutes } from './routes-scaffold.js'
 import { createSessionRoutes } from './routes-session.js'
 import { createStatusRoutes } from './routes-status.js'
+import { createInventoryRoutes } from './routes-inventory.js'
 import { createAnalytics, sessionsNewestFirst } from './analytics.js'
 import { createRuntime } from './runtime.js'
 
@@ -1387,54 +1388,7 @@ export function apply(ctx, config) {
    * 否则改完提示词、还没发下一条消息时，面板仍会拿旧快照判断“有没有覆盖”，
    * 导致“保存到本会话”后复位按钮走了全局复位（删掉全局覆盖）。
    */
-  const withLivePromptState = (inventory, sessionId) => {
-    if (!inventory || !Array.isArray(inventory.sections)) return inventory
-    const sessionTexts = sessionId ? getSessionPromptTextMap(sessionId) : null
-    const sections = inventory.sections.map((section) => {
-      const globalOverridden = Object.prototype.hasOwnProperty.call(RUNTIME.getPromptOverrides(), section.name)
-      const sessionOverridden = Boolean(sessionTexts && sessionTexts.has(section.name))
-      const text = sessionOverridden
-        ? String(sessionTexts.get(section.name))
-        : globalOverridden
-          ? String(RUNTIME.getPromptOverrides()[section.name])
-          : section.text
-      return {
-        ...section,
-        text,
-        overridden: Boolean(section.overridden || globalOverridden || sessionOverridden),
-        globalOverridden,
-        sessionOverridden,
-      }
-    })
-    return { ...inventory, sections }
-  }
-
   /** GET 当前会话的工具/提示词清单与开关状态。 */
-  const inventoryHandler = (request, response) => {
-    const send = jsonSender(response)
-    if (!requireMethod(request, response, 'GET')) return
-    const requested = requestUrl(request).searchParams.get('sessionId') ?? ''
-    const session = requested && RUNTIME.getSessions() && typeof RUNTIME.getSessions().get === 'function' ? RUNTIME.getSessions().get(requested) : latestSession()
-    const sessionId = requested || session?.id
-    return send(200, {
-      ok: true,
-      sessionId,
-      inventory: sessionId ? (() => {
-        const found = getInventory(sessionId)
-        const merged = found ? withLivePromptState(found, sessionId) : null
-        return merged ? { ...merged, sources: sourcesFor(merged) } : null
-      })() : null,
-      disabledSessionTools: sessionId ? getSessionDisabledTools(sessionId) : [],
-      disabledSessionPrompts: sessionId ? getSessionDisabledPrompts(sessionId) : [],
-      disabledTools: RUNTIME.getDisabledTools(),
-      promptTemplates: PROMPT_TEMPLATES,
-      promptOverrides: RUNTIME.getPromptOverrides(),
-      extraPrompts: RUNTIME.getExtraPrompts(),
-      extraPromptPlacements: RUNTIME.getExtraPromptPlacements(),
-      applied: sessionId ? getAppliedTools(sessionId) : null,
-    })
-  }
-
   /** GET /status/insights：把分析结果折成可执行结论；文案由客户端本地化。 */
   const insightsHandler = async (request, response) => {
     const send = jsonSender(response)
@@ -1517,86 +1471,7 @@ export function apply(ctx, config) {
   /** GET /status/export?format=json|csv：导出当前扫描范围的分析结果。 */
   /** POST /status/data/reset：清空压缩日志和/或会话开关；不删除 profile 配置。 */
   /** POST /inventory/toggle {kind, name, layer, enabled}。 */
-  const inventoryToggleHandler = (request, response) => {
-    const send = jsonSender(response)
-    if (!requireMethod(request, response, 'POST')) return
-    readJson(request, response, (input) => {
-      const kind = input?.kind
-      const layer = input?.layer
-      const name = input?.name
-      const enabled = input?.enabled
-      if (!['tool', 'prompt'].includes(kind) || !['session', 'global'].includes(layer) || typeof name !== 'string' || name.length === 0 || typeof enabled !== 'boolean') {
-        return send(400, { ok: false, error: 'kind/layer/name/enabled are invalid' })
-      }
-      if (layer === 'global' && kind !== 'tool') return send(400, { ok: false, error: 'prompts only support the session layer' })
-      const session = latestSession()
-      if (layer === 'session') {
-        const requestedSession = typeof input?.sessionId === 'string' && input.sessionId.length > 0 ? input.sessionId : null
-        const targetId = requestedSession || session?.id
-        if (!targetId) return send(409, { ok: false, error: 'no session yet' })
-        if (kind === 'tool') setSessionToolEnabled(targetId, name, enabled)
-        else setSessionPromptEnabled(targetId, name, enabled)
-        saveSessionToggles()
-        return send(202, { ok: true, layer, kind, name, enabled, note: 'applies to the next request' })
-      }
-      const editor = RUNTIME.getConfigEditor()
-      const entry = editor && typeof editor.entries === 'function' ? editor.entries().find((candidate) => candidate?.options?.id === 'agent-embodiment') : undefined
-      if (!editor || typeof editor.edit !== 'function' || !entry) return send(501, { ok: false, error: 'config editor unavailable in this profile' })
-      const current = [...RUNTIME.getDisabledTools()]
-      const next = enabled ? current.filter((item) => item !== name) : current.includes(name) ? current : [...current, name]
-      RUNTIME.setDisabledTools(next)
-      setGlobalDisabledTools(next)
-      send(202, { ok: true, layer, kind, name, enabled, note: 'writes profile config; plugin reloads' })
-      void editor
-        .edit(entry, (value) => ({ ...(value ?? {}), disabledTools: next }))
-        .catch((error) => {
-          const logger = ctx.logger
-          if (typeof logger?.warn === 'function') logger.warn(`agent-embodiment: inventory write failed: ${error instanceof Error ? error.message : String(error)}`)
-        })
-    })
-  }
-
   /** POST /inventory/reset {layer:'session'}：清空当前会话的全部开关。 */
-  const inventoryResetHandler = (request, response) => {
-    const send = jsonSender(response)
-    if (!requireMethod(request, response, 'POST')) return
-    readJson(request, response, (input) => {
-      const layer = input?.layer
-      if (!['session', 'global', 'all'].includes(layer)) return send(400, { ok: false, error: 'layer must be session, global or all' })
-      if (layer === 'session' || layer === 'all') {
-        const requestedSession = typeof input?.sessionId === 'string' && input.sessionId.length > 0 ? input.sessionId : null
-        const targetId = requestedSession || latestSession()?.id
-        if (!targetId) return send(409, { ok: false, error: 'no session yet' })
-        clearSessionToggles(targetId)
-        saveSessionToggles()
-      }
-      if (layer === 'global' || layer === 'all') {
-        const editor = RUNTIME.getConfigEditor()
-        const entry = editor && typeof editor.entries === 'function' ? editor.entries().find((candidate) => candidate?.options?.id === 'agent-embodiment') : undefined
-        if (!editor || typeof editor.edit !== 'function' || !entry) return send(501, { ok: false, error: 'config editor unavailable in this profile' })
-        RUNTIME.setPromptOverrides({})
-        RUNTIME.setExtraPrompts({})
-        RUNTIME.setExtraPromptPlacements({})
-        RUNTIME.setDisabledTools([])
-        setGlobalPromptOverrides({})
-        setGlobalExtraPrompts({})
-        setGlobalExtraPromptPlacements({})
-        setGlobalDisabledTools([])
-        send(202, { ok: true, layer })
-        void queuePromptWrite(() => editor.edit(entry, (value) => ({
-          ...(value ?? {}),
-          disabledTools: [],
-          promptOverrides: RUNTIME.getPromptOverrides(),
-          extraPrompts: RUNTIME.getExtraPrompts(),
-          extraPromptPlacements: RUNTIME.getExtraPromptPlacements(),
-        })))
-          .catch(() => {})
-        return
-      }
-      return send(202, { ok: true, layer })
-    })
-  }
-
   // 全局工具禁用也维护一份运行时副本：配置写入是异步的，连续切换时若每次都读
   // 本插件实例的 config 快照，后一次会把前一次刚加的禁用项覆盖掉。
 
@@ -1640,27 +1515,7 @@ export function apply(ctx, config) {
   }
 
   /** POST /inventory/prompt {name, text}：全局覆盖一个提示词 section。 */
-  const promptEditHandler = (request, response) => {
-    const send = jsonSender(response)
-    if (!requireMethod(request, response, 'POST')) return
-    readJson(request, response, (input) => {
-      if (typeof input?.name !== 'string' || input.name.length === 0 || typeof input.text !== 'string') return send(400, { ok: false, error: 'name/text are required' })
-      const next = { ...RUNTIME.getPromptOverrides(), [input.name]: input.text }
-      writePromptOverrides(next, response, send)
-    })
-  }
-
   /** POST /inventory/prompt/reset {name?}：恢复一个或全部提示词原文。 */
-  const promptResetHandler = (request, response) => {
-    const send = jsonSender(response)
-    if (!requireMethod(request, response, 'POST')) return
-    readJson(request, response, (input) => {
-      const current = { ...RUNTIME.getPromptOverrides() }
-      const next = typeof input?.name === 'string' && input.name.length > 0 ? Object.fromEntries(Object.entries(current).filter(([key]) => key !== input.name)) : {}
-      writePromptOverrides(next, response, send)
-    })
-  }
-
   /** 会话级提示词文本覆盖：POST /inventory/prompt/session {name, text, sessionId?}。 */
   /** 清除会话级提示词文本覆盖：POST /inventory/prompt/session/reset {name?, sessionId?}。 */
   // ── Agent Embodiment Scaffold：三条路由已抽到 routes-scaffold.js（0.36.0）──
@@ -1738,6 +1593,45 @@ export function apply(ctx, config) {
       pricingSource: PRICING_SOURCE,
       pricingUpdatedAt: PRICING_UPDATED_AT,
       pricingMeta: PRICING_META,
+    },
+  })
+
+  // ── inventory 路由组已抽到 routes-inventory.js（0.43.0）──
+  const {
+    inventoryHandler,
+    inventoryToggleHandler,
+    inventoryResetHandler,
+    promptEditHandler,
+    promptResetHandler,
+    withLivePromptState,
+  } = createInventoryRoutes({
+    jsonSender,
+    requireMethod,
+    readJson,
+    requestUrl,
+    runtime: RUNTIME,
+    latestSessionId: () => latestSession()?.id,
+    getInventory,
+    sourcesFor,
+    getSessionPromptTextMap,
+    getSessionDisabledTools,
+    getSessionDisabledPrompts,
+    getAppliedTools,
+    setSessionToolEnabled,
+    setSessionPromptEnabled,
+    clearSessionToggles,
+    saveSessionToggles,
+    setGlobalDisabledTools,
+    setGlobalPromptOverrides,
+    setGlobalExtraPrompts,
+    setGlobalExtraPromptPlacements,
+    queuePromptWrite,
+    writePromptOverrides,
+    promptTemplates: PROMPT_TEMPLATES,
+    log: (level, message) => {
+      const logger = ctx.logger
+      const target = level === 'warn' ? 'warn' : 'info'
+      if (typeof logger?.[target] === 'function') logger[target](`agent-embodiment: ${message}`)
     },
   })
 

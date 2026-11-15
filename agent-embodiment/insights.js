@@ -208,6 +208,8 @@ export function buildInsights(input = {}) {
       severity: 'warn',
       values: { ratio: currentTokens / budgetTokens, tokens: currentTokens, budget: budgetTokens, errorAt },
       action: { tab: 'settings', anchor: 'config' },
+      // 一键启用控制行（压缩）——这是这条洞察最直接的处理方式。
+      apply: { path: '/status/config/preset', body: { enable: true }, label: 'insightApplyEnableCompaction' },
     })
   }
 
@@ -218,6 +220,8 @@ export function buildInsights(input = {}) {
       severity: 'info',
       values: { tokens: budgetTokens, sessions: sessions.length },
       action: { tab: 'settings', anchor: 'config' },
+      // 一键确认预算，让后续比例提醒基于真实窗口。
+      apply: { path: '/status/onboarding', body: { budgetConfirmed: true }, label: 'insightApplyConfirmBudget' },
     })
   }
 
@@ -229,6 +233,8 @@ export function buildInsights(input = {}) {
       severity: 'info',
       values: { scanned: number(coverage.scanned), total: number(coverage.total), limit: number(coverage.limit) },
       action: { tab: 'trend' },
+      // 一键把扫描窗口放宽到上限（200），让结论覆盖更多会话。
+      apply: { path: '/status/config', body: { analyticsLimit: 200 }, label: 'insightApplyWidenWindow' },
     })
   }
 

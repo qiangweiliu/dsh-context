@@ -21,7 +21,7 @@ window.__ModuleLoader__.load({
 
     const NS = 'agentEmbodiment'
     /** 与 package.json 版本保持一致；宿主版本不同时提示刷新页面而不是重启 DSH。 */
-    const CLIENT_VERSION = '0.42.0'
+    const CLIENT_VERSION = '0.43.0'
     /**
      * API 路径必须相对页面 base 解析，而不是写死根路径：
      * 反向代理部署在 /app/dsh/ 这类前缀下时，根路径 /api/... 会打到网关根并 404。
@@ -269,6 +269,10 @@ window.__ModuleLoader__.load({
       insightBudgetUnconfirmed: 'Budget was never confirmed, so all ratios are estimated against the default {tokens}.',
       insightAnalyticsTruncated: 'Analytics only covers the newest {scanned} of {total} sessions; widen the limit before drawing conclusions.',
       insightOpen: 'Open',
+      insightApply: 'Apply',
+      insightApplyConfirmBudget: 'Confirm budget',
+      insightApplyEnableCompaction: 'Enable compaction',
+      insightApplyWidenWindow: 'Widen window',
       insightsEmpty: 'No actionable issues in the scanned range.',
       savingsTitle: 'Context reduction (est.)',
       savingsCompactions: '{count} compactions',
@@ -610,6 +614,10 @@ window.__ModuleLoader__.load({
       insightBudgetUnconfirmed: '预算尚未确认，所有比例都按默认 {tokens} 估算。',
       insightAnalyticsTruncated: '分析只覆盖最近 {scanned} / {total} 个会话，得出结论前先放宽上限。',
       insightOpen: '查看',
+      insightApply: '处理',
+      insightApplyConfirmBudget: '确认预算',
+      insightApplyEnableCompaction: '启用压缩',
+      insightApplyWidenWindow: '放宽窗口',
       insightsEmpty: '当前范围内没有需要处理的问题。',
       savingsTitle: '上下文减少（估算）',
       savingsCompactions: '{count} 次压缩',
@@ -3171,6 +3179,15 @@ window.__ModuleLoader__.load({
           h('span', { style: { ...styles.badge, ...(insight.severity === 'warn' ? styles.badgeWarn : styles.badgeOk) } }, insight.severity === 'warn' ? '!' : 'i'),
           h('span', { style: styles.insightText }, insightText(t, insight)),
           h('button', { type: 'button', style: styles.copyBtn, onClick: () => props.onOpen && props.onOpen(insight.action || {}) }, t('insightOpen')),
+          // 有明确修复动作的洞察才显示第二个按钮：直接写配置，不需要用户自己去设置页找。
+          insight.apply && insight.apply.path
+            ? h('button', {
+              type: 'button',
+              style: { ...styles.copyBtn, marginLeft: 6 },
+              'data-embodiment-insight-apply': insight.id,
+              onClick: () => props.onApply && props.onApply(insight.apply),
+            }, t(insight.apply.label || 'insightApply'))
+            : null,
         ))),
       )
     }
@@ -4007,6 +4024,14 @@ window.__ModuleLoader__.load({
         if (target && typeof target.focus === 'function') target.focus()
       }
 
+      // 洞察的「一键处理」：直接写配置/引导状态，成功后刷新面板数据。
+      const applyInsight = (apply) => {
+        if (!apply || typeof apply.path !== 'string') return
+        postJson(`${STATUS_PATH}${apply.path}`, apply.body || {})
+          .then(() => { reloadAll() })
+          .catch(() => { reloadAll() })
+      }
+
       const openAction = (action) => {
         if (!action) return
         if (action.sessionId) setSelected(action.sessionId)
@@ -4168,7 +4193,7 @@ window.__ModuleLoader__.load({
         if (analytics) body.push(guard('billing', h(BillingCard, { t, kpi: analytics.kpi, pricing: data ? data.pricing : null })))
         if (analytics && analytics.savings) body.push(guard('savings', h(SavingsCard, { t, savings: analytics.savings })))
         if (insightsState.data && Array.isArray(insightsState.data.insights)) {
-          body.push(guard('insights', h(InsightCards, { t, insights: insightsState.data.insights, onOpen: openAction })))
+          body.push(guard('insights', h(InsightCards, { t, insights: insightsState.data.insights, onOpen: openAction, onApply: applyInsight })))
         }
         if (analyticsState.error && !analytics) {
           body.push(h('div', { key: 'analyticsError', style: styles.emptyState },

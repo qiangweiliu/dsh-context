@@ -2,7 +2,7 @@
 
 本文描述 `agent-embodiment` 的内部结构、集成点和验证方式。面向用户的功能说明见 [README.md](../README.md)；约束与已知限制见 [LIMITATIONS.md](LIMITATIONS.md)。
 
-当前版本：`0.42.0`
+当前版本：`0.43.0`
 
 ## 1. 两个半侧
 
@@ -148,7 +148,17 @@ inventory 属于进程内存，只反映最近一次装配；新会话需要先�
 
 `isPeakTime()` 按北京时间工作日 09:00–12:00、14:00–18:00 判定；每条 `assistant/message` / `compaction/summary` 用事件时间算 `costParts`（input=缓存未命中、cacheRead=命中、cacheWrite 按未命中价、output），再汇总到 `fold.cost`、`fold.costParts`、日桶和 `summarizeFolds().kpi.costParts`。状态接口下发 `pricing` 元数据（models、peakNow、source），面板的计费卡、KPI、页头、会话卡和趋势 tooltip 都读这份数据；`modelPricing` 自定义行仍按全天同价覆盖。
 
-### 洞察、健康检查与节省估算（0.24.0）
+#### 洞察的一键处理
+
+`insights.js` 的每条规则除 `action`（面板跳转到哪个 tab / 锚点）外，可带 `apply`：`{ path, body, label }`。面板在洞察行上多渲染一个按钮，点击直接 `POST ${STATUS_PATH}${path}` 并刷新数据：
+
+| 洞察 | 一键处理 |
+| --- | --- |
+| `near-limit-not-compacted` | `POST /status/config/preset {enable:true}`（启用控制行，让压缩真正生效） |
+| `budget-unconfirmed` | `POST /status/onboarding {budgetConfirmed:true}` |
+| `analytics-truncated` | `POST /status/config {analyticsLimit:200}` |
+
+## 洞察、健康检查与节省估算（0.24.0）
 
 `insights.js` 是纯函数层，输入是已折叠的 analytics、当前会话 inventory、压缩日志、价格状态和 onboarding 状态，输出固定 `id + values`：
 
@@ -298,7 +308,7 @@ smoke       115/115
 prompt-state  11/11
 ```
 
-单元共 672 项、集成 181 项。
+单元共 680 项、集成 181 项。
 
 `client.js` 是**生成产物**：源码在 `client-src/`（11 个片段，按功能分：header / 词典 / 样式 / 核心组件 / dock / inventory / sections / charts / scaffold / panel / apply），`npm run build:client` 按固定顺序拼回单文件。DSH 浏览器侧只加载一个 `client.js` 且模块内只能 `require('react')`，所以发布物保持单文件。改完片段必须重新构建，`test/client-build.mjs` 会做字节级比对并在 CI 里失败提示。`test/render.mjs` 用最小 React mock 真正执行 `client.js` 的面板组件（四个 tab、ARIA 关系、键盘切换、卡片级错误边界）；`fetch-chain.mjs` 执行真实的 fetch 链；`mount-guard.mjs` 固定挂载幂等与 HMR 重挂；`locale-keys.mjs` 校验 en/zh 词典与 `t('key')` 调用点一致。
 

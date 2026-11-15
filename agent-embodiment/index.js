@@ -23,6 +23,7 @@ import { fileURLToPath } from 'node:url'
 import { detectProfileName, migrateStateFiles, resolveStateRoots, stateDirFor } from './profile.js'
 import { createScaffoldRoutes } from './routes-scaffold.js'
 import { createSessionRoutes } from './routes-session.js'
+import { createRuntime } from './runtime.js'
 
 import {
   budgetFor,
@@ -503,7 +504,16 @@ export function apply(ctx, config) {
   // 所有写操作前自动备份（profile patch 与状态文件），保留最近 30 份。
   // 状态文件用「临时文件 + rename」落盘：崩溃/断电最多丢最后一次写入，不会留下半截 JSON。
   // 具体实现见 persist.js（可单独测试）。
-  const BACKUP_DIR = join(STATE_DIR, 'backups')
+  // 0.38.0：状态与路径统一收进 runtime.js，handler 只需一个可注入依赖。
+  const RUNTIME = createRuntime({
+    config,
+    home: STATE_ROOTS.home,
+    dshHome: STATE_ROOTS.dshHome,
+    stateDir: STATE_DIR,
+    legacyStateDir: LEGACY_STATE_DIR,
+    profileName: PROFILE_NAME,
+  })
+  const BACKUP_DIR = RUNTIME.paths.backupDir
   const backupFile = (filePath, label) => {
     const logger = ctx.logger
     const warn = typeof logger?.warn === 'function'
@@ -514,7 +524,7 @@ export function apply(ctx, config) {
   const latestBackupJson = (label) => latestStateBackup(BACKUP_DIR, label)
 
   // 会话级开关持久化：<状态目录>/session-toggles.json（0.25.0 起按 profile 隔离）。
-  const SESSION_TOGGLES_PATH = join(STATE_DIR, 'session-toggles.json')
+  const SESSION_TOGGLES_PATH = RUNTIME.paths.sessionTogglesPath
   const saveSessionToggles = () => {
     try {
       backupFile(SESSION_TOGGLES_PATH, 'session-toggles')
@@ -545,8 +555,9 @@ export function apply(ctx, config) {
   // 首次运行状态：~/.dsh/agent-embodiment/onboarding.json。
   // 不写 profile config（避免用户还没同意就触发插件重挂）；只记录向导是否完成、
   // 预算是否确认，以及是否授权写 agent preset。
-  const ONBOARDING_PATH = join(STATE_DIR, 'onboarding.json')
-  let onboarding = {
+  const ONBOARDING_PATH = RUNTIME.paths.onboardingPath
+  // 对象身份保持不变（就地更新），runtime 只持有引用，避免构造顺序问题。
+  const onboarding = {
     completed: false,
     dismissed: false,
     // “稍后”不是永久关闭：记录一个时间戳，短时间内不再打扰，之后仍会再次出现。
@@ -557,6 +568,7 @@ export function apply(ctx, config) {
     at: null,
     version: PLUGIN_VERSION,
   }
+  RUNTIME.setOnboarding(onboarding)
   const saveOnboarding = () => {
     try {
       mkdirSync(dirname(ONBOARDING_PATH), { recursive: true })
@@ -570,7 +582,7 @@ export function apply(ctx, config) {
   }
   const applyOnboarding = (raw) => {
     if (!raw || typeof raw !== 'object' || Array.isArray(raw)) return false
-    onboarding = {
+    Object.assign(onboarding, {
       completed: raw.completed === true,
       dismissed: raw.dismissed === true,
       deferredAt: typeof raw.deferredAt === 'string' ? raw.deferredAt : null,
@@ -579,7 +591,7 @@ export function apply(ctx, config) {
       presetConsent: raw.presetConsent === true ? true : raw.presetConsent === false ? false : null,
       at: typeof raw.at === 'string' ? raw.at : null,
       version: typeof raw.version === 'string' ? raw.version : PLUGIN_VERSION,
-    }
+  })
     return true
   }
   const loadOnboarding = () => {
@@ -597,7 +609,7 @@ export function apply(ctx, config) {
   loadOnboarding()
 
   // 压缩记录持久化：~/.dsh/agent-embodiment/compaction-log.jsonl（JSONL，内存最多 200 条）。
-  const COMPACTION_LOG_PATH = join(STATE_DIR, 'compaction-log.jsonl')
+  const COMPACTION_LOG_PATH = RUNTIME.paths.compactionLogPath
   const COMPACTION_LOG_MAX_BYTES = 512 * 1024
   // 截断目标是 maxBytes 的一半：避免在 512KB 边界反复 append 就触发一次全量读+重写。
   // 超过高水位后截到低水位，给后续 append 留出缓冲，减少 O(文件大小) 的同步重写频次。
@@ -775,10 +787,9 @@ export function apply(ctx, config) {
   }
 
   // 会话查找与预设挂载：给「实时占用」指示器与「启用自动压缩」按钮用。
-  let sessionProjections = null
   ctx.inject(['sessionProjections'], (sub) => {
-    sessionProjections = sub?.sessionProjections ?? null
-    if (typeof sub.effect === 'function') sub.effect(() => () => { sessionProjections = null }, 'agent-embodiment: projections presence')
+    RUNTIME.setSessionProjections(sub?.sessionProjections ?? null)
+    if (typeof sub.effect === 'function') sub.effect(() => () => { RUNTIME.setSessionProjections(null) }, 'agent-embodiment: projections presence')
   })
 
   /**
@@ -802,8 +813,8 @@ export function apply(ctx, config) {
     let toolsTokens = 0
     let messageTokens = null
     try {
-      const snapshot = sessionProjections && typeof sessionProjections.snapshot === 'function'
-        ? sessionProjections.snapshot(session, ['contextBreakdown'])
+      const snapshot = RUNTIME.getSessionProjections() && typeof RUNTIME.getSessionProjections().snapshot === 'function'
+        ? RUNTIME.getSessionProjections().snapshot(session, ['contextBreakdown'])
         : undefined
       const value = snapshot && snapshot.values ? snapshot.values.contextBreakdown : undefined
       if (value && typeof value.systemTokens === 'number') {
@@ -847,22 +858,19 @@ export function apply(ctx, config) {
     return { systemTokens, toolsTokens, historyTokens, userTokens, totalTokens }
   }
 
-  let sessions = null
   ctx.inject(['sessions'], (sub) => {
-    sessions = sub?.sessions ?? null
-    if (typeof sub.effect === 'function') sub.effect(() => () => { sessions = null }, 'agent-embodiment: sessions presence')
+    RUNTIME.setSessions(sub?.sessions ?? null)
+    if (typeof sub.effect === 'function') sub.effect(() => () => { RUNTIME.setSessions(null) }, 'agent-embodiment: sessions presence')
   })
 
   // 浏览器/API 认证：DSH 把认证放在 connection 的 /api 前缀路由里，本插件注册的是
   // 精确路由，必须自己调用官方 admission，否则会绕过 Host/Origin 与 cookie 校验。
-  let connection = null
   ctx.inject(['connection'], (sub) => {
-    connection = sub?.connection ?? null
-    if (typeof sub.effect === 'function') sub.effect(() => () => { connection = null }, 'agent-embodiment: connection presence')
+    RUNTIME.setConnection(sub?.connection ?? null)
+    if (typeof sub.effect === 'function') sub.effect(() => () => { RUNTIME.setConnection(null) }, 'agent-embodiment: connection presence')
   })
 
   /** 是否挂了 webServer（浏览器形态）。在注册路由时置位，用于鉴权失败关闭。 */
-  let webServerPresent = false
 
   /**
    * 用 DSH 的 requestRejection 决定是否放行。
@@ -872,10 +880,10 @@ export function apply(ctx, config) {
    * 检查本身抛错时同样按 403 失败关闭。
    */
   const requestRejection = (request) => {
-    if (!connection) return webServerPresent ? 403 : undefined
+    if (!RUNTIME.getConnection()) return RUNTIME.isWebServerPresent() ? 403 : undefined
     try {
-      return typeof connection.requestRejection === 'function'
-        ? connection.requestRejection(request)
+      return typeof RUNTIME.getConnection().requestRejection === 'function'
+        ? RUNTIME.getConnection().requestRejection(request)
         : 403
     } catch {
       return 403
@@ -940,11 +948,11 @@ export function apply(ctx, config) {
     const requested = requestUrl(request).searchParams.get('sessionId') ?? ''
     let sessionId = requested
     let session
-    if (sessions && typeof sessions.get === 'function') {
+    if (RUNTIME.getSessions() && typeof RUNTIME.getSessions().get === 'function') {
       if (requested) {
-        session = sessions.get(requested)
-      } else if (typeof sessions.list === 'function') {
-        const all = sessionsNewestFirst(sessions.list())
+        session = RUNTIME.getSessions().get(requested)
+      } else if (typeof RUNTIME.getSessions().list === 'function') {
+        const all = sessionsNewestFirst(RUNTIME.getSessions().list())
         const latest = all[0]
         if (latest) {
           session = latest
@@ -984,7 +992,7 @@ export function apply(ctx, config) {
 
   /** 列出可编辑的 preset 候选：优先已知 id，其次任何带 plugins 配置的行。 */
   const listPresetEntries = () => {
-    const editor = configEditor
+    const editor = RUNTIME.getConfigEditor()
     if (!editor || typeof editor.entries !== 'function') return []
     return editor.entries().filter((entry) => entry && Array.isArray(entry.options?.config?.plugins))
   }
@@ -1069,9 +1077,9 @@ export function apply(ctx, config) {
   }
 
   /** POST /config/preset {enable:boolean}：把控制行写进 preset-standard 或移除。 */
-  let presetQueue = Promise.resolve()
   const enqueuePreset = (task) => {
-    presetQueue = presetQueue.then(task).catch((error) => {
+    // 串行化由 runtime 负责，这里只补日志（PRESET 写配置不能并发）。
+    return RUNTIME.enqueuePresetWrite(task).catch((error) => {
       const logger = ctx.logger
       if (typeof logger?.warn === 'function') logger.warn(`agent-embodiment: preset task failed: ${error instanceof Error ? error.message : String(error)}`)
     })
@@ -1080,7 +1088,7 @@ export function apply(ctx, config) {
   /** 启动时检测：preset 里没有控制行且未被手动停用 → 自动补挂。 */
   function autoMountControl() {
     if (!getAutoMountControl()) return
-    const editor = configEditor
+    const editor = RUNTIME.getConfigEditor()
     const entry = findKnownPresetEntry()
     if (!editor || typeof editor.edit !== 'function' || !entry) {
       if (editor && typeof editor.edit === 'function' && !entry) presetWarn('auto-mount skipped: no known agent preset id')
@@ -1098,7 +1106,7 @@ export function apply(ctx, config) {
   const presetHandler = (request, response) => {
     const send = jsonSender(response)
     if (!requireMethod(request, response, 'POST')) return
-    const editor = configEditor
+    const editor = RUNTIME.getConfigEditor()
     const entry = findKnownPresetEntry() || findPresetEntry()
     if (!editor || typeof editor.edit !== 'function' || !entry) {
       return send(501, { ok: false, error: 'agent preset is not editable in this profile' })
@@ -1113,7 +1121,7 @@ export function apply(ctx, config) {
         setAutoMountControl(true)
         saveSessionToggles()
         enqueuePreset(async () => {
-          const ed = configEditor
+          const ed = RUNTIME.getConfigEditor()
           const target = findKnownPresetEntry()
           if (ed && typeof ed.edit === 'function' && target) {
             await ed.edit(target, (current) => mutatePreset(current, true))
@@ -1124,7 +1132,7 @@ export function apply(ctx, config) {
         setAutoMountControl(false)
         saveSessionToggles()
         enqueuePreset(async () => {
-          const ed = configEditor
+          const ed = RUNTIME.getConfigEditor()
           const target = findKnownPresetEntry() || findPresetEntry()
           if (ed && typeof ed.edit === 'function' && target) {
             await ed.edit(target, (current) => mutatePreset(current, false))
@@ -1138,10 +1146,9 @@ export function apply(ctx, config) {
   // 浏览器半侧（client.js）通过这个只读接口取上下文与最近测量值。
   // 用 ctx.inject(['webServer']) 而不是写进 export const inject：
   // 无 Web server 的 profile（纯 CLI/headless）也能正常挂载本插件。
-  let sessionQuery = null
   ctx.inject(['sessionQuery'], (sub) => {
-    sessionQuery = sub?.sessionQuery ?? null
-    if (typeof sub.effect === 'function') sub.effect(() => () => { sessionQuery = null }, 'agent-embodiment: sessionQuery presence')
+    RUNTIME.setSessionQuery(sub?.sessionQuery ?? null)
+    if (typeof sub.effect === 'function') sub.effect(() => () => { RUNTIME.setSessionQuery(null) }, 'agent-embodiment: sessionQuery presence')
   })
 
   // 带超时的读取：超时通过 AbortSignal 一并取消底层读取，避免只丢弃结果而让会话观察继续运行。
@@ -1188,8 +1195,8 @@ export function apply(ctx, config) {
   const observeFold = async (sessionId, header, ttlMs = FOLD_CACHE_TTL_MS) => {
     const cached = foldCache.get(sessionId)
     if (cached && Date.now() - cached.at < ttlMs) return cached.fold
-    if (!sessionQuery || typeof sessionQuery.observeSession !== 'function') throw new Error('sessionQuery.observeSession unavailable')
-    const observation = await readWithTimeout((signal) => sessionQuery.observeSession(sessionId, { projectionMode: 'none', signal }), 4000, 'observeSession')
+    if (!RUNTIME.getSessionQuery() || typeof RUNTIME.getSessionQuery().observeSession !== 'function') throw new Error('RUNTIME.getSessionQuery().observeSession unavailable')
+    const observation = await readWithTimeout((signal) => RUNTIME.getSessionQuery().observeSession(sessionId, { projectionMode: 'none', signal }), 4000, 'observeSession')
     try {
       const fold = foldSession(observation.header ?? header, observation.events ?? [], effectivePricing)
       foldCache.delete(sessionId)
@@ -1233,8 +1240,8 @@ export function apply(ctx, config) {
   }
 
   const analyticsPayload = async (url) => {
-    if (!sessionQuery || typeof sessionQuery.listSessions !== 'function') {
-      const error = new Error('sessionQuery unavailable in this host')
+    if (!RUNTIME.getSessionQuery() || typeof RUNTIME.getSessionQuery().listSessions !== 'function') {
+      const error = new Error('RUNTIME.getSessionQuery() unavailable in this host')
       error.statusCode = 503
       throw error
     }
@@ -1245,7 +1252,7 @@ export function apply(ctx, config) {
     const cacheKey = `${url.searchParams.get('range') ?? '7d'}\u0000${limit}`
     const cached = analyticsCache.get(cacheKey)
     if (cached && Date.now() - cached.at < ANALYTICS_CACHE_TTL_MS) return cached.payload
-    const records = await readWithTimeout((signal) => sessionQuery.listSessions(signal), 8000, 'listSessions')
+    const records = await readWithTimeout((signal) => RUNTIME.getSessionQuery().listSessions(signal), 8000, 'listSessions')
     const list = sessionsNewestFirst(records)
     const picked = list.slice(0, limit)
     const warnings = []
@@ -1286,8 +1293,8 @@ export function apply(ctx, config) {
   const sessionDetailHandler = async (request, response) => {
     const send = jsonSender(response)
     if (!requireMethod(request, response, 'GET')) return
-    if (!sessionQuery || typeof sessionQuery.observeSession !== 'function') {
-      return send(503, { ok: false, error: 'sessionQuery unavailable in this host' })
+    if (!RUNTIME.getSessionQuery() || typeof RUNTIME.getSessionQuery().observeSession !== 'function') {
+      return send(503, { ok: false, error: 'RUNTIME.getSessionQuery() unavailable in this host' })
     }
     const url = requestUrl(request)
     const sessionId = url.searchParams.get('sessionId') || latestSession()?.id
@@ -1305,11 +1312,9 @@ export function apply(ctx, config) {
   // 有成本，这里做短缓存。但**写入后必须立即可见**，所以缓存同时绑定修订号：
   // 任何会改变 payload 的写入（测量、压缩日志、引导状态）都递增修订号，命中条件才成立。
   const STATUS_CACHE_MS = 800
-  let statusRevision = 0
   const bumpStatusRevision = () => {
-    statusRevision += 1
+    RUNTIME.bumpStatusRevision()
   }
-  let statusCache = { at: 0, revision: -1, text: '' }
 
   const statusHandler = (request, response) => {
     if (!requireMethod(request, response, 'GET')) return
@@ -1322,11 +1327,11 @@ export function apply(ctx, config) {
     const url = requestUrl(request)
     if (
       url.searchParams.get('fresh') !== '1'
-      && statusCache.text
-      && statusCache.revision === statusRevision
-      && Date.now() - statusCache.at < STATUS_CACHE_MS
+      && RUNTIME.readStatusCache().text
+      && RUNTIME.readStatusCache().revision === RUNTIME.getStatusRevision()
+      && Date.now() - RUNTIME.readStatusCache().at < STATUS_CACHE_MS
     ) {
-      return sendCached(statusCache.text)
+      return sendCached(RUNTIME.readStatusCache().text)
     }
     const latestMeasurement = [...measurements.values()].reverse()[0] ?? null
     const onboardingPayload = { ...onboarding, budgetTokens: config.contextWindowTokens }
@@ -1334,7 +1339,7 @@ export function apply(ctx, config) {
     const holidayState = holidayInfo()
     const health = buildHealth({
       control,
-      configEditable: Boolean(configEditor && typeof configEditor.edit === 'function'),
+      configEditable: Boolean(RUNTIME.getConfigEditor() && typeof RUNTIME.getConfigEditor().edit === 'function'),
       onboarding: onboardingPayload,
       latest: latestMeasurement,
       version: PLUGIN_VERSION,
@@ -1363,7 +1368,7 @@ export function apply(ctx, config) {
       control,
       health,
       onboarding: onboardingPayload,
-      configEditable: Boolean(configEditor && typeof configEditor.edit === 'function'),
+      configEditable: Boolean(RUNTIME.getConfigEditor() && typeof RUNTIME.getConfigEditor().edit === 'function'),
       measurements: [...measurements.values()].reverse(),
       pricing: {
         currency: PRICING_CURRENCY,
@@ -1378,7 +1383,7 @@ export function apply(ctx, config) {
         holidays: holidayInfo(),
       },
     })
-    statusCache = { at: Date.now(), revision: statusRevision, text: body }
+    RUNTIME.writeStatusCache({ at: Date.now(), revision: RUNTIME.getStatusRevision(), text: body })
     sendCached(body)
   }
 
@@ -1386,20 +1391,19 @@ export function apply(ctx, config) {
 
   // 可写配置：宿主平面有 configEditor 服务时（Web/Desktop profile 都有），
   // 面板可以把上下文/阈值写回 profile 的 patch 层，写完后 Loader 会按新配置重挂本插件。
-  let configEditor = null
   ctx.inject(['configEditor'], (sub) => {
-    configEditor = sub?.configEditor ?? null
+    RUNTIME.setConfigEditor(sub?.configEditor ?? null)
     try {
-      if (configEditor && typeof configEditor.edit === 'function' && !configEditor.__ctxBackedUp) {
-        const originalEdit = configEditor.edit.bind(configEditor)
-        configEditor.edit = (...args) => {
+      if (RUNTIME.getConfigEditor() && typeof RUNTIME.getConfigEditor().edit === 'function' && !RUNTIME.getConfigEditor().__ctxBackedUp) {
+        const originalEdit = RUNTIME.getConfigEditor().edit.bind(RUNTIME.getConfigEditor())
+        RUNTIME.getConfigEditor().edit = (...args) => {
           try {
-            const patchPath = typeof configEditor.documentPath === 'string' ? configEditor.documentPath : null
+            const patchPath = typeof RUNTIME.getConfigEditor().documentPath === 'string' ? RUNTIME.getConfigEditor().documentPath : null
             backupFile(patchPath, 'cordis.patch')
           } catch {}
           return originalEdit(...args)
         }
-        configEditor.__ctxBackedUp = true
+        RUNTIME.getConfigEditor().__ctxBackedUp = true
       }
     } catch {}
     setTimeout(() => {
@@ -1407,7 +1411,7 @@ export function apply(ctx, config) {
         autoMountControl()
       } catch {}
     }, 1200)
-    if (typeof sub.effect === 'function') sub.effect(() => () => { configEditor = null }, 'agent-embodiment: config editor presence')
+    if (typeof sub.effect === 'function') sub.effect(() => () => { RUNTIME.setConfigEditor(null) }, 'agent-embodiment: config editor presence')
   })
 
   /** 校验来自浏览器面板的配置补丁；不合法返回 null。 */
@@ -1511,7 +1515,7 @@ export function apply(ctx, config) {
   const configHandler = (request, response) => {
     const send = jsonSender(response)
     if (!requireMethod(request, response, 'POST')) return
-    const editor = configEditor
+    const editor = RUNTIME.getConfigEditor()
     if (!editor || typeof editor.edit !== 'function' || typeof editor.entries !== 'function') {
       return send(501, { ok: false, error: 'config editor unavailable in this profile' })
     }
@@ -1558,8 +1562,8 @@ export function apply(ctx, config) {
 
   /** 最近一个会话（与 /live 同一口径）。 */
   const latestSession = () => {
-    if (!sessions || typeof sessions.list !== 'function') return undefined
-    return sessionsNewestFirst(sessions.list())[0]
+    if (!RUNTIME.getSessions() || typeof RUNTIME.getSessions().list !== 'function') return undefined
+    return sessionsNewestFirst(RUNTIME.getSessions().list())[0]
   }
 
   /**
@@ -1571,12 +1575,12 @@ export function apply(ctx, config) {
     if (!inventory || !Array.isArray(inventory.sections)) return inventory
     const sessionTexts = sessionId ? getSessionPromptTextMap(sessionId) : null
     const sections = inventory.sections.map((section) => {
-      const globalOverridden = Object.prototype.hasOwnProperty.call(runtimePromptOverrides, section.name)
+      const globalOverridden = Object.prototype.hasOwnProperty.call(RUNTIME.getPromptOverrides(), section.name)
       const sessionOverridden = Boolean(sessionTexts && sessionTexts.has(section.name))
       const text = sessionOverridden
         ? String(sessionTexts.get(section.name))
         : globalOverridden
-          ? String(runtimePromptOverrides[section.name])
+          ? String(RUNTIME.getPromptOverrides()[section.name])
           : section.text
       return {
         ...section,
@@ -1594,7 +1598,7 @@ export function apply(ctx, config) {
     const send = jsonSender(response)
     if (!requireMethod(request, response, 'GET')) return
     const requested = requestUrl(request).searchParams.get('sessionId') ?? ''
-    const session = requested && sessions && typeof sessions.get === 'function' ? sessions.get(requested) : latestSession()
+    const session = requested && RUNTIME.getSessions() && typeof RUNTIME.getSessions().get === 'function' ? RUNTIME.getSessions().get(requested) : latestSession()
     const sessionId = requested || session?.id
     return send(200, {
       ok: true,
@@ -1606,11 +1610,11 @@ export function apply(ctx, config) {
       })() : null,
       disabledSessionTools: sessionId ? getSessionDisabledTools(sessionId) : [],
       disabledSessionPrompts: sessionId ? getSessionDisabledPrompts(sessionId) : [],
-      disabledTools: runtimeDisabledTools,
+      disabledTools: RUNTIME.getDisabledTools(),
       promptTemplates: PROMPT_TEMPLATES,
-      promptOverrides: runtimePromptOverrides,
-      extraPrompts: runtimeExtraPrompts,
-      extraPromptPlacements: runtimeExtraPromptPlacements,
+      promptOverrides: RUNTIME.getPromptOverrides(),
+      extraPrompts: RUNTIME.getExtraPrompts(),
+      extraPromptPlacements: RUNTIME.getExtraPromptPlacements(),
       applied: sessionId ? getAppliedTools(sessionId) : null,
     })
   }
@@ -1623,7 +1627,7 @@ export function apply(ctx, config) {
       const url = requestUrl(request)
       const analytics = await analyticsPayload(url)
       const requested = url.searchParams.get('sessionId') ?? ''
-      const session = requested && sessions && typeof sessions.get === 'function' ? sessions.get(requested) : latestSession()
+      const session = requested && RUNTIME.getSessions() && typeof RUNTIME.getSessions().get === 'function' ? RUNTIME.getSessions().get(requested) : latestSession()
       const sessionId = requested || session?.id || null
       const found = sessionId ? getInventory(sessionId) : null
       const inventory = found ? { ...withLivePromptState(found, sessionId), sources: sourcesFor(found) } : null
@@ -1655,7 +1659,7 @@ export function apply(ctx, config) {
     if (!requireMethod(request, response, 'POST')) return
     readJson(request, response, (input) => {
       if (input && input.reset === true) {
-        onboarding = {
+        Object.assign(onboarding, {
           completed: false,
           dismissed: false,
           deferredAt: null,
@@ -1664,7 +1668,7 @@ export function apply(ctx, config) {
           presetConsent: null,
           at: new Date().toISOString(),
           version: PLUGIN_VERSION,
-        }
+        })
         saveOnboarding()
         return send(202, { ok: true, onboarding })
       }
@@ -1679,12 +1683,12 @@ export function apply(ctx, config) {
       if (input && typeof input.budgetConfirmed === 'boolean') patch.budgetConfirmed = input.budgetConfirmed
       if (input && typeof input.presetConsent === 'boolean') patch.presetConsent = input.presetConsent
       if (input && Number.isInteger(input.budgetTokens) && input.budgetTokens > 0) patch.budgetTokens = input.budgetTokens
-      onboarding = {
+      Object.assign(onboarding, {
         ...onboarding,
         ...patch,
         version: PLUGIN_VERSION,
         at: new Date().toISOString(),
-      }
+  })
       saveOnboarding()
       return send(202, { ok: true, onboarding })
     })
@@ -1746,12 +1750,12 @@ export function apply(ctx, config) {
         saveSessionToggles()
         return send(202, { ok: true, layer, kind, name, enabled, note: 'applies to the next request' })
       }
-      const editor = configEditor
+      const editor = RUNTIME.getConfigEditor()
       const entry = editor && typeof editor.entries === 'function' ? editor.entries().find((candidate) => candidate?.options?.id === 'agent-embodiment') : undefined
       if (!editor || typeof editor.edit !== 'function' || !entry) return send(501, { ok: false, error: 'config editor unavailable in this profile' })
-      const current = [...runtimeDisabledTools]
+      const current = [...RUNTIME.getDisabledTools()]
       const next = enabled ? current.filter((item) => item !== name) : current.includes(name) ? current : [...current, name]
-      runtimeDisabledTools = next
+      RUNTIME.setDisabledTools(next)
       setGlobalDisabledTools(next)
       send(202, { ok: true, layer, kind, name, enabled, note: 'writes profile config; plugin reloads' })
       void editor
@@ -1778,13 +1782,13 @@ export function apply(ctx, config) {
         saveSessionToggles()
       }
       if (layer === 'global' || layer === 'all') {
-        const editor = configEditor
+        const editor = RUNTIME.getConfigEditor()
         const entry = editor && typeof editor.entries === 'function' ? editor.entries().find((candidate) => candidate?.options?.id === 'agent-embodiment') : undefined
         if (!editor || typeof editor.edit !== 'function' || !entry) return send(501, { ok: false, error: 'config editor unavailable in this profile' })
-        runtimePromptOverrides = {}
-        runtimeExtraPrompts = {}
-        runtimeExtraPromptPlacements = {}
-        runtimeDisabledTools = []
+        RUNTIME.setPromptOverrides({})
+        RUNTIME.setExtraPrompts({})
+        RUNTIME.setExtraPromptPlacements({})
+        RUNTIME.setDisabledTools([])
         setGlobalPromptOverrides({})
         setGlobalExtraPrompts({})
         setGlobalExtraPromptPlacements({})
@@ -1793,9 +1797,9 @@ export function apply(ctx, config) {
         void queuePromptWrite(() => editor.edit(entry, (value) => ({
           ...(value ?? {}),
           disabledTools: [],
-          promptOverrides: runtimePromptOverrides,
-          extraPrompts: runtimeExtraPrompts,
-          extraPromptPlacements: runtimeExtraPromptPlacements,
+          promptOverrides: RUNTIME.getPromptOverrides(),
+          extraPrompts: RUNTIME.getExtraPrompts(),
+          extraPromptPlacements: RUNTIME.getExtraPromptPlacements(),
         })))
           .catch(() => {})
         return
@@ -1804,36 +1808,27 @@ export function apply(ctx, config) {
     })
   }
 
-  let runtimePromptOverrides = { ...(config.promptOverrides || {}) }
-  let runtimeExtraPrompts = { ...(config.extraPrompts || {}) }
-  let runtimeExtraPromptPlacements = { ...(config.extraPromptPlacements || {}) }
   // 全局工具禁用也维护一份运行时副本：配置写入是异步的，连续切换时若每次都读
   // 本插件实例的 config 快照，后一次会把前一次刚加的禁用项覆盖掉。
-  let runtimeDisabledTools = Array.isArray(config.disabledTools) ? [...config.disabledTools] : []
 
   // 串行化 profile 写入：连续点两次“保存”时，后一次必须覆盖前一次，
   // 而不是两个异步 edit 互相覆盖。每次真正落盘时都读当前运行时状态。
-  let promptWriteQueue = Promise.resolve()
-  const queuePromptWrite = (task) => {
-    const run = promptWriteQueue.then(task, task)
-    promptWriteQueue = run.catch(() => {})
-    return run
-  }
+  const queuePromptWrite = (task) => RUNTIME.enqueuePromptWrite(task)
 
   /** 把 extraPrompts / placements 写回 profile config；运行时先同步，避免等待重挂。 */
   const writeExtraPrompts = (next, placements, response, send) => {
-    const editor = configEditor
+    const editor = RUNTIME.getConfigEditor()
     const entry = editor && typeof editor.entries === 'function' ? editor.entries().find((candidate) => candidate?.options?.id === 'agent-embodiment') : undefined
     if (!editor || typeof editor.edit !== 'function' || !entry) return send(501, { ok: false, error: 'config editor unavailable in this profile' })
-    runtimeExtraPrompts = { ...next }
-    runtimeExtraPromptPlacements = { ...placements }
-    setGlobalExtraPrompts(runtimeExtraPrompts)
-    setGlobalExtraPromptPlacements(runtimeExtraPromptPlacements)
-    send(202, { ok: true, accepted: runtimeExtraPrompts, placements: runtimeExtraPromptPlacements })
+    RUNTIME.setExtraPrompts(next)
+    RUNTIME.setExtraPromptPlacements(placements)
+    setGlobalExtraPrompts(RUNTIME.getExtraPrompts())
+    setGlobalExtraPromptPlacements(RUNTIME.getExtraPromptPlacements())
+    send(202, { ok: true, accepted: RUNTIME.getExtraPrompts(), placements: RUNTIME.getExtraPromptPlacements() })
     void queuePromptWrite(() => editor.edit(entry, (value) => ({
       ...(value ?? {}),
-      extraPrompts: runtimeExtraPrompts,
-      extraPromptPlacements: runtimeExtraPromptPlacements,
+      extraPrompts: RUNTIME.getExtraPrompts(),
+      extraPromptPlacements: RUNTIME.getExtraPromptPlacements(),
     })))
       .catch(() => {})
   }
@@ -1842,15 +1837,15 @@ export function apply(ctx, config) {
   /** POST /inventory/extra-prompt/reset {name?}：移除一条或全部额外 system section。 */
   /** 把 promptOverrides 写回 profile config。 */
   const writePromptOverrides = (next, response, send) => {
-    const editor = configEditor
+    const editor = RUNTIME.getConfigEditor()
     const entry = editor && typeof editor.entries === 'function' ? editor.entries().find((candidate) => candidate?.options?.id === 'agent-embodiment') : undefined
     if (!editor || typeof editor.edit !== 'function' || !entry) return send(501, { ok: false, error: 'config editor unavailable in this profile' })
-    runtimePromptOverrides = { ...next }
-    setGlobalPromptOverrides(runtimePromptOverrides)
-    send(202, { ok: true, accepted: runtimePromptOverrides })
+    RUNTIME.setPromptOverrides(next)
+    setGlobalPromptOverrides(RUNTIME.getPromptOverrides())
+    send(202, { ok: true, accepted: RUNTIME.getPromptOverrides() })
     void queuePromptWrite(() => editor.edit(entry, (value) => ({
       ...(value ?? {}),
-      promptOverrides: runtimePromptOverrides,
+      promptOverrides: RUNTIME.getPromptOverrides(),
     })))
       .catch(() => {})
   }
@@ -1861,7 +1856,7 @@ export function apply(ctx, config) {
     if (!requireMethod(request, response, 'POST')) return
     readJson(request, response, (input) => {
       if (typeof input?.name !== 'string' || input.name.length === 0 || typeof input.text !== 'string') return send(400, { ok: false, error: 'name/text are required' })
-      const next = { ...runtimePromptOverrides, [input.name]: input.text }
+      const next = { ...RUNTIME.getPromptOverrides(), [input.name]: input.text }
       writePromptOverrides(next, response, send)
     })
   }
@@ -1871,7 +1866,7 @@ export function apply(ctx, config) {
     const send = jsonSender(response)
     if (!requireMethod(request, response, 'POST')) return
     readJson(request, response, (input) => {
-      const current = { ...runtimePromptOverrides }
+      const current = { ...RUNTIME.getPromptOverrides() }
       const next = typeof input?.name === 'string' && input.name.length > 0 ? Object.fromEntries(Object.entries(current).filter(([key]) => key !== input.name)) : {}
       writePromptOverrides(next, response, send)
     })
@@ -1913,8 +1908,8 @@ export function apply(ctx, config) {
     saveSessionToggles,
     setSessionPromptText,
     clearSessionPromptText,
-    getExtraPrompts: () => runtimeExtraPrompts,
-    getExtraPromptPlacements: () => runtimeExtraPromptPlacements,
+    getExtraPrompts: () => RUNTIME.getExtraPrompts(),
+    getExtraPromptPlacements: () => RUNTIME.getExtraPromptPlacements(),
     writeExtraPrompts,
   })
 
@@ -1923,7 +1918,7 @@ export function apply(ctx, config) {
     if (!server || typeof server.register !== 'function') return
     // 有 webServer 就说明这是浏览器形态：此时若没有 connection 服务，
     // 请求无法做 Host/Origin/cookie 校验，状态路由必须失败关闭（见 requestRejection）。
-    webServerPresent = true
+    RUNTIME.setWebServerPresent(true)
     const register = () => {
       const offs = [
         server.register({ kind: 'exact', path: STATUS_PATH, handler: authed(statusHandler) }),
@@ -1954,7 +1949,7 @@ export function apply(ctx, config) {
     }
     if (typeof sub.effect === 'function') sub.effect(register, 'agent-embodiment: routes')
     else register()
-    if (typeof sub.effect === 'function') sub.effect(() => () => { webServerPresent = false }, 'agent-embodiment: webServer presence')
+    if (typeof sub.effect === 'function') sub.effect(() => () => { RUNTIME.setWebServerPresent(false) }, 'agent-embodiment: webServer presence')
   })
 
   // 注意：本文件是宿主半侧，只读测量、不改会话历史。真正的「控制」在

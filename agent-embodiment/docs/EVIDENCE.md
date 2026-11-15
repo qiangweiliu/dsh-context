@@ -554,6 +554,14 @@ npm 运行依赖：无；生命周期脚本：无
 - 新增 `test/routes-session.mjs` 28 项，覆盖此前只能经 HTTP + 完整 Cordis 间接碰的分支（数组 body、幂等清除、revision 递增、scope 组合、name 级与全清、409 无会话、placement 从 user 改回 system 时移除条目）。
 - 测试：单元 537（新增 28）、集成 181、lint 0。
 
+## E48. v0.38.0 运行时上下文层（2026-11-15）
+
+- 目标：为把 `statusHandler`（70 行、依赖十余个闭包）搬出 `apply()` 铺路。先建层，不搬 handler。
+- 做法：`runtime.js` 持有服务句柄、缓存/revision、运行时提示词状态、引导引用、路径与两个串行队列；`index.js` 的 200+ 引用点改为 `runtime.getX()/setX()`，删除 15 个模块级 `let`。
+- 两个非机械决策：① `onboarding` 改为就地 `Object.assign`，因为 runtime 在它之前创建、若继续整体赋值会拿到旧引用；② 队列的「失败不阻塞后续」语义原样保留（`then(task, task)` + `catch(() => {})`），并写进单测。
+- **过程中踩到的坑（已加断言防回归）**：批量替换把 `ctx.inject(['sessions'])` 里的服务名字符串也改成了 `RUNTIME.getSessions()`，导致注入回调不触发 → `connection` 恒为 null → 状态路由返回 403 `forbidden`，smoke 在解析 JSON 时炸掉。`static.mjs` 现在断言 `ctx.inject` 参数里不得出现 `RUNTIME`。
+- 结果：集成 55/115/11 全绿；新增 `test/runtime.mjs` 35 项；单元 573。
+
 ## 已知限制（unknown）
 
 - 未进行独立安全审计；本文件不声称“安全通过”。

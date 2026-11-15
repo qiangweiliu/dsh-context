@@ -2,6 +2,29 @@
 
 格式参考 Keep a Changelog；版本遵循 SemVer。DSH 兼容版本写在每个条目的 Compatibility 下。
 
+## [0.38.0] - 2026-11-15
+
+### Added
+
+- **`runtime.js`：宿主平面运行时上下文**（为拆 `statusHandler` 铺路）。集中持有：
+  - 6 个晚绑定服务句柄（`sessions` / `sessionQuery` / `connection` / `configEditor` / `sessionProjections` / webServer 在位标记）
+  - 状态缓存 + revision（`readStatusCache` / `writeStatusCache` / `bumpStatusRevision`）
+  - 运行时提示词与工具状态（`promptOverrides` / `extraPrompts` / `placements` / `disabledTools`，初值来自 config 且做浅拷贝）
+  - 首次运行引导对象引用，以及路径（`stateDir` / `backupDir` / 三个状态文件，`Object.freeze`）
+  - 两个串行写入队列（`enqueuePromptWrite` / `enqueuePresetWrite`，失败只抛给调用方、不阻塞后续任务）
+
+### Changed
+
+- `index.js` 的 **200+ 个状态引用点**统一改走 `runtime.getX()/setX()`：删除 15 个模块级 `let`，路径常量改为 `runtime.paths.*` 的只读别名。
+- `onboarding` 从「整体重新赋值」改为「对象身份不变、就地 `Object.assign`」，这样 runtime 可以安全持有引用（避免构造顺序问题）。
+- 行为未变：control 55 / smoke 115 / prompt-state 11 全绿。
+
+### Tests
+
+- **`test/runtime.mjs`（35 项）**：路径派生与冻结、服务句柄默认 null 与 `set(undefined)` 归一化、webServer 标记只认 `true`、revision 累加与缓存往返、运行时提示词的浅拷贝语义（外部改动不回流）、`set(null)` 归一化、onboarding 引用语义、两个队列的串行顺序与「失败不阻塞后续」。
+- `static.mjs` 增加 runtime 契约断言：`ctx.inject` 里不得出现 `RUNTIME`（本轮踩过的坑：替换曾把服务名字符串一起改掉，导致注入不触发、状态路由 403）。
+- 单元 537 → **573**；集成 181 不变；lint 0。
+
 ## [0.37.0] - 2026-11-15
 
 ### Changed

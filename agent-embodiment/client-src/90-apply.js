@@ -52,6 +52,25 @@
         }
       }, 'agent-embodiment: reduced motion')
 
+      // 键盘焦点环：行内样式表达不了 `:focus-visible`（需要 CSS 伪类），所以沿用上面
+      // reduced-motion 的做法注入一小段作用域受限的 <style>。只匹配本插件自己的属性标记，
+      // 不碰宿主样式；鼠标点击时 `:focus-visible` 不命中，因此不会多出视觉噪声。
+      ctx.effect(() => {
+        if (typeof document === 'undefined' || !document.head) return () => {}
+        const styleId = 'agent-embodiment-focus-ring'
+        if (document.getElementById(styleId)) return () => {}
+        const style = document.createElement('style')
+        style.id = styleId
+        style.textContent =
+          ':is([data-embodiment-panel],[data-embodiment-dock],[data-embodiment-balance]) :is(button,input,textarea,select,a[href],[tabindex]):focus-visible,[data-embodiment-dock]:focus-visible,[data-embodiment-balance]:focus-visible{outline:2px solid var(--dsw-alias-brand-primary,#4f7cff);outline-offset:2px;border-radius:6px}'
+        document.head.appendChild(style)
+        return () => {
+          try {
+            style.remove()
+          } catch {}
+        }
+      }, 'agent-embodiment: focus ring')
+
       // 事件驱动刷新：监听会话区域的 DOM 变化（流式输出、消息更新、切换会话），2s 节流。
       // 忽略本插件自己的 UI（dock/面板），避免自触发循环。
       ctx.effect(() => {

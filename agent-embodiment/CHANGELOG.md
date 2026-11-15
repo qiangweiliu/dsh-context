@@ -2,6 +2,27 @@
 
 格式参考 Keep a Changelog；版本遵循 SemVer。DSH 兼容版本写在每个条目的 Compatibility 下。
 
+## [0.47.0] - 2026-11-15
+
+### Added
+
+- **键盘焦点环**：Dock 触发器、余额胶囊与面板内所有可聚焦元素（`button` / `input` / `textarea` / `select` / `a[href]` / `[tabindex]`）现在有 `:focus-visible` 焦点环（`--dsw-alias-brand-primary`，`outline-offset: 2px`）。
+  - 行内样式表达不了 CSS 伪类，所以沿用 0.14.19 就有的 `<style>` 注入方式，作用域只匹配本插件自己的 `data-embodiment-*` 标记，不碰宿主样式；`dispose` 时移除。
+  - 用 `:focus-visible` 而非 `:focus`：鼠标点击不显示焦点环，只有键盘导航才显示。
+
+### Fixed
+
+- `docs/UI-PROPOSAL.md` §9 的一处自查错误：把 `prefers-reduced-motion` 判成「未做」，其实 v0.14.19 就实现了（在 `apply()` 里注入 `<style>`，文档 §6 第 104 行本来写着）。错因是核对时只 grep 了 `20-styles.js`（样式对象），没看 `90-apply.js`（运行时注入）。
+
+### Docs
+
+- `docs/UI-PROPOSAL.md` §9：P1-5 与 P2 两行更正为「已修 / 已做」，§2 的 14 条问题至此全部落地；新增 §9.5 记录这次自查失败与教训（跨文件的能力要按「能力」查，不能按「文件」查）。
+
+### Tests
+
+- `static.mjs` 113 → **117**：新增 4 项断言锁住这两段样式注入——焦点环存在且作用域限定本插件元素、`prefers-reduced-motion` 生效、两段 `<style>` 都在 `dispose` 时移除。避免「文档说没做、其实早做了」或「加了又静默回退」。
+- 单元 829 → **833**；集成 181 不变；lint 0。
+
 ## [0.46.0] - 2026-11-15
 
 ### Security

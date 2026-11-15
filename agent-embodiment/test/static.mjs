@@ -285,6 +285,15 @@ for (const inject of secondMount.slotInjects) inject.callback()
   check('UI-PROPOSAL 登记的组件都存在于 client.js', documented.size >= 8 && missingInCode.length === 0, { documented: documented.size, missingInCode })
 }
 
+// 行内样式表达不了 :focus-visible 与 media query，这两项靠注入 <style> 实现。
+// 断言它们真的进了产物，且作用域只匹配本插件自己的属性标记。
+{
+  check('插件注入键盘焦点环', clientSource.includes('agent-embodiment-focus-ring') && clientSource.includes(':focus-visible'))
+  check('焦点环作用域限定本插件元素', clientSource.includes('[data-embodiment-panel],[data-embodiment-dock],[data-embodiment-balance]'))
+  check('尊重 prefers-reduced-motion', clientSource.includes('prefers-reduced-motion: reduce') && clientSource.includes('agent-embodiment-reduced-motion'))
+  check('两段 <style> 都在 dispose 时移除', (clientSource.match(/\.remove\(\)/gu) || []).length >= 2)
+}
+
 check('client 重复挂载只注册一次', firstMount.slotRegistrations.length === 5 && secondMount.slotRegistrations.length === 0, `${firstMount.slotRegistrations.length}/${secondMount.slotRegistrations.length}`)
 
 const failed = checks.filter((entry) => !entry.ok)

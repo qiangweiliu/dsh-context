@@ -94,8 +94,7 @@ Invoke-RestMethod -Method Put -Headers @{ Authorization = "Bearer $env:GH_TOKEN"
   后者描述性弱且未体现 agent 具身定位；现名与目录里任何条目都不同名。改名必须同时改这些标识，测试里都有断言：
   `package.json` 的 `name`、`dsh.bundle.patch.yml` 的 `id`/`name`、`index.js` 的 `export const name`、
   状态路由 `/api/agent-embodiment/status`、`client.js` 的模块 id 与 locale 命名空间、`settings.section` 的 id。
-- **发布 npm**：收录不看 npm，但有了 npm 包市场会显示下载量、安装也免掉源码构建步骤；
-  发布时 `repository` 字段必须指回本仓库，否则不会被关联。
+- **发布 npm**：**不再发布**（2026-11-15 起）。收录与安装都走 GitHub 子目录，收录 CI 也不依赖 npm；`repository` 字段仍保留，指向本仓库。
 - **截图**：在 `agent-embodiment/` 下放 `screenshots.json` 列 1–8 张图，市场详情页会展示。
 
 ## 5. 一个要提前想清楚的问题：会不会被判「已被覆盖」

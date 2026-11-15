@@ -35,8 +35,6 @@ jobs:
       - run: node --check index.js && node --check control.js && node --check client.js && node --check persist.js && node --check profile.js
       - run: npm test
       - run: npm run lint
-      # 提前暴露 files/exports 缺文件的问题。
-      - run: npm pack --dry-run
 
   integration:
     runs-on: ubuntu-latest

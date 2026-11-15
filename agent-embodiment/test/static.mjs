@@ -42,13 +42,15 @@ check(
   !manifest.scripts || !Object.keys(manifest.scripts).some((name) => ['preinstall', 'install', 'postinstall', 'prepare'].includes(name)),
   JSON.stringify(manifest.scripts ?? null),
 )
+// 不发布 npm 包：不再声明 `files`；改为断言运行文件在仓库里真实存在（分发靠 GitHub 子目录 + 市场）。
 check(
-  'manifest files 分发全部运行文件',
-  ['index.js', 'control.js', 'state.js', 'metrics.js', 'persist.js', 'profile.js', 'scaffold.js', 'client.js', 'dsh.bundle.patch.yml'].every((file) => Array.isArray(manifest.files) && manifest.files.includes(file)),
-  JSON.stringify(manifest.files),
+  'repository 里存在全部运行文件',
+  ['index.js', 'control.js', 'state.js', 'metrics.js', 'persist.js', 'profile.js', 'scaffold.js', 'client.js', 'dsh.bundle.patch.yml'].every((file) => existsSync(new URL(`../${file}`, import.meta.url))),
+  ['index.js', 'control.js', 'state.js', 'metrics.js', 'persist.js', 'profile.js', 'scaffold.js', 'client.js', 'dsh.bundle.patch.yml'].filter((file) => !existsSync(new URL(`../${file}`, import.meta.url))),
 )
 check('manifest 无 npm 运行依赖（只依赖宿主服务与 Node 内置模块）', !manifest.dependencies || Object.keys(manifest.dependencies).length === 0, JSON.stringify(manifest.dependencies ?? {}))
-check('manifest 声明权限说明文档已分发', Array.isArray(manifest.files) && manifest.files.includes('PERMISSIONS.md'))
+check('不声明 npm 打包清单（不再发布 npm）', manifest.files === undefined, JSON.stringify(manifest.files ?? null))
+check('仓库保留权限说明文档', existsSync(new URL('../PERMISSIONS.md', import.meta.url)))
 check('lint 脚本存在且用 oxlint（devDependency）', String(manifest.scripts?.lint ?? '').includes('oxlint') && Boolean(manifest.devDependencies?.oxlint), JSON.stringify({ lint: manifest.scripts?.lint, dev: manifest.devDependencies }))
 check('oxlint 配置随仓库提交', existsSync(new URL('../.oxlintrc.json', import.meta.url)))
 check('npm ci 用的 lockfile 存在', existsSync(new URL('../package-lock.json', import.meta.url)))

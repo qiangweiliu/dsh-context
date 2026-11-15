@@ -13,7 +13,7 @@
 | 插件版本 | `agent-embodiment@0.25.0`（package/client/README/IMPLEMENTATION 已同步） |
 | 兼容矩阵 | `0.2.0-rc.2` / `0.2.1-rc.2` / `0.2.1-rc.3` / `0.2.1-rc.5` = compatible；`0.2.2-rc.1` = **unknown** |
 | 本机 DSH | Desktop 0.2.2-rc.1（`E:\tool\dsh\resources\app.asar`，Cordis 4.1.0）；WSL `dsh 0.2.1-rc.5` |
-| npm | **未发布**（本会话浏览器登录未完成，`npm whoami` 仍 ENEEDAUTH） |
+| npm | **不发布**（2026-11-15 起彻底取消 npm 分发，只走市场 + 源码安装） |
 | 状态目录 | 0.25.0 起按 profile 分层：`~/.dsh/agent-embodiment/profiles/<profile>/` |
 
 ## 1. 本轮（0.25.0）做了什么
@@ -43,7 +43,7 @@
 - 单元 375 项：static 101 / metrics 45 / state 26 / persist 7 / profile 11 / scaffold 146 / insights 16 / render 23。
 - 集成 139 项：control 55 / smoke 73 / prompt-state 11（Cordis 4.1.0，来自本机 asar）。
 - `npm run lint`：0 error / 0 warning。
-- `npm pack --dry-run`：22 个文件、178.7 kB（unpacked 600.8 kB）。
+- 分发：不发布 npm，`files` 字段已移除，无需打包检查。
 - 未验证：Desktop/WSL 上安装 0.25.0 后的面板点击（本轮只有行为级 mock 渲染）、0.2.2-rc.1 端到端。
 
 ## 3. 待办（按顺序）
@@ -69,10 +69,9 @@ robocopy "C:\Users\40410\Desktop\context\agent-embodiment" $dst /MIR /XD test/de
 
 同步后 HMR 生效，按 [RELEASE-PLAN §10](agent-embodiment/docs/RELEASE-PLAN.md#L290) 第 1–4 项点一遍（4 tab / 引导三出口 / 一次真实压缩 / CSV 导出）。**本轮 TDZ 崩溃说明“面板能出现”必须亲眼确认**。通过后 `0.2.2-rc.1` 改 `compatible` 并补 E34。
 
-### 3.3 npm 发布
+### 3.3 npm 发布（已取消）
 
-仍未发布（本会话浏览器登录未完成）。需要登录 + 2FA 后 `npm publish --access public`，再打 tag `v0.25.0`。
-
+2026-11-15 起本项目不再发布 npm 包：`package.json` 的 `files` 字段与 CI 的 `npm pack` 门禁一并移除，安装只走市场（awesome-dsh-plugin）或从源码 `dsh plugin add <本地路径>`。
 ### 3.4 0.26.0 候选
 
 - `client.js` 拆模块（4054 行；本轮只加了错误边界兜底与行为测试）。
@@ -91,4 +90,4 @@ robocopy "C:\Users\40410\Desktop\context\agent-embodiment" $dst /MIR /XD test/de
 
 - `client.js` 模块拆分、更新提示胶囊、全量可访问性复核（只做了 tab 语义与键盘）。
 - Desktop 0.2.2-rc.1 端到端、WSL 面板截图。
-- npm 发布与 tag。
+- tag（`v<version>`）。

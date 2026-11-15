@@ -79,16 +79,15 @@ Tier B 证据（50 题）：
 cd agent-embodiment
 npm test
 npm run test:integration
-npm pack --dry-run
 ```
 
 - 单元：static / metrics / state / scaffold 全绿（当时 77/24/16/146；当前基线见 [IMPLEMENTATION](IMPLEMENTATION.md)）。
 - 集成：control / smoke / prompt-state 全绿（当时 54/66/11）。
-- 包内容：`npm pack --dry-run` 无缺文件（当前 20 个文件）。
+- 分发：不发布 npm，改动只影响仓库；市场条目指向本仓库子目录。
 - Tier B 子集：scaffold 默认 10 题（当前 10/10，工具调用 4.7）已记录。
 - 文档/版本同步：`package.json`、`client.js` 的 `CLIENT_VERSION`、README、IMPLEMENTATION、EVIDENCE、市场申请文件。
 - 市场文案：不再承诺“更准/更强”；scaffold 标注 optional/experimental。
-- 发布：`npm publish` + 打 tag `v0.22.0` + 向 `awesome-dsh-plugin` 提 PR。
+- 发布：打 tag `v0.22.0` + 向 `awesome-dsh-plugin` 提 PR（**不发布 npm**）。
 - 回滚：`dsh plugin add agent-embodiment@0.21.0`，再用 `scripts/clean-agent-embodiment-profile-patch.mjs` 清 preset 残留。
 
 ### 3.2 0.22.1（patch）
@@ -134,7 +133,7 @@ npm pack --dry-run
 - 单元：static 95/95、metrics 35/35、state 18/18、scaffold 146/146、insights 12/12。
 - 集成：control 54/54、smoke 72/72、prompt-state 11/11。
 - 语法：`node --check index.js control.js client.js` 通过。
-- 包：`npm pack --dry-run` 20 个文件、约 163 kB、退出码 0。
+- 分发：不发布 npm，无需打包。
 
 **未包含**（明确延后）：
 
@@ -171,7 +170,6 @@ cd agent-embodiment
 node --check index.js && node --check control.js && node --check client.js
 npm test
 npm run test:integration
-npm pack --dry-run
 ```
 
 - 单元 + 集成全绿。
@@ -251,7 +249,7 @@ node eval/deep/compare.mjs --markdown
 | 3 reps 子集 | ✅ 完成 | base 19/24（79.2%，input 23,715）；compact 20/24（83.3%，input 20,525）；long-05 两组 0/3 |
 | DSH rc.3 | ✅ Web/headless | headless 安装、插件加载、Cordis 测试全绿；Web 状态接口返回 v0.23.0、control active/mounted、UI 出现 embody；`dshReleases` 已加入；Desktop 未验收 |
 | 市场条目 | ✅ PR 已创建 | [PR #9029](https://github.com/awesome-dsh-plugin/awesome-dsh-plugin/pull/9029)；CI 全绿、mergeable；等待维护者合并后 catalog 更新 |
-| npm 发布 | ⏸ 暂停 | npm 已登录为 `namegame`；发布需要 2FA OTP 或 bypass token，按用户要求暂停 |
+| npm 发布 | ❌ 已废弃 | 按用户要求：本项目**不再发布 npm**；分发只走 GitHub 子目录与 awesome-dsh-plugin 市场 |
 | 市场 PR 创建 | ✅ 完成 | PR #9029；Submission gate + check 均为 success |
 | 本地市场镜像 | ⏸ 已停止 | `scripts/local-market-mirror.mjs` 可随时重启；按用户要求暂停市场提交后停止 |
 
@@ -287,7 +285,7 @@ https://github.com/awesome-dsh-plugin/awesome-dsh-plugin/compare/main...qiangwei
 | 信息架构 | ✅ | 侧栏 `Context` / `上下文`；Overview / Trend / Events / Settings；脚手架移到 Settings → Labs |
 | 默认值 | ✅ | `triggerAt 0.9`、`targetAt 0.6`、`balanced = 0.9/0.6/keep 25%` |
 | 测试 | ✅ | static 95 / metrics 35 / state 18 / scaffold 146 / insights 12 / control 54 / smoke 72 / prompt-state 11 |
-| 打包 | ✅ | `npm pack --dry-run` 20 个文件、约 163 kB、退出码 0 |
+| 打包 | — | 不发布 npm，已取消打包门禁 |
 | Desktop/Web 端到端 | ⬜ 未做 | 本轮只有源码/静态/集成验证，发布前需补一次真实安装与面板验收 |
 
 ## 10. 发布 0.24.0 前的待办
@@ -296,7 +294,7 @@ https://github.com/awesome-dsh-plugin/awesome-dsh-plugin/compare/main...qiangwei
 2. 走一遍首次运行引导的三种出口（确认预算 / 跳过 / 授予挂载），确认 `onboarding.json` 与 `control.active` 一致。
 3. 触发一次真实压缩，确认事件页、节省卡、洞察卡读的是同一份日志。
 4. 用 `GET status/export` 拉一次 CSV，核对列与 `metrics.js` 口径一致。
-5. 跑完整发布门禁（第 4 节），再 `npm publish` + tag `v0.24.0`。
+5. 跑完整发布门禁（第 4 节），再打 tag `v0.24.0`（**不发布 npm**）。
 6. 市场 PR 描述同步到 0.24.0：写清 analytics 范围、节省是估算、scaffold 仍是 optional/experimental。
 
 ## 11. 0.25.0 执行记录（2026-11-10）

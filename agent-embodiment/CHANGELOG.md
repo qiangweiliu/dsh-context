@@ -2,6 +2,19 @@
 
 格式参考 Keep a Changelog；版本遵循 SemVer。DSH 兼容版本写在每个条目的 Compatibility 下。
 
+## [0.29.1] - 2026-11-15
+
+### Removed
+
+- **不再发布 npm 包**（按项目决定）。分发只走两条路径：awesome-dsh-plugin 市场（`url` 指向本仓库的 `agent-embodiment/` 子目录，pnpm 直接按 git 安装）与从源码 `dsh plugin add <本地路径>`。
+- `package.json` 的 `files` 字段移除；`static.mjs` 改为断言运行文件在仓库里真实存在，并明确断言不再声明打包清单。
+- CI 移除 `npm pack --dry-run` 门禁；`scripts/wsl-npm-package-test.sh`（打 tarball 安装测试）删除。
+- README 删除「从 npm 安装（发布后）」小节；`RELEASE-PLAN` 的发布门禁与状态表、`HANDOFF` 的 npm 小节、`market-submission.md` 的「发布 npm」建议一并改为「已取消」。
+
+### Compatibility
+
+- 运行时与行为无变化：`name` / `version` / `exports` / `engines` / `dsh` 均保留，插件仍通过相对路径被 `dsh plugin add` 与市场安装。
+
 ## [0.29.0] - 2026-11-14
 
 ### Added

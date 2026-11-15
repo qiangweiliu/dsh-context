@@ -34,6 +34,7 @@
  * 不写 surfaceOp、不碰影子价。
  */
 
+import { planRegion as planRegionPlan } from './compaction-plan.js'
 import {
   budgetFor,
   getDefaultKeepTokens,
@@ -356,61 +357,26 @@ export function apply(ctx, config) {
    * 选出“最小可压前缀”：只压到够得着 target 的较早消息，最近 keepTokens / 25% 预算不碰。
    * 返回 null 表示没有足够可安全压缩的历史（调用方据此跳过，而不是记失败）。
    */
-  const planRegion = (agent, measurement, budget, target) => {
-    const nodes = Array.isArray(measurement?.nodes) ? measurement.nodes : []
-    const tokensOf = (node) => Number(node.tokens ?? node.heuristicTokens ?? 0)
-    const typeOf = (node) => {
+  /**
+   * 范围规划的阈值数学在 compaction-plan.js（0.41.0）；这里只做 agent → 纯数据的适配。
+   * `typeOf` 会读会话事件类型，属于唯一的外部依赖，因此注入而不是内联。
+   */
+  const planRegion = (agent, measurement, budget, target) => planRegionPlan({
+    nodes: Array.isArray(measurement?.nodes) ? measurement.nodes : [],
+    totalTokens: Number(measurement?.totalTokens),
+    budget,
+    target,
+    keepTokens: config.keepTokens,
+    defaultKeepTokens: getDefaultKeepTokens(),
+    typeOf: (node) => {
       try {
         const event = agent?.session && typeof agent.session.eventAt === 'function' ? agent.session.eventAt(node.seq) : undefined
         return event?.type
       } catch {
         return undefined
       }
-    }
-    // 跳过 system，只压较早的 user/assistant 消息（tool 结果也属于可压历史）。
-    const messageNodes = nodes.filter((node, index) => {
-      if (index === 0) return false
-      const type = typeOf(node)
-      if (type === undefined) return true
-      return type === 'user/message' || type === 'assistant/message' || type === 'tool/result'
-    })
-    if (messageNodes.length < 2) return null
-    const keepFloor = config.keepTokens > 0 ? config.keepTokens : getDefaultKeepTokens() || Math.max(1, Math.floor(budget * 0.25))
-    // 最近 keepFloor tokens 作为“不动区”，只在它之前选可压范围。
-    let reserve = 0
-    let keepFrom = messageNodes.length
-    let floorMet = false
-    for (let index = messageNodes.length - 1; index >= 0; index -= 1) {
-      reserve += tokensOf(messageNodes[index])
-      if (reserve >= keepFloor) {
-        keepFrom = index
-        floorMet = true
-        break
-      }
-    }
-    if (!floorMet) return null
-    const candidates = messageNodes.slice(0, keepFrom)
-    if (candidates.length < 2) return null
-    const needed = Math.max(0, Number(measurement.totalTokens) - target)
-    let accumulated = 0
-    let cut = 0
-    for (let index = 0; index < candidates.length; index += 1) {
-      accumulated += tokensOf(candidates[index])
-      if (accumulated >= needed) {
-        cut = index + 1
-        break
-      }
-    }
-    // 可压历史不够达到 target：只压能压的部分（仍受 keepFloor 限制）。
-    if (cut === 0) cut = candidates.length
-    // compactRegion 至少要覆盖 2 个节点，避免把单条消息切碎。
-    cut = Math.max(2, cut)
-    const selected = candidates.slice(0, Math.min(cut, candidates.length))
-    if (selected.length < 2) return null
-    const selectedTokens = selected.reduce((sum, node) => sum + tokensOf(node), 0)
-    if (selectedTokens < Math.max(200, Math.min(keepFloor, needed))) return null
-    return { start: selected[0].seq, end: selected[selected.length - 1].seq, tokens: selectedTokens }
-  }
+    },
+  })
 
   /** 测量；任何异常都返回 null，绝不打断轮次。 */
   const measure = (agent) => {

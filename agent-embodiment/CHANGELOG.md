@@ -2,6 +2,28 @@
 
 格式参考 Keep a Changelog；版本遵循 SemVer。DSH 兼容版本写在每个条目的 Compatibility 下。
 
+## [0.41.0] - 2026-11-15
+
+### Changed
+
+- **`control.js` 拆分第一刀：压缩范围规划外置为 `compaction-plan.js`**。`planRegion` 原本 55 行、依赖 `config` 与 `getDefaultKeepTokens()`；其中唯一的外部调用是 `agent.session.eventAt(seq)` 取事件类型，改为注入 `typeOf` 后整段变成纯函数。
+  - `control.js` 674 → **640 行**；`planRegion` 只剩 18 行适配层（agent → 纯数据）。
+  - 阈值语义逐字保留：`keepTokens` > `defaultKeepTokens` > `budget×25%` 三级取值、不动区 reserve 从尾部累加、`cut` 至少 2 个节点、`selectedTokens` 需 ≥ `max(200, min(keepFloor, needed))`。
+
+### Added
+
+- **`test/compaction-plan.mjs`（17 项）**：这是本轮最实质的收益——压缩选段逻辑以前只能「构造真实会话再观察压缩结果」，现在可以穷举边界：消息节点不足 2 条、第 0 个节点始终跳过、`tool/call` 被过滤而 `tool/result` 可压、三级 keepFloor 优先级、保留区凑不够 → null、候选不足 → null、按 `needed` 定位切点、可压不足时压到上限、切点至少 2 节点、所选 token 低于门槛 → null、`heuristicTokens` 回落、返回首尾 seq 与 token 数、非法输入不抛错。
+
+### 评估（`control.js` 后续切法）
+
+- `apply()` 525 行里只有 211 行是具名单元，其余是**内联事件处理器**，所以不能按「函数」切，得按「订阅职责」切。
+- 已识别的段：`system-prompt/assemble`（86 行）、两个 `sub.effect` 各约 70 行（inventory 侧）、三个 `agent/pre-step`（41/68/29 行）、`syncGates`（108 行，依赖 5 个闭包）。
+- 下一刀建议顺序：① `syncGates` 的门禁合并（纯逻辑最多）→ ② `assemble` 的 section 重建（收益最大但 control 测试只有 55 项，需先补断言）→ ③ inventory 注册（Cordis 绑定深，最后再说）。
+
+### Tests
+
+- 单元 627 → **644**（新增 compaction-plan 17）；集成 181 不变；lint 0。
+
 ## [0.40.0] - 2026-11-15
 
 ### Changed

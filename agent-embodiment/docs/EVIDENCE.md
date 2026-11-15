@@ -578,6 +578,24 @@ npm 运行依赖：无；生命周期脚本：无
 - 累计效果：`index.js` 2157 → 1787 行；`apply()` 从 1695 行降到约 1300 行；新增 4 个路由模块（scaffold/session/status）+ 2 个领域模块（runtime/analytics），对应 111 项脱离 Cordis 的单测（17+28+24+35+27−10 重叠部分按实际计）。
 - 测试：单元 627、集成 181、lint 0。
 
+## E51. v0.41.0 control.js 分段评估与压缩规划外置（2026-11-15）
+
+先做了评估再动手，结论与预期不同：`control.js` 的 `apply()` 有 525 行，但**只有 211 行是具名单元**（`syncGates` 108、`planRegion` 55、其余零散），剩下全是内联事件处理器——所以「按函数拆」最多挪走 200 行，真正的大块在订阅回调里：
+
+| 订阅 | 体量 | 说明 |
+| --- | --- | --- |
+| `agent.ctx.on('system-prompt/assemble')` | 86 行 | section 重建 + 提示词覆盖/新增/禁用 |
+| 两个 `sub.effect` | 各约 70 行 | inventory 侧注册与快照 |
+| 三个 `agent/pre-step` | 41 / 68 / 29 行 | 测量、模式门禁、压缩触发 |
+| `syncGates` | 108 行 | 全局+会话工具门禁合并 |
+
+据此先切最干净的一块：`planRegion`（55 行，唯一外部依赖是读事件类型）。改为注入 `typeOf` 后整段是纯阈值数学，`control.js` 674 → 640 行，集成 55/115/11 全绿。
+
+过程中还纠正了自己的两次错误：手算 `keepFrom` / `cut` 落点时把期望写错（实现是对的），以及第一版写了一条 `=== null || true` 的**恒真断言**——后者比写错更危险，因为它永远不会失败。已改成「`tool/call` 被过滤 → end 必须是 4」的真断言。
+
+下一刀顺序（已写入 CHANGELOG）：`syncGates` → `assemble`（需先补 control 断言）→ inventory 注册。
+- 测试：单元 644（新增 compaction-plan 17）、集成 181、lint 0。
+
 ## 已知限制（unknown）
 
 - 未进行独立安全审计；本文件不声称“安全通过”。

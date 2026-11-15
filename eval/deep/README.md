@@ -91,7 +91,7 @@ node test/templates.mjs      # 在 agent-embodiment/ 下；126 项
 
 覆盖 6 个模板生成的 bundle：`package.json` / patch / SENSES·HANDS·LOOP·AGENTS 无未替换占位 / SKILL frontmatter / `evals/cases.jsonl` 三件套 / `embodiment.json` / 安装命令 / 两次生成字节一致 / experimental 必须带警示。
 
-**b) 真跑冒烟（需要模型凭据）**
+**b) 真跑冒烟（需要模型凭据；已有实测结果见 [TEMPLATE-SMOKE.md](TEMPLATE-SMOKE.md)）**
 
 ```bash
 node eval/deep/template-smoke.mjs --dry-run          # 先看会跑什么

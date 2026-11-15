@@ -1,6 +1,6 @@
 {
-  "startedAt": "2026-11-15T07:41:31.001Z",
-  "elapsedSeconds": 8,
+  "startedAt": "2026-11-15T08:18:02.415Z",
+  "elapsedSeconds": 340,
   "out": "/mnt/c/Users/40410/Desktop/context/eval/results/template-smoke/browser-operator.jsonl",
   "profile": "headless",
   "condition": "scaffold",
@@ -8,26 +8,26 @@
     "multi-turn": {
       "n": 1,
       "graded": 1,
-      "correct": 0,
+      "correct": 1,
       "manual": 0,
-      "failed": 1,
-      "seconds": 2.7
+      "failed": 0,
+      "seconds": 147.70000000000002
     },
     "long-context": {
       "n": 1,
       "graded": 1,
-      "correct": 0,
+      "correct": 1,
       "manual": 0,
-      "failed": 1,
-      "seconds": 2.5
+      "failed": 0,
+      "seconds": 22.3
     },
     "code": {
       "n": 1,
       "graded": 1,
-      "correct": 0,
+      "correct": 1,
       "manual": 0,
-      "failed": 1,
-      "seconds": 2.5
+      "failed": 0,
+      "seconds": 170.4
     }
   }
 }

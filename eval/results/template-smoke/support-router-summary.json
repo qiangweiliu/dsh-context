@@ -1,6 +1,6 @@
 {
-  "startedAt": "2026-11-15T07:41:47.725Z",
-  "elapsedSeconds": 8,
+  "startedAt": "2026-11-15T08:31:26.181Z",
+  "elapsedSeconds": 248,
   "out": "/mnt/c/Users/40410/Desktop/context/eval/results/template-smoke/support-router.jsonl",
   "profile": "headless",
   "condition": "scaffold",
@@ -8,26 +8,26 @@
     "multi-turn": {
       "n": 1,
       "graded": 1,
-      "correct": 0,
+      "correct": 1,
       "manual": 0,
-      "failed": 1,
-      "seconds": 2.5
+      "failed": 0,
+      "seconds": 165.2
     },
     "long-context": {
       "n": 1,
       "graded": 1,
-      "correct": 0,
+      "correct": 1,
       "manual": 0,
-      "failed": 1,
-      "seconds": 2.5
+      "failed": 0,
+      "seconds": 12.3
     },
     "code": {
       "n": 1,
       "graded": 1,
-      "correct": 0,
+      "correct": 1,
       "manual": 0,
-      "failed": 1,
-      "seconds": 2.5
+      "failed": 0,
+      "seconds": 70.6
     }
   }
 }

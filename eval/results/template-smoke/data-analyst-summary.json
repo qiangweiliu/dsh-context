@@ -1,6 +1,6 @@
 {
-  "startedAt": "2026-11-15T07:41:38.884Z",
-  "elapsedSeconds": 9,
+  "startedAt": "2026-11-15T08:23:42.953Z",
+  "elapsedSeconds": 463,
   "out": "/mnt/c/Users/40410/Desktop/context/eval/results/template-smoke/data-analyst.jsonl",
   "profile": "headless",
   "condition": "scaffold",
@@ -8,26 +8,26 @@
     "multi-turn": {
       "n": 1,
       "graded": 1,
-      "correct": 0,
+      "correct": 1,
       "manual": 0,
-      "failed": 1,
-      "seconds": 2.5
+      "failed": 0,
+      "seconds": 163.7
     },
     "long-context": {
       "n": 1,
       "graded": 1,
-      "correct": 0,
+      "correct": 1,
       "manual": 0,
-      "failed": 1,
-      "seconds": 2.6
+      "failed": 0,
+      "seconds": 52
     },
     "code": {
       "n": 1,
       "graded": 1,
-      "correct": 0,
+      "correct": 1,
       "manual": 0,
-      "failed": 1,
-      "seconds": 3.5
+      "failed": 0,
+      "seconds": 247.3
     }
   }
 }

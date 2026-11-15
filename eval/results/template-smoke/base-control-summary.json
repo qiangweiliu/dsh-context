@@ -1,0 +1,33 @@
+{
+  "startedAt": "2026-11-15T08:35:56.764Z",
+  "elapsedSeconds": 395,
+  "out": "/mnt/c/Users/40410/Desktop/context/eval/results/template-smoke/base-control.jsonl",
+  "profile": "headless",
+  "condition": "base",
+  "byCategory": {
+    "multi-turn": {
+      "n": 1,
+      "graded": 1,
+      "correct": 1,
+      "manual": 0,
+      "failed": 0,
+      "seconds": 147.9
+    },
+    "long-context": {
+      "n": 1,
+      "graded": 1,
+      "correct": 1,
+      "manual": 0,
+      "failed": 0,
+      "seconds": 14
+    },
+    "code": {
+      "n": 1,
+      "graded": 1,
+      "correct": 1,
+      "manual": 0,
+      "failed": 0,
+      "seconds": 232.9
+    }
+  }
+}

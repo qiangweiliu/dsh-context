@@ -27,6 +27,7 @@ const IDS = flag('ids', 'deep-b-memory-01,deep-b-long-01,deep-b-code-csv')
 const OUT_DIR = resolve(flag('out', 'eval/results/template-smoke'))
 const SCAFFOLD_ROOT = resolve(flag('scaffold-root', '/tmp/deep-templates'))
 const WORKERS = flag('workers', '1')
+const DS_HOME = flag('ds-home', '')
 const TIMEOUT = flag('timeout', '480')
 const DRY = has('dry-run')
 
@@ -45,7 +46,7 @@ const summary = []
 for (const template of TEMPLATES) {
   const scaffoldHome = join(SCAFFOLD_ROOT, template)
   const outFile = join(OUT_DIR, `${template}.jsonl`)
-  const record = { template, scaffoldHome, out: outFile, ok: false, error: null, rows: [] }
+  const record = { template, scaffoldHome, dsHome: DS_HOME || '(条件默认)', out: outFile, ok: false, error: null, rows: [] }
   try {
     rmSync(scaffoldHome, { recursive: true, force: true })
     rmSync(outFile, { force: true })
@@ -64,6 +65,7 @@ for (const template of TEMPLATES) {
       join(ROOT, 'eval', 'deep', 'run.mjs'),
       '--condition', 'scaffold',
       '--scaffold-home', scaffoldHome,
+      ...(DS_HOME ? ['--ds-home', DS_HOME] : []),
       '--ids', IDS,
       '--workers', WORKERS,
       '--timeout', TIMEOUT,

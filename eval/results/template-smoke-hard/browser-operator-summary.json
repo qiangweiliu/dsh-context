@@ -1,0 +1,17 @@
+{
+  "startedAt": "2026-11-15T11:08:35.618Z",
+  "elapsedSeconds": 235,
+  "out": "/mnt/c/Users/40410/Desktop/context/eval/results/template-smoke-hard/browser-operator.jsonl",
+  "profile": "headless",
+  "condition": "scaffold",
+  "byCategory": {
+    "long-context": {
+      "n": 3,
+      "graded": 3,
+      "correct": 0,
+      "manual": 0,
+      "failed": 0,
+      "seconds": 234.5
+    }
+  }
+}

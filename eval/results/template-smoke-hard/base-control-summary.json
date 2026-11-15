@@ -1,0 +1,17 @@
+{
+  "startedAt": "2026-11-15T11:00:37.255Z",
+  "elapsedSeconds": 260,
+  "out": "/mnt/c/Users/40410/Desktop/context/eval/results/template-smoke-hard/base-control.jsonl",
+  "profile": "headless",
+  "condition": "base",
+  "byCategory": {
+    "long-context": {
+      "n": 3,
+      "graded": 3,
+      "correct": 0,
+      "manual": 0,
+      "failed": 0,
+      "seconds": 260.2
+    }
+  }
+}

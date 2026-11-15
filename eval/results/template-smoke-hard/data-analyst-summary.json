@@ -1,0 +1,17 @@
+{
+  "startedAt": "2026-11-15T11:12:30.258Z",
+  "elapsedSeconds": 249,
+  "out": "/mnt/c/Users/40410/Desktop/context/eval/results/template-smoke-hard/data-analyst.jsonl",
+  "profile": "headless",
+  "condition": "scaffold",
+  "byCategory": {
+    "long-context": {
+      "n": 3,
+      "graded": 3,
+      "correct": 0,
+      "manual": 0,
+      "failed": 0,
+      "seconds": 249.4
+    }
+  }
+}

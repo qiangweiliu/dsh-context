@@ -1,0 +1,17 @@
+{
+  "startedAt": "2026-11-15T11:16:39.756Z",
+  "elapsedSeconds": 353,
+  "out": "/mnt/c/Users/40410/Desktop/context/eval/results/template-smoke-hard/support-router.jsonl",
+  "profile": "headless",
+  "condition": "scaffold",
+  "byCategory": {
+    "long-context": {
+      "n": 3,
+      "graded": 3,
+      "correct": 0,
+      "manual": 0,
+      "failed": 0,
+      "seconds": 352.7
+    }
+  }
+}

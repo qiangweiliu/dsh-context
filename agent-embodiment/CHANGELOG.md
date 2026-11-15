@@ -2,6 +2,22 @@
 
 格式参考 Keep a Changelog；版本遵循 SemVer。DSH 兼容版本写在每个条目的 Compatibility 下。
 
+## [0.37.0] - 2026-11-15
+
+### Changed
+
+- **`apply()` 拆薄第二块**：会话预算 / 数据清理 / 会话级提示词文本 / 新增提示词共 6 条路由移入 `routes-session.js`，以 `createSessionRoutes({…})` 注入 18 个具名依赖（`state` 函数、`atomicWriteFile`、以及 `getExtraPrompts` / `getExtraPromptPlacements` / `writeExtraPrompts` 这组 getter + writer）。
+  - `index.js` 2032 → **1964 行**（累计从 2157 减到 1964）；行为逐字未变，control 55 / smoke 115 / prompt-state 11 全绿。
+  - extraPrompt 的两个 handler 原本直接读闭包里的 `runtimeExtraPrompts` / `runtimeExtraPromptPlacements`；改为 getter 注入后语义不变（写回仍由 `writeExtraPrompts` 统一维护）。
+
+### Added
+
+- **`test/routes-session.mjs`（28 项）**：不需要 Cordis 就能测的分支——`session-budget`（数组 body 400、缺 id 400、非正整数 400、设置 202 且进覆盖表、清除 202 且幂等、revision 递增、GET 405）、`data/reset`（非法 scope 400、logs 只清日志、toggles 落盘、all 两者都做）、`session prompt`（缺 text 400、回落最新会话、显式 id 优先、按 name 清 / 全清、无会话 409）、`extra-prompt`（空文本 / 超长名 / 非法 placement 400、user 位置写入、改回 system 移除 placement、按 name 删 / 全清）。
+
+### Tests
+
+- 单元 509 → **537**（新增 routes-session 28）；集成 181 不变；lint 0。
+
 ## [0.36.0] - 2026-11-15
 
 ### Changed

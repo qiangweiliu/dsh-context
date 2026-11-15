@@ -22,6 +22,7 @@ import { fileURLToPath } from 'node:url'
 
 import { detectProfileName, migrateStateFiles, resolveStateRoots, stateDirFor } from './profile.js'
 import { createScaffoldRoutes } from './routes-scaffold.js'
+import { createSessionRoutes } from './routes-session.js'
 
 import {
   budgetFor,
@@ -1693,28 +1694,6 @@ export function apply(ctx, config) {
    * POST /status/session-budget {sessionId, tokens}：面板里设置/清除单个会话的预算覆盖，
    * 等价于在会话里执行 `/embody <tokens>` / `/embody reset`。tokens 传 null 或 0 表示清除。
    */
-  const sessionBudgetHandler = (request, response) => {
-    const send = jsonSender(response)
-    if (!requireMethod(request, response, 'POST')) return
-    readJson(request, response, (input) => {
-      if (!input || typeof input !== 'object' || Array.isArray(input)) {
-        return send(400, { ok: false, error: 'expected a JSON object' })
-      }
-      const sessionId = typeof input.sessionId === 'string' ? input.sessionId.trim() : ''
-      if (!sessionId) return send(400, { ok: false, error: 'sessionId is required' })
-      const clear = input.tokens === null || input.tokens === 0 || input.tokens === undefined
-      if (!clear && (!Number.isInteger(input.tokens) || input.tokens <= 0)) {
-        return send(400, { ok: false, error: 'tokens must be a positive integer, or null to clear' })
-      }
-      // 清除走 clearSessionBudget（setSessionBudget 只接受正整数）；清除是幂等的，
-      // 即使本来没有覆盖也返回成功，避免面板上「清除」按钮报错。
-      if (clear) clearSessionBudget(sessionId)
-      else if (!setSessionBudget(sessionId, input.tokens)) return send(400, { ok: false, error: 'could not update session budget' })
-      bumpStatusRevision()
-      return send(202, { ok: true, sessionId, tokens: clear ? null : input.tokens, sessionBudgets: listSessionBudgets() })
-    })
-  }
-
   /** GET /status/export?format=json|csv：导出当前扫描范围的分析结果。 */
   const exportHandler = async (request, response) => {
     if (!requireMethod(request, response, 'GET')) return
@@ -1744,26 +1723,6 @@ export function apply(ctx, config) {
   }
 
   /** POST /status/data/reset：清空压缩日志和/或会话开关；不删除 profile 配置。 */
-  const dataResetHandler = (request, response) => {
-    const send = jsonSender(response)
-    if (!requireMethod(request, response, 'POST')) return
-    readJson(request, response, (input) => {
-      const scope = input?.scope
-      if (!['logs', 'toggles', 'all'].includes(scope)) return send(400, { ok: false, error: 'scope must be logs, toggles or all' })
-      if (scope === 'logs' || scope === 'all') {
-        hydrateCompactionLog([])
-        try {
-          if (existsSync(COMPACTION_LOG_PATH)) atomicWriteFile(COMPACTION_LOG_PATH, '')
-        } catch {}
-      }
-      if (scope === 'toggles' || scope === 'all') {
-        clearAllSessionToggles()
-        saveSessionToggles()
-      }
-      return send(202, { ok: true, scope })
-    })
-  }
-
   /** POST /inventory/toggle {kind, name, layer, enabled}。 */
   const inventoryToggleHandler = (request, response) => {
     const send = jsonSender(response)
@@ -1880,39 +1839,7 @@ export function apply(ctx, config) {
   }
 
   /** POST /inventory/extra-prompt {name, text}：新增或更新一条额外 system section。 */
-  const extraPromptHandler = (request, response) => {
-    const send = jsonSender(response)
-    if (!requireMethod(request, response, 'POST')) return
-    readJson(request, response, (input) => {
-      const name = typeof input?.name === 'string' ? input.name.trim() : ''
-      const text = input?.text
-      const placement = input?.placement === undefined ? 'system' : input.placement
-      if (name.length === 0 || name.length > 80) return send(400, { ok: false, error: 'name is required (max 80 chars)' })
-      if (typeof text !== 'string') return send(400, { ok: false, error: 'text is required' })
-      if (text.trim().length === 0) return send(400, { ok: false, error: 'text must not be empty' })
-      if (placement !== 'system' && placement !== 'user') return send(400, { ok: false, error: "placement must be 'system' or 'user'" })
-      const next = { ...runtimeExtraPrompts, [name]: text }
-      const placements = { ...runtimeExtraPromptPlacements }
-      if (placement === 'user') placements[name] = 'user'
-      else delete placements[name]
-      writeExtraPrompts(next, placements, response, send)
-    })
-  }
-
   /** POST /inventory/extra-prompt/reset {name?}：移除一条或全部额外 system section。 */
-  const extraPromptResetHandler = (request, response) => {
-    const send = jsonSender(response)
-    if (!requireMethod(request, response, 'POST')) return
-    readJson(request, response, (input) => {
-      const name = typeof input?.name === 'string' ? input.name.trim() : ''
-      const next = name ? Object.fromEntries(Object.entries(runtimeExtraPrompts).filter(([key]) => key !== name)) : {}
-      const placements = name
-        ? Object.fromEntries(Object.entries(runtimeExtraPromptPlacements).filter(([key]) => key !== name))
-        : {}
-      writeExtraPrompts(next, placements, response, send)
-    })
-  }
-
   /** 把 promptOverrides 写回 profile config。 */
   const writePromptOverrides = (next, response, send) => {
     const editor = configEditor
@@ -1951,32 +1878,7 @@ export function apply(ctx, config) {
   }
 
   /** 会话级提示词文本覆盖：POST /inventory/prompt/session {name, text, sessionId?}。 */
-  const sessionPromptHandler = (request, response) => {
-    const send = jsonSender(response)
-    if (!requireMethod(request, response, 'POST')) return
-    readJson(request, response, (input) => {
-      if (typeof input?.name !== 'string' || input.name.length === 0 || typeof input.text !== 'string') return send(400, { ok: false, error: 'name/text are required' })
-      const targetId = typeof input.sessionId === 'string' && input.sessionId.length > 0 ? input.sessionId : latestSession()?.id
-      if (!targetId) return send(409, { ok: false, error: 'no session yet' })
-      setSessionPromptText(targetId, input.name, input.text)
-      saveSessionToggles()
-      return send(202, { ok: true, layer: 'session', sessionId: targetId, name: input.name })
-    })
-  }
-
   /** 清除会话级提示词文本覆盖：POST /inventory/prompt/session/reset {name?, sessionId?}。 */
-  const sessionPromptResetHandler = (request, response) => {
-    const send = jsonSender(response)
-    if (!requireMethod(request, response, 'POST')) return
-    readJson(request, response, (input) => {
-      const targetId = typeof input?.sessionId === 'string' && input.sessionId.length > 0 ? input.sessionId : latestSession()?.id
-      if (!targetId) return send(409, { ok: false, error: 'no session yet' })
-      clearSessionPromptText(targetId, typeof input?.name === 'string' && input.name.length > 0 ? input.name : undefined)
-      saveSessionToggles()
-      return send(202, { ok: true, layer: 'session', sessionId: targetId })
-    })
-  }
-
   // ── Agent Embodiment Scaffold：三条路由已抽到 routes-scaffold.js（0.36.0）──
   // 依赖显式注入，因此可以用假 request/response 直接单测，不需要构造 Cordis 上下文。
   const { scaffoldTemplateList, scaffoldPreviewHandler, scaffoldGenerateHandler } = createScaffoldRoutes({
@@ -1985,6 +1887,35 @@ export function apply(ctx, config) {
     jsonSender,
     requireMethod,
     readJson,
+  })
+
+  // ── 会话预算 / 数据清理 / 会话提示词 / 新增提示词：已抽到 routes-session.js（0.37.0）──
+  const {
+    sessionBudgetHandler,
+    dataResetHandler,
+    sessionPromptHandler,
+    sessionPromptResetHandler,
+    extraPromptHandler,
+    extraPromptResetHandler,
+  } = createSessionRoutes({
+    jsonSender,
+    requireMethod,
+    readJson,
+    bumpStatusRevision,
+    latestSessionId: () => latestSession()?.id,
+    setSessionBudget,
+    clearSessionBudget,
+    listSessionBudgets,
+    hydrateCompactionLog,
+    compactionLogPath: COMPACTION_LOG_PATH,
+    atomicWriteFile,
+    clearAllSessionToggles,
+    saveSessionToggles,
+    setSessionPromptText,
+    clearSessionPromptText,
+    getExtraPrompts: () => runtimeExtraPrompts,
+    getExtraPromptPlacements: () => runtimeExtraPromptPlacements,
+    writeExtraPrompts,
   })
 
   ctx.inject(['webServer'], (sub) => {

@@ -546,6 +546,14 @@ npm 运行依赖：无；生命周期脚本：无
 - 直接收益可见：新增 `test/routes-scaffold.mjs` 17 项，第一次可以在**不启动 Cordis** 的情况下测 handler 边界（含「生成真的写盘」「409 vs overwrite」「AGENTS.md 幂等 marker」）。
 - 测试：单元 509、集成 181、lint 0。
 
+## E47. v0.37.0 拆分 apply 第二块：会话类路由外置（2026-11-15）
+
+- 沿用 E46 的选择方法（按依赖数排序），第二块取会话预算 / 数据清理 / 会话级提示词文本 / 新增提示词 6 条路由（依赖 2–4 个符号）。
+- 需要注意的是 `extraPrompt` 两个 handler 原本直接读闭包里的 `runtimeExtraPrompts` / `runtimeExtraPromptPlacements`；直接传值会读到旧快照，因此改为 getter 注入 + 复用原 `writeExtraPrompts` 统一回写，语义保持一致。
+- 结果：`routes-session.js` + `createSessionRoutes(...)`；`index.js` 2032 → 1964 行（起点 2157），集成 55/115/11 全绿。
+- 新增 `test/routes-session.mjs` 28 项，覆盖此前只能经 HTTP + 完整 Cordis 间接碰的分支（数组 body、幂等清除、revision 递增、scope 组合、name 级与全清、409 无会话、placement 从 user 改回 system 时移除条目）。
+- 测试：单元 537（新增 28）、集成 181、lint 0。
+
 ## 已知限制（unknown）
 
 - 未进行独立安全审计；本文件不声称“安全通过”。

@@ -2,6 +2,23 @@
 
 格式参考 Keep a Changelog；版本遵循 SemVer。DSH 兼容版本写在每个条目的 Compatibility 下。
 
+## [0.36.0] - 2026-11-15
+
+### Changed
+
+- **`index.js::apply()` 开始拆薄（P1.4 步 1）**：脚手架三条路由（`/scaffold/templates`、`/scaffold/preview`、`/scaffold/generate`）与路径守卫 `isProtectedScaffoldPath` 移入新文件 `routes-scaffold.js`，以 `createScaffoldRoutes({ home, dshHome, jsonSender, requireMethod, readJson })` 工厂形式注入依赖。
+  - `index.js` 2157 → **2032 行**（`apply()` 1695 → 约 1570 行）；行为逐字未变，靠 control 55 / smoke 115 / prompt-state 11 兜底。
+  - 顺带清掉 7 个因搬移而失效的 import（`isAbsolute` / `resolve` / `sep` / `writeFileSync` / `SCAFFOLD_TEMPLATES` / `mergeAgentsContent` / `planScaffold`）。
+
+### Added
+
+- **`test/routes-scaffold.mjs`（17 项）**：第一次出现「不需要 Cordis 就能测 handler」的测试——用假 request/response 直接验证模板列表（6 个模板、实验标记、POST 405）、预览（合法 200 / 未知模板 400）、生成（相对路径 400、home 400、`DSH_HOME` 400、无 overwrite 409、overwrite 202、**真的写盘**、AGENTS.md 幂等 marker）。此前这些分支只能靠启动完整 Cordis + `MockWebServer` 间接覆盖。
+- `test/static.mjs` 增加一条抽取契约断言：守卫代码在 `routes-scaffold.js`、`index.js` 通过工厂使用它、且不再自带 `isProtectedScaffoldPath`。
+
+### Tests
+
+- 单元 491 → **509**（static 105→106、新增 routes-scaffold 17）；集成 181 不变；lint 0。
+
 ## [0.35.0] - 2026-11-15
 
 ### Added

@@ -16,11 +16,12 @@
 export const name = 'agent-embodiment'
 
 /** 与 control.js 共享的进程内状态（同一包内相对 import，不涉及 npm 依赖）。 */
-import { appendFileSync, copyFileSync, existsSync, mkdirSync, readFileSync, statSync, writeFileSync } from 'node:fs'
-import { dirname, isAbsolute, join, resolve, sep } from 'node:path'
+import { appendFileSync, copyFileSync, existsSync, mkdirSync, readFileSync, statSync } from 'node:fs'
+import { dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 
 import { detectProfileName, migrateStateFiles, resolveStateRoots, stateDirFor } from './profile.js'
+import { createScaffoldRoutes } from './routes-scaffold.js'
 
 import {
   budgetFor,
@@ -61,7 +62,6 @@ import {
 import { DEFAULT_MODEL_PRICING, PRICING_CURRENCY, PRICING_META, PRICING_SOURCE, PRICING_UPDATED_AT, beijingYear, configureHolidays, csvCell, csvDocument, estimateInputCost, foldSession, holidayInfo, isPeakTime, sessionDetail, summarizeFolds } from './metrics.js'
 import { atomicWriteFile, backupFile as backupStateFile, latestBackupJson as latestStateBackup } from './persist.js'
 import { buildHealth, buildInsights } from './insights.js'
-import { SCAFFOLD_TEMPLATES, mergeAgentsContent, planScaffold } from './scaffold.js'
 
 /** 依赖的真实服务名（见 @deepseek-ai/dsh-commands / @deepseek-ai/dsh-token-meter）。 */
 export const inject = ['commands', 'tokenMeter']
@@ -1977,139 +1977,15 @@ export function apply(ctx, config) {
     })
   }
 
-  // ── Agent Embodiment Scaffold：预览/生成（纯生成器在 scaffold.js）──────────
-  const scaffoldTemplateList = (request, response) => {
-    const send = jsonSender(response)
-    if (!requireMethod(request, response, 'GET')) return
-    return send(200, {
-      ok: true,
-      templates: SCAFFOLD_TEMPLATES.map((template) => ({
-        id: template.id,
-        name: template.name,
-        description: template.description,
-        experimental: template.experimental === true,
-        pattern: template.pattern,
-        senses: template.senses,
-        hands: template.hands,
-      })),
-    })
-  }
-
-  const scaffoldPreviewHandler = (request, response) => {
-    const send = jsonSender(response)
-    if (!requireMethod(request, response, 'POST')) return
-    readJson(request, response, (input) => {
-      try {
-        const plan = planScaffold(input)
-        return send(200, {
-          ok: true,
-          template: plan.template,
-          presetId: plan.presetId,
-          bundleDir: plan.bundleDir,
-          spec: plan.spec,
-          files: plan.files,
-          warnings: plan.warnings,
-          installCommand: plan.installCommand,
-        })
-      } catch (error) {
-        return send(400, { ok: false, error: error instanceof Error ? error.message : String(error) })
-      }
-    }, 64 * 1024, 'invalid scaffold spec')
-  }
-
-  /** 拒绝系统目录、home 及其祖先、DSH 配置目录和常见凭据目录。 */
-  const protectedScaffoldPath = (root) => {
-    const home = STATE_ROOTS.home
-    const dshHome = STATE_ROOTS.dshHome
-    const systemPrefixes = ['/etc', '/usr', '/bin', '/sbin', '/boot', '/dev', '/proc', '/sys', '/var', '/root']
-    const privateDirs = ['.ssh', '.gnupg', '.aws', '.kube', '.config', '.local'].map((name) => join(home, name))
-    // Windows 没有 /etc、/usr；用盘符根 + 系统目录环境变量覆盖 C:\Windows、Program Files 等。
-    if (dirname(root) === root) return true
-    if (process.platform === 'win32') {
-      const windowsDirs = [
-        process.env.SystemRoot,
-        process.env.windir,
-        process.env.ProgramFiles,
-        process.env['ProgramFiles(x86)'],
-        process.env.ProgramData,
-      ].filter((dir) => typeof dir === 'string' && dir.length > 0)
-      if (windowsDirs.some((dir) => {
-        const resolved = resolve(dir)
-        return root === resolved || root.startsWith(resolved + sep)
-      })) return true
-    }
-    if (root === home) return true
-    // home 的任意祖先（/home、C:\Users、C:\ 等）都不允许。
-    let cursor = home
-    while (dirname(cursor) !== cursor) {
-      cursor = dirname(cursor)
-      if (root === cursor) return true
-    }
-    if (systemPrefixes.some((prefix) => root === resolve(prefix) || root.startsWith(resolve(prefix) + sep))) return true
-    if (root === dshHome || root.startsWith(dshHome + sep)) return true
-    return privateDirs.some((dir) => root === dir || root.startsWith(dir + sep))
-  }
-
-  const scaffoldGenerateHandler = (request, response) => {
-    const send = jsonSender(response)
-    if (!requireMethod(request, response, 'POST')) return
-    readJson(request, response, (input) => {
-      if (typeof input?.targetDir !== 'string' || !isAbsolute(input.targetDir.trim())) {
-        return send(400, { ok: false, error: 'targetDir must be an absolute path' })
-      }
-      const root = resolve(input.targetDir.trim())
-      if (protectedScaffoldPath(root)) {
-        return send(400, { ok: false, error: 'targetDir points at a protected location; choose a workspace directory' })
-      }
-      let plan
-      try {
-        plan = planScaffold(input)
-      } catch (error) {
-        return send(400, { ok: false, error: error instanceof Error ? error.message : String(error) })
-      }
-      const overwrite = input.overwrite === true
-      const destinations = plan.files.map((file) => ({ ...file, destination: resolve(root, file.path) }))
-      for (const file of destinations) {
-        if (!file.destination.startsWith(root + sep)) {
-          return send(400, { ok: false, error: `path escapes targetDir: ${file.path}` })
-        }
-      }
-      const existing = destinations.filter((file) => existsSync(file.destination)).map((file) => file.path)
-      if (existing.length > 0 && !overwrite) {
-        return send(409, { ok: false, error: 'files already exist; pass overwrite:true to replace them', existing })
-      }
-      try {
-        mkdirSync(root, { recursive: true })
-        for (const file of destinations) {
-          mkdirSync(dirname(file.destination), { recursive: true })
-          writeFileSync(file.destination, file.content, 'utf8')
-        }
-      } catch (error) {
-        return send(500, { ok: false, error: error instanceof Error ? error.message : String(error) })
-      }
-      let agentsPath = null
-      if (input.writeAgents === true) {
-        try {
-          agentsPath = join(root, plan.agents.path)
-          const existing = existsSync(agentsPath) ? readFileSync(agentsPath, 'utf8') : ''
-          writeFileSync(agentsPath, mergeAgentsContent(existing, plan.agents), 'utf8')
-        } catch (error) {
-          return send(500, { ok: false, error: error instanceof Error ? error.message : String(error) })
-        }
-      }
-      return send(202, {
-        ok: true,
-        targetDir: root,
-        template: plan.template,
-        presetId: plan.presetId,
-        bundleDir: plan.bundleDir,
-        files: plan.files.map((file) => file.path),
-        agentsPath,
-        warnings: plan.warnings,
-        installCommand: `dsh plugin --profile <profile> add ${join(root, plan.bundleDir)}`,
-      })
-    }, 64 * 1024, 'invalid scaffold spec')
-  }
+  // ── Agent Embodiment Scaffold：三条路由已抽到 routes-scaffold.js（0.36.0）──
+  // 依赖显式注入，因此可以用假 request/response 直接单测，不需要构造 Cordis 上下文。
+  const { scaffoldTemplateList, scaffoldPreviewHandler, scaffoldGenerateHandler } = createScaffoldRoutes({
+    home: STATE_ROOTS.home,
+    dshHome: STATE_ROOTS.dshHome,
+    jsonSender,
+    requireMethod,
+    readJson,
+  })
 
   ctx.inject(['webServer'], (sub) => {
     const server = sub?.webServer

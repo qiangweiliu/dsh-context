@@ -538,6 +538,14 @@ npm 运行依赖：无；生命周期脚本：无
 - `state.js` 的回退预算从字面量改为导出常量 `FALLBACK_BUDGET_TOKENS`，让守卫可以断言文档与代码用的是同一个数。
 - 测试：单元 491（新增 docs-guard 12）、集成 181（smoke 115）、lint 0。
 
+## E46. v0.36.0 拆分 apply 第一步：脚手架路由外置（2026-11-15）
+
+- 背景：`index.js::apply()` 单函数 1695 行，同时装着状态初始化、23 条路由 handler、自动挂载与路径守卫；handler 无法脱离 Cordis mock 单测（smoke 因此要造 `MockConnection` / `MockConfigEditor` / `MockSessionQuery`）。
+- 选择依据不是「挑最大的」，而是**按依赖数排序**：scaffold 三条路由依赖 0/1/2 个 apply 内符号，是最干净的第一块；`statusHandler`（70 行）依赖数十个，不适合先动。
+- 结果：`routes-scaffold.js` 提供 `createScaffoldRoutes(...)` 与 `isProtectedScaffoldPath(...)`；`index.js` 从 2157 行降到 2032 行，`apply()` 1695 → 约 1570 行，行为未变（55/115/11 全绿）。
+- 直接收益可见：新增 `test/routes-scaffold.mjs` 17 项，第一次可以在**不启动 Cordis** 的情况下测 handler 边界（含「生成真的写盘」「409 vs overwrite」「AGENTS.md 幂等 marker」）。
+- 测试：单元 509、集成 181、lint 0。
+
 ## 已知限制（unknown）
 
 - 未进行独立安全审计；本文件不声称“安全通过”。

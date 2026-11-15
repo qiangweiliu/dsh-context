@@ -178,6 +178,7 @@ check('icon.svg 是 SVG 且体积极小', icon.trimStart().startsWith('<svg') &&
 const clientSource = readFileSync(new URL('../client.js', import.meta.url), 'utf8')
 const metricsSource = readFileSync(new URL('../metrics.js', import.meta.url), 'utf8')
 const indexSource = readFileSync(new URL('../index.js', import.meta.url), 'utf8')
+const scaffoldRoutesSource = readFileSync(new URL('../routes-scaffold.js', import.meta.url), 'utf8')
 check('client.js 语法可编译', (() => {
   try {
     new Function(clientSource)
@@ -248,7 +249,8 @@ check('打开会话优先用 uiWorkspace.openSession', clientSource.includes("ct
 check('跨会话分析显式按活动时间排序', indexSource.includes('sessionsNewestFirst') && indexSource.includes('const picked = list.slice(0, limit)') && indexSource.includes('sessionsNewestFirst(sessions.list())'))
 check('自动挂载只改已知 preset 并保留控制行配置', indexSource.includes('findKnownPresetEntry') && indexSource.includes('auto-mount skipped: no known agent preset id') && indexSource.includes('config: existingControl.config ?? CONTROL_ROW.config'))
 check('全局工具重置同步共享状态', indexSource.includes('setGlobalDisabledTools(next)') && indexSource.includes('setGlobalDisabledTools([])'))
-check('Windows 脚手架路径拒绝盘符根与系统目录', indexSource.includes('dirname(root) === root') && indexSource.includes('SystemRoot') && indexSource.includes('ProgramFiles'))
+check('Windows 脚手架路径拒绝盘符根与系统目录', scaffoldRoutesSource.includes('dirname(root) === root') && scaffoldRoutesSource.includes('SystemRoot') && scaffoldRoutesSource.includes('ProgramFiles'))
+check('脚手架路由从 index.js 抽出并以工厂注入', scaffoldRoutesSource.includes('export function createScaffoldRoutes') && indexSource.includes('createScaffoldRoutes({') && !indexSource.includes('function isProtectedScaffoldPath'))
 check('成本标签统一标注估算', clientSource.includes('costEstimateLabel') && clientSource.includes("t('costEstimateLabel')"))
 check('恢复全部提示包含会话提示词文本覆盖', clientSource.includes('session prompt text') && clientSource.includes('会话提示词文本覆盖'))
 check('scaffold 中英文词典齐全', Boolean(client.dictionaries.agentEmbodiment?.en?.scaffoldTitle) && Boolean(client.dictionaries.agentEmbodiment?.zh?.scaffoldTitle))

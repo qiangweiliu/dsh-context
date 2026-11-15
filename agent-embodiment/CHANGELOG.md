@@ -2,6 +2,21 @@
 
 格式参考 Keep a Changelog；版本遵循 SemVer。DSH 兼容版本写在每个条目的 Compatibility 下。
 
+## [0.45.0] - 2026-11-15
+
+### Docs
+
+- **`docs/UI-PROPOSAL.md` 与实现对齐**（此前是唯一还停在旧版本的设计文档）。新增 §9「与实现的核对」：
+  - §9.1 逐项核对 §2 的 14 条问题（4 个 P0 / 6 个 P1 / 4 个 P2）：**12 条已修**，只剩 `:focus-visible` 焦点环（P1-5 部分）与 `prefers-reduced-motion` 两项未做。
+  - §9.2 核对 §8.2 的 8 个模块全部存在，并补登记此后新增的 12 个模块（`ControlSection`、`ConfigSection`、`BalanceDisplayCard`、`SessionBudgetCard`、`LabsCard`、`OnboardingReopen`、`KpiBand`、`BillingCard`、`DailyChart`、`SessionCards`、`TrendCard`、`EventsCard`）。
+  - §9.3 洞察从「6 条带跳转」更新为「11 条、展示上限 10 条、其中 3 条可一键处理」。
+  - §9.4 说明核对方式，并注明 §2 的截图证据已过时。
+
+### Tests
+
+- `static.mjs` 新增 `UI-PROPOSAL 登记的组件都存在于 client.js`：解析文档表格里的反引号组件名，逐个断言 `client.js` 里存在同名组件函数。文档写了代码没做、或代码新增了没登记，都会在这里失败——防止文档再次静默漂移。
+- 单元 806 → **807**（static 112→113）；集成 181 不变；lint 0。
+
 ## [0.44.0] - 2026-11-15
 
 ### Added

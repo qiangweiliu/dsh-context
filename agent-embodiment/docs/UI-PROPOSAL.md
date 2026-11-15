@@ -203,3 +203,62 @@ dsh-context 的客户端样式大量使用 DSH 主题变量与过渡变量（统
 - 没有新增环形以外的图表类型；趋势图仍未叠加 target 虚线。
 - Trend 的会话对比限两个会话，不支持多选或导出对比结果。
 - 0.24.0 的 UI 变更只有静态断言与语法检查，没有重新做截图层面的回归；`docs/ui/0.23-*` 截图反映的是上一版布局。
+
+## 9. 与实现的核对（v0.45.0，2026-11-15）
+
+本文档 §2–§4 写于 2026-10-18，§8 写于 0.24.0。之后面板改了很多轮但文档没跟，导致「提案里的问题」看起来像还没修。这一节做一次实测核对：逐项对着 `client-src/` 与 `test/static.mjs` 的断言确认现状。
+
+### 9.1 §2 问题清单现状
+
+| 编号 | 问题 | 现状 | 证据 |
+| --- | --- | --- | --- |
+| P0-1 | 概览卡被纵向 flex 撑到 320px | **已修** | `styles.card` 不再带 `flex`，只有横向容器用的 `styles.cardFill` 保留 `flex: 1 1 320px` |
+| P0-2 | 空态占满高卡、文案孤零零 | **已修** | 空态改虚线框；加载态有 skeleton；错误态有重试入口（三态齐） |
+| P0-3 | 四色图例挤一行、数值不右对齐 | **已修** | 图例 2×2 网格 + `tabular-nums` |
+| P0-4 | 没有总体状态徽章 | **已修** | 用 `--dsw-alias-state-*` 着色，阈值信息进 badge |
+| P1-1 | 概览卡层级弱 | **已修** | 环形图 + 中心百分比 + 右侧 KPI 小格 |
+| P1-2 | 控制卡 3 行说明 + 超长按钮 | **已修** | 一行状态 badge + 精简按钮（`ControlSection`） |
+| P1-3 | 配置卡无单位、保存反馈分离 | **已修** | 字段带单位；显示来源（config / default / session）；保存后行内反馈 |
+| P1-4 | 列表缺筛选、分组头随滚动消失 | **已修** | 有搜索框、「仅看已启用」筛选、分组头 `sticky` |
+| P1-5 | Dock 缺状态文案与入口、无焦点环 | **部分** | 警告色、popover 入口「打开完整面板」已做；**`:focus-visible` 焦点环仍未加** |
+| P1-6 | 空态/错误态文案不一致 | **已修** | skeleton / 虚线空态 / 错误卡三态统一 |
+| P2 | 折叠记忆 | **已做** | 卡片头折叠 + `localStorage` 记忆 |
+| P2 | `prefers-reduced-motion` | **未做** | 过渡动画未按系统偏好关闭 |
+| P2 | 数值 hover tooltip | **已做** | compact 值 + 精确 token 提示 |
+| P2 | 概览条「上一轮增量」标记 | **已做** | 增量 badge 存在 |
+
+剩余真正没做的只有两项：**Dock 的 `:focus-visible` 焦点环**、**`prefers-reduced-motion`**。另有不在原提案里的待办：导出字段选择（P3）。
+
+### 9.2 §8.2 模块对照
+
+§8.2 列的 8 个模块全部存在，且都在 `client-src/50-sections.js`：`OnboardingCard`、`HealthCard`、`InsightCards`、`SavingsCard`、`SessionCompare`、`PricingSection`、`DataCard`、`AlertStrip`。
+
+此后新增、文档未登记的模块：
+
+| 模块 | 位置 | 作用 |
+| --- | --- | --- |
+| `ControlSection` | Settings | 控制行启停、压缩策略与阈值 |
+| `ConfigSection` | Settings | 全局预算/阈值/分析范围 |
+| `BalanceDisplayCard` | Overview / Dock | 余额与峰谷时段 |
+| `SessionBudgetCard` | Settings | 单会话预算覆盖（`/embody <tokens>` 的 UI 版） |
+| `LabsCard` | Settings → Labs | 脚手架生成入口 |
+| `OnboardingReopen` | Settings | 重新打开首次引导 |
+| `KpiBand` | Trend | 顶部 KPI 带 |
+| `BillingCard` | Trend | 峰谷计费视图 |
+| `DailyChart` | Trend | 按日趋势 |
+| `SessionCards` | Trend | 会话列表与选中 |
+| `TrendCard` | Trend | 区间趋势 |
+| `EventsCard` | Events | 压缩与事件流水 |
+
+### 9.3 洞察：6 → 11 条，且可一键处理
+
+§8.2 写的是「6 条可执行洞察，每条带跳转」。现状：
+
+- 规则 **11 条**（`insights.js`），面板展示上限 10 条（`results.slice(0, 10)`）。新增的有 `cache-hit-low`、`near-limit-not-compacted`、`budget-unconfirmed`、`analytics-truncated` 等。
+- 每条除 `action`（跳转到 tab / 锚点）外，可带 `apply: { path, body, label }` —— 面板渲染第二个按钮，点击直接写配置并刷新（0.43.0）。当前三条有 `apply`：`near-limit-not-compacted`（启用控制行）、`budget-unconfirmed`（确认预算）、`analytics-truncated`（把扫描上限放宽到 200）。
+
+### 9.4 怎么防止再次漂移
+
+本轮把「文档声明的模块必须真的存在」做成了断言：`test/static.mjs` 的 `UI-PROPOSAL 模块清单与 client.js 一致` 会读取本文档 §8.2 与 §9.2 的表格，逐个检查 `client.js` 里存在同名组件函数，双向核对（文档有而代码无、代码有而文档无都会失败）。
+
+另外 §2 的截图证据（`docs/ui/current-panel-*.png`）已经过时，不再作为核对依据；要看现状用 `scripts/ui-screenshot.mjs` 现拍。

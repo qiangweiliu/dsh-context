@@ -271,6 +271,20 @@ const firstMount = loadClient(clientSource, { scope: sharedScope })
 const secondMount = loadClient(clientSource, { scope: sharedScope })
 for (const inject of firstMount.slotInjects) inject.callback()
 for (const inject of secondMount.slotInjects) inject.callback()
+// UI-PROPOSAL 里登记的组件必须真的存在于 client.js（双向核对，防止文档漂移）
+{
+  const proposal = readFileSync(new URL('../docs/UI-PROPOSAL.md', import.meta.url), 'utf8')
+  const documented = new Set()
+  for (const line of proposal.split('\n')) {
+    if (!line.startsWith('|')) continue
+    const first = line.split('|')[1] || ''
+    const match = /`([A-Z][A-Za-z]+)`/u.exec(first.trim())
+    if (match) documented.add(match[1])
+  }
+  const missingInCode = [...documented].filter((name) => !new RegExp(`function ${name}\\(`, 'u').test(clientSource))
+  check('UI-PROPOSAL 登记的组件都存在于 client.js', documented.size >= 8 && missingInCode.length === 0, { documented: documented.size, missingInCode })
+}
+
 check('client 重复挂载只注册一次', firstMount.slotRegistrations.length === 5 && secondMount.slotRegistrations.length === 0, `${firstMount.slotRegistrations.length}/${secondMount.slotRegistrations.length}`)
 
 const failed = checks.filter((entry) => !entry.ok)

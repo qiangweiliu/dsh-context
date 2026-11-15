@@ -15,8 +15,9 @@
  * 调小到 40000、输出上限 16000，并给 compaction-basic 设置小 headroom/保留比例，
  * 以便在几十轮内触发压缩。
  *
- * 注意：这套 tuning 是为 **compaction 类实验**准备的。纯模板评估不该用它
- * （题目不涉及压缩，缩窗口只会引入无关变量）——模板评估请用 template-conditions.mjs。
+ * 注意：这套 tuning 是为 **compaction 类实验**准备的。模板评估已于 0.48.0 停止
+ * （4 个 experimental 模板永久保持 experimental），相关工具归档在
+ * eval/deep/archive/templates/；将来若重开，别复用这里的窗口缩放。
  *
  * 凭据默认**不**复制：headless 的 llm-pi-ai 读 `apiKeyEnv: OPENCODE_GO_API_KEY`，
  * 运行时 export 即可。需要复制时显式 `--copy-credentials`（会在 home 里留明文）。

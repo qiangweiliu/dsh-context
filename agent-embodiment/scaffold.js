@@ -184,6 +184,15 @@ const VERIFY_SKILL = {
   ].join('\n'),
 }
 
+/**
+ * 6 个内置模板。
+ *
+ * `repo-coder` / `web-researcher` 可直接用；其余 4 个标 `experimental`，**且不计划转正**
+ * （0.48.0 决定）：曾做过任务级对照评估，两轮都没取得区分度，而 `experimental` 标注本身
+ * 已能如实告知「未验证」。它们的生成物仍有 126 项结构断言（`test/templates.mjs`）保证
+ * 「装得上、扫得到、跑得动」，但不代表任务质量。评估工具与数据归档在
+ * `eval/deep/archive/templates/`。
+ */
 export const SCAFFOLD_TEMPLATES = [
   {
     id: 'repo-coder',

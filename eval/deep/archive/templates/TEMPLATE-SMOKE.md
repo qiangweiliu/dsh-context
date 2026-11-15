@@ -1,5 +1,8 @@
 # 模板冒烟（experimental 模板可用性）
 
+> **已归档（0.48.0 决策）**：4 个 `experimental` 模板永久保持 `experimental`，不再做任务级验证。
+> 本文件是当时的实验记录，仅供追溯；工具与数据见同目录。决策理由见 [`README.md`](README.md)。
+
 日期：2026-11-15　｜　模型：`deepseek-v4.1-flash`（provider 路由 `opencode-go`，走 `llm-pi-ai`）  
 条件：`scaffold`（脚手架 skills 挂载）对比 `base`（不挂任何脚手架）  
 题目：3 题（`deep-b-memory-01` 多轮记忆 / `deep-b-long-01` 长上下文 / `deep-b-code-csv` 代码）

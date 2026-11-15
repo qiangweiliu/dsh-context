@@ -4,7 +4,7 @@
 
 > **与 DSH 原生能力的关系**：token 计量、自动压缩、系统提示词装配、文件/命令/Web/子 agent 等由 DSH 本体提供；本插件不重复实现这些引擎，而是复用官方 seam，补上可观测性与用户控制。单轮任务能力不会因为安装本插件而提升。
 
-包名：`agent-embodiment` · 市场标题：`Agent Embodiment` / `智能体具身` · 当前版本：`0.47.0`
+包名：`agent-embodiment` · 市场标题：`Agent Embodiment` / `智能体具身` · 当前版本：`0.48.0`
 
 ## 安装 / 升级 / 回滚
 
@@ -116,7 +116,7 @@ dsh plugin --profile web add "$PWD/agent-embodiment"     # Desktop 用 --profile
   ```bash
   node scripts/agent-scaffold.mjs --template repo-coder --out /path/to/workspace --slug my-agent
   ```
-- 模板：`repo-coder`、`web-researcher`；`ops-runbook`、`browser-operator`、`data-analyst`、`support-router` 标记为 **experimental**（依赖外部 MCP/知识库，尚未做任务验证）。
+- 模板：`repo-coder`、`web-researcher`；`ops-runbook`、`browser-operator`、`data-analyst`、`support-router` 标记为 **experimental**（依赖外部 MCP/知识库，尚未做任务验证；**不计划转正**，理由见 `docs/LIMITATIONS.md`）。
 - 生成物：
   - `.dsh/scaffolds/<slug>/`：可安装的 DSH bundle，insert 一个 agent preset；
   - `.agents/skills/<slug>-*/SKILL.md`：角色 skill 与 delegation skill；`sense-environment`、`verify-change` 是过程 skill，默认不生成，需加 `--process-skills`（面板勾选 “Include process skills”）；全部使用 DSH 原生工具，不注册自造工具；

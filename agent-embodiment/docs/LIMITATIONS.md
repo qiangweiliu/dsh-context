@@ -102,6 +102,7 @@ Web 形态下，宿主自带的 `auto` 压缩行被 `dsh-web-app` 置为 disable
 - 只写用户提交的**绝对**工作区目录；拒绝文件系统根目录、用户 home 及其祖先、`/etc` 等系统目录、DSH 配置目录和常见凭据目录，默认不覆盖已有文件。
 - 生成的是起点模板，不保证直接达到生产质量；必须用真实任务和 eval 继续迭代。
 - `ops-runbook`、`browser-operator`、`data-analyst`、`support-router` 标记为 `experimental`，依赖外部 MCP/知识库，尚未做任务验证。**结构校验**只保证生成的 bundle 自洽（YAML 可解析、技能文件齐全、MCP 占位符合法），不代表任务质量。
+- **这 4 个模板不计划转正（0.48.0 决定）。** 曾试过任务级对照评估（每题带 `base` 控制臂），两轮都没得到区分度：先是不挂模板也全对（题目太易），换成历史上会错的题后两组分数仍相同。既然标注 `experimental` 已能如实告知「未验证」，就不再用配额去追这个结论。评估工具与数据归档在仓库 `eval/deep/archive/templates/`，重开前先读那里的两条硬教训。
 - 生成的 preset 复用 `agent-embodiment/control`；同一 profile 需要安装本插件，否则 preset 激活会失败。
 - MCP 行可由用户提交的 JSON 生成（stdio / streamable-http）；插件只写配置，不执行 MCP 命令；secret 用 `${ENV_VAR}`，安装/启用前仍需审查 command/args 与凭据。
 - `AGENTS.md` 支持带 marker 的幂等合并（保留用户内容）；不勾选 `writeAgents` 时只生成 `AGENTS.snippet.md`。

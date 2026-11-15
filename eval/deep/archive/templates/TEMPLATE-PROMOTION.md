@@ -1,5 +1,8 @@
 # 模板转正评估（ops-runbook / browser-operator）
 
+> **已归档（0.48.0 决策）**：4 个 `experimental` 模板永久保持 `experimental`，不再做任务级验证。
+> 本文件是当时的实验记录，仅供追溯；工具与数据见同目录。决策理由见 [`README.md`](README.md)。
+
 日期：2026-11-15　｜　模型：`deepseek-v4.1-flash`（`opencode-go` 路由）　｜　结论：**两个模板都不转正**
 
 ## 1. 结论先行

@@ -4,7 +4,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## 项目概览
 
-DeepSeek Harness（DSH）的 agent 具身与上下文管理插件仓库。市场显示名 `Agent Embodiment` / `智能体具身`；包名/目录 `agent-embodiment`；短品牌 `embody`。旧名 `ctx-mon-and-con` 仅用于历史记录和兼容别名。可发布的主体是 `agent-embodiment/`（npm 包名 `agent-embodiment`，当前 `package.json` 版本 `0.47.0`），其余目录是配套资产：
+DeepSeek Harness（DSH）的 agent 具身与上下文管理插件仓库。市场显示名 `Agent Embodiment` / `智能体具身`；包名/目录 `agent-embodiment`；短品牌 `embody`。旧名 `ctx-mon-and-con` 仅用于历史记录和兼容别名。可发布的主体是 `agent-embodiment/`（npm 包名 `agent-embodiment`，当前 `package.json` 版本 `0.48.0`），其余目录是配套资产：
 
 - `eval/`：提示词 / 推理档位对照评测（GSM8K、MATH Level 5），以及 Tier B 50 题深度套件与结果报告。
 - `research/`、`explore/`：对 DSH 插件机制、compaction、UI 的逆向调研与设计笔记。
@@ -42,7 +42,7 @@ node test/routes-session.mjs  # 会话预算/清理/提示词 6 条路由的直�
 node test/routes-status.mjs   # 状态/live/导出三条路由的直接单测（含缓存 revision 失效）
 ```
 
-当前基线（0.47.0）：client-build 6/6、static 117/117、metrics 66/66、state 26/26、compaction-plan 17/17、prompt-assembly 28/28、persist 7/7、profile 18/18、scaffold 170/170、templates 126/126、security 22/22、insights 34/34、render 36/36、fetch-chain 3/3、mount-guard 7/7、locale-keys 6/6、analytics 27/27、runtime 35/35、docs-guard 12/12、routes-scaffold 17/17、routes-session 28/28、routes-status 24/24（共 833）；集成 control 55/55、smoke 115/115、prompt-state 11/11（共 181）。
+当前基线（0.48.0）：client-build 6/6、static 117/117、metrics 66/66、state 26/26、compaction-plan 17/17、prompt-assembly 28/28、persist 7/7、profile 18/18、scaffold 170/170、templates 126/126、security 22/22、insights 34/34、render 36/36、fetch-chain 3/3、mount-guard 7/7、locale-keys 6/6、analytics 27/27、runtime 35/35、docs-guard 12/12、routes-scaffold 17/17、routes-session 28/28、routes-status 24/24（共 833）；集成 control 55/55、smoke 115/115、prompt-state 11/11（共 181）。
 
 CI 在 `.github/workflows/test.yml`：Node 20/22/24 三档跑单元 + `npm run lint`；另有 integration job 从 npm 安装 Cordis（4.0.5 / 4.1.0 两档）跑 control/smoke/prompt-state，不依赖本机 app.asar。两种 job 都带 npm 缓存与 `concurrency` 取消。
 
@@ -74,7 +74,7 @@ npm run lint                # oxlint（devDependency；CI 也跑，0 error）
 ### 版本号同步与 client 构建
 
 ```bash
-node scripts/bump-version.mjs 0.47.0   # package.json / client-src 与 client.js 的 CLIENT_VERSION / README / IMPLEMENTATION 一次改齐
+node scripts/bump-version.mjs 0.48.0   # package.json / client-src 与 client.js 的 CLIENT_VERSION / README / IMPLEMENTATION 一次改齐
 cd agent-embodiment && npm run build:client   # 改过 client-src/ 后必须重建 client.js
 ```
 
@@ -95,7 +95,6 @@ node eval/deep/v2/make-suite.mjs --check         # Tier B 50 题自检（代码�
 node eval/deep/setup-conditions.mjs              # 准备 base/plugin/scaffold/compact 隔离 profile
 node eval/deep/run.mjs --condition base --workers 2 --out eval/results/deep-b-base.jsonl
 node eval/deep/compare.mjs --markdown            # 四组对照表
-node eval/deep/template-smoke.mjs --dry-run           # 模板冒烟：4 个 experimental 模板 × 3 题（需可用的 headless 凭据）
 ```
 
 `eval/run.mjs` 的对照臂（`--arms`）定义在文件顶部 `PATCHES`，题目与结果都是 JSONL（每行含 `id`、`cond`）。`eval/REPORT.md` 记录实验设计与结论；改提示词模板后至少用 `make-template-patch.mjs` 保证测的是实际下发文本。`eval/deep/` 的四组条件由 `setup-conditions.mjs` 在 `/tmp` 下重建，可随时重跑。
@@ -134,7 +133,7 @@ UI 脚本通过 Windows Edge 的 CDP 连接（`scripts/lib/cdp.mjs`，默认 Edg
 - `compaction-plan.js`（0.41.0）：压缩范围规划（阈值数学）。`control.js` 的 `planRegion` 改为薄适配层。
 - `prompt-assembly.js`（0.42.0）：`system-prompt/assemble` 的 section 重建（纯函数）。`control.js` 的 hook 从 86 行降到 20 行，`control.js` 640 → 575 行；剩余大块是 `syncGates` 的门禁同步与两个 inventory `sub.effect`。
 - `routes-inventory.js`（0.43.0）：inventory 路由组 + `withLivePromptState`。`index.js` 1787 → 1681 行。
-- 0.46.0 是**安全与验证**版本，没有新增模块：修复独立审计的 9 条问题（`test/security.mjs` 22 项回归），并把「模板转正」评估如实记录为负结果。
+- 0.46.0 是**安全与验证**版本，没有新增模块：修复独立审计的 9 条问题（`test/security.mjs` 22 项回归）。0.48.0 决定那 4 个 `experimental` 模板不转正，任务级评估工具与数据归档到 `eval/deep/archive/templates/`。
 - `state.js`：两个半侧共享的进程内状态。Cordis realm 隔离使二者互相 `import` 服务不可行，但同一包内 `./state.js` 的 ESM 模块缓存是同一份实例。
 - `persist.js`：状态文件的原子写、写前备份与备份读取（`atomicWriteFile` / `backupFile` / `latestBackupJson`），不依赖 Cordis，由 `test/persist.mjs` 单独覆盖；状态文件损坏时 `index.js` 会回落到最近备份。
 - `profile.js`：按「哪个 profile 的依赖指向本插件目录」识别所属 profile，决定状态目录（`profiles/<name>/`）并从旧共享目录迁移状态文件；由 `test/profile.mjs` 覆盖。
@@ -192,7 +191,7 @@ UI 脚本通过 Windows Edge 的 CDP 连接（`scripts/lib/cdp.mjs`，默认 Edg
 - `evals/cases.jsonl` + `evals/run.mjs`：按 case 调 `dsh headless` 记录 transcript，不自动判分；
 - 可选 MCP（stdio / streamable-http，`${ENV_VAR}` 转 `!!js process.env.*`）与带 marker 的 `AGENTS.md` 幂等合并。
 
-模板 6 个：`repo-coder`、`web-researcher` 为可用模板；`ops-runbook`、`browser-operator`、`data-analyst`、`support-router` 标记 `experimental`（依赖外部 MCP/知识库，尚未做任务验证）。生成的 preset 复用 `agent-embodiment/control`，同一 profile 需安装本插件。子 agent 只保留跨版本字段（`provider`/`toolName`/`backgroundMode`/`maxDepth`），角色说明放 `delegate-<role>` skill；DSH 0.2.1-rc.2 已移除 `tool-subagent` 的 `persona`/`toolFilter`。
+模板 6 个：`repo-coder`、`web-researcher` 为可用模板；`ops-runbook`、`browser-operator`、`data-analyst`、`support-router` 标记 `experimental`（依赖外部 MCP/知识库，尚未做任务验证）——**这 4 个不计划转正**（0.48.0 决定），任务级评估工具与数据归档在 `eval/deep/archive/templates/`，保留的只有 `test/templates.mjs` 的 126 项结构校验。生成的 preset 复用 `agent-embodiment/control`，同一 profile 需安装本插件。子 agent 只保留跨版本字段（`provider`/`toolName`/`backgroundMode`/`maxDepth`），角色说明放 `delegate-<role>` skill；DSH 0.2.1-rc.2 已移除 `tool-subagent` 的 `persona`/`toolFilter`。
 
 ## 开发约定与易错点
 
@@ -217,7 +216,7 @@ UI 脚本通过 Windows Edge 的 CDP 连接（`scripts/lib/cdp.mjs`，默认 Edg
 - `agent-embodiment/README.md`：用户功能与入口。
 - `agent-embodiment/docs/IMPLEMENTATION.md`：实现细节、路由清单、测试结果（最接近架构总览）。
 - `agent-embodiment/docs/LIMITATIONS.md`：行为边界与已知限制。
-- `agent-embodiment/docs/EVIDENCE.md`：逐版本 UI/运行证据（E16–E58 覆盖 0.19–0.47）。
+- `agent-embodiment/docs/EVIDENCE.md`：逐版本 UI/运行证据（E16–E59 覆盖 0.19–0.48）。
 - `agent-embodiment/docs/CORE-FUNCTION-AUDIT.md`：核心功能冲突、实现一致性与 P1/P2 审计结论。
 - `agent-embodiment/docs/RELEASE-PLAN.md`：0.22.0 → 1.0.0 的版本路线图、发布门禁、兼容矩阵与回滚步骤。
 - `agent-embodiment/docs/UI-PROPOSAL.md`：面板信息架构与视觉提案；§9 是实测核对（§2 的 14 条问题到 0.47.0 全部落地，含一次自查失败的记录）。`static.mjs` 会断言该文档登记的组件都存在于 `client.js`，并锁住焦点环 / `prefers-reduced-motion` 两段样式注入。
@@ -225,7 +224,7 @@ UI 脚本通过 Windows Edge 的 CDP 连接（`scripts/lib/cdp.mjs`，默认 Edg
 - `agent-embodiment/PERMISSIONS.md`：访问面披露。
 - `research/arch.md`：DSH 插件/bundle/client 机制调研（写新插件集成时先看）；`research/context-core.md`：上下文与压缩子系统。
 - `eval/REPORT.md`：评测设计、结果与结论；`eval/PLUGIN-AB.md`：插件安装 / 不安装的 agent 能力对照（63 次运行）。
-- `eval/deep/TEMPLATE-PROMOTION.md`：模板转正评估（两个模板都判不转正，含出题与判分的 4 个坑）。
+- `eval/deep/archive/templates/`：已归档的模板任务评估（工具 + 题目 + 结果 + 两条硬教训）。模板不转正的决定与理由见 `docs/LIMITATIONS.md`。
 - `eval/deep/`：Tier B 50 题深度套件（20 多轮记忆 / 15 长上下文 / 9 代码 / 6 仓库），用于 base / plugin / scaffold / compact 四组对照；`README.md` 是使用说明，`RESULTS.md` 与 `COMPARE.md` 是实测结果，旧版题目在 `archive/`。
 - `docs/context-length-plugin-plan.md`：插件设计起点与 seam 分析；`docs/market-submission.md`：市场上架排查记录；`docs/security-audit.md`：写操作/回滚路径审计。
 - `submission/qiangweiliu__dsh-context--agent-embodiment.yml`：市场收录 PR 的条目文件。

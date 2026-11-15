@@ -2,6 +2,28 @@
 
 格式参考 Keep a Changelog；版本遵循 SemVer。DSH 兼容版本写在每个条目的 Compatibility 下。
 
+## [0.48.0] - 2026-11-15
+
+### Changed
+
+- **4 个 `experimental` 模板不再计划转正**（`ops-runbook` / `browser-operator` / `data-analyst` / `support-router`）。标注 `experimental` 本身就是如实的披露，继续用配额追「能不能转正」不划算：两轮任务级对照都没得到区分度——先是不挂模板也全对（题目太易），换成历史上会错的题后修完判分错误仍是两组同分。1.0 门禁也不含「模板必须转正」。
+- 模板的**结构校验保留**（`test/templates.mjs`，126 项，进 CI）：它回答「装得上吗」——bundle 合法、skill 能被扫描、frontmatter 完整、无未替换占位、`experimental` 必须带警示。这条不需要模型。
+
+### Removed
+
+- 任务级模板评估的全部工具从 `eval/deep/` 移出并**归档**到 `eval/deep/archive/templates/`：`questions-templates.jsonl`（6 道定向题）、`template-smoke.mjs`（批量冒烟）、`template-conditions.mjs`（隔离环境）、两份实验记录与三份原始结果目录。归档目录里的 `README.md` 写明停掉的理由、保留了什么、以及将来重开时必须先读的两条硬教训。
+
+### Docs
+
+- `docs/LIMITATIONS.md`：明确「这 4 个模板不计划转正」并给出理由与归档位置。
+- `README.md`：模板清单处标注「不计划转正」。
+- `scaffold.js`：`SCAFFOLD_TEMPLATES` 增加一段说明，写清哪两个可用、其余四个为什么长期停在 `experimental`。
+- `eval/deep/README.md`：§7 从「模板冒烟」改写为「只做结构校验」；`setup-conditions.mjs` 头部注释改为指向归档。
+
+### Tests
+
+- 无新增断言；`templates.mjs` 126 项与 `scaffold.mjs` 170 项不受影响。单元 833、集成 181、lint 0。
+
 ## [0.47.0] - 2026-11-15
 
 ### Added

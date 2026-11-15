@@ -17,3 +17,6 @@ Desktop.ini
 
 # Python 缓存
 __pycache__/
+# Desktop 重启的运行产物（日志与 dsh 启动输出）
+.restart-desktop.log
+.restart-desktop.d/

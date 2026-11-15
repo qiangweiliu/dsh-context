@@ -115,6 +115,17 @@ node scripts/clean-agent-embodiment-profile-patch.mjs ~/.dsh/profiles/<profile>
 powershell -NoProfile -ExecutionPolicy Bypass -File scripts/verify-uninstall.ps1 -Profile desktop -Clean
 ```
 
+**升级已安装包后让 Desktop 载入新版本**（HMR 只覆盖小改；换版本必须重启进程）。用隐藏窗口的方式，否则会弹出黑窗并把用户页面端口换掉：
+
+```powershell
+$vbs = 'C:\Users\40410\Desktop\context\scripts\restart-desktop-hidden.vbs'
+$action = New-ScheduledTaskAction -Execute 'wscript.exe' -Argument "//B //Nologo ""$vbs"""
+Register-ScheduledTask -TaskName 'DshDesktopRestart' -Action $action `
+  -Trigger (New-ScheduledTaskTrigger -Once -At (Get-Date).AddMinutes(2)) -Force
+```
+
+脚本会优雅关闭→强制结束→重启，把 dsh 的 stdout/stderr 重定向到 `.restart-desktop.d/`（含新的 web URL 与 token），最后自删任务。加 `-DryRun` 可只演练不重启。**要点**：任务动作必须是 `wscript.exe` 转 `restart-desktop-hidden.vbs`（`WScript.Shell.Run(..., 0, ...)` 才可靠隐藏）；直接用 `powershell.exe` 做任务动作会弹控制台窗口。
+
 UI 脚本通过 Windows Edge 的 CDP 连接（`scripts/lib/cdp.mjs`，默认 Edge 路径可用 `EDGE_PATH` 覆盖），因此要在能访问 Windows Edge 的 WSL 环境里跑。`scripts/wsl-*.sh` 会操作真实 profile，跑之前确认目标环境。
 
 ## 架构

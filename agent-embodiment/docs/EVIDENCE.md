@@ -611,6 +611,17 @@ npm 运行依赖：无；生命周期脚本：无
 - **模板冒烟（未完成）**：写了 `eval/deep/template-smoke.mjs` 并跑通流程，但 12 次运行全部 `MISSING_CREDENTIAL`：headless profile 解析 `DEEPSEEK_API_KEY`，本机桌面走的是 `llm-pi-ai` 账号路由，两者不通用。顺带发现 WSL 的 `/tmp` 会在实例空闲后清空，条件目录必须放持久路径（已改到 `~/.cache/embody-eval`）。
 - 测试：单元 680、集成 181、lint 0。
 
+## E54. v0.44.0 模板离线校验（2026-11-15）
+
+E53 里模板冒烟因缺 `DEEPSEEK_API_KEY` 全线失败。与其等凭据，不如把「不需要模型就能验证的部分」做扎实：新增 `test/templates.mjs` 126 项，进 CI。
+
+- 6 个模板 × 20 项结构断言：bundle 合法、skill 能被 `.agents/skills` 扫描到、frontmatter 完整、evals case 三件套齐全、无未替换占位、experimental 带警示。
+- 一致性断言：同输入两次生成的字节必须完全一致——模板里混进时间戳/随机量会让提示词缓存全 miss，这条与 `prompt-state.mjs` 的模板稳定性断言互补。
+- 过程中被两个真实结构纠正：`planScaffold().files` 是 `[{path, content}]` 数组而非对象映射；`evals/cases.jsonl` 的字段是 `id/task/expect` 而不是 `prompt`。第一版断言写错时是**测试报错**而不是静默通过，这正是它的价值。
+
+结论：4 个 experimental 模板的生成物结构全部自洽（126/126）。这只证明「装得上、扫得到、跑得动脚本」，不证明「任务做得好」——后者仍需要真跑，即 E53 的阻塞项。
+- 测试：单元 806、集成 181、lint 0。
+
 ## 已知限制（unknown）
 
 - 未进行独立安全审计；本文件不声称“安全通过”。

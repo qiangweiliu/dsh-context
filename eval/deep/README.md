@@ -78,3 +78,25 @@ node eval/deep/run.mjs --condition compact --workers 3 --out eval/results/deep-b
 - `questions-v2.jsonl` 与 `questions.jsonl` 内容一致；改题后重新生成并同步。
 - 多轮题会真实写入 session 日志；`--keep` 可保留工作目录，便于排查。
 - 条件 profile 和脚手架都在 `/tmp`，可随时由 `setup-conditions.mjs` 重建。
+
+## 6. 模板冒烟（experimental 模板可用性）
+
+`repo-coder` / `web-researcher` 之外还有 4 个 `experimental` 模板（`ops-runbook`、`browser-operator`、`data-analyst`、`support-router`）。它们从未做任务验证，因此分两层检查：
+
+**a) 结构离线校验（不需要模型，已进 CI）**
+
+```bash
+node test/templates.mjs      # 在 agent-embodiment/ 下；126 项
+```
+
+覆盖 6 个模板生成的 bundle：`package.json` / patch / SENSES·HANDS·LOOP·AGENTS 无未替换占位 / SKILL frontmatter / `evals/cases.jsonl` 三件套 / `embodiment.json` / 安装命令 / 两次生成字节一致 / experimental 必须带警示。
+
+**b) 真跑冒烟（需要模型凭据）**
+
+```bash
+node eval/deep/template-smoke.mjs --dry-run          # 先看会跑什么
+node eval/deep/template-smoke.mjs --workers 1        # 4 模板 × 3 题，写 eval/results/template-smoke/
+node eval/deep/template-smoke.mjs --templates data-analyst --ids deep-b-memory-01
+```
+
+依赖 `setup-conditions.mjs` 先准备好条件目录。**已知限制**：headless profile 走 `llm-deepseek` provider，需要 `DEEPSEEK_API_KEY`；桌面版走的是 `llm-pi-ai` 账号路由，两者不通用，因此在只配置了桌面凭据的机器上会全部 `MISSING_CREDENTIAL` 退出。另外 WSL 的 `/tmp` 在实例空闲后会清空，条件目录请放 `~/.cache/embody-eval` 这类持久路径。

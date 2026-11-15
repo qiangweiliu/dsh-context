@@ -4,7 +4,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## 项目概览
 
-DeepSeek Harness（DSH）的 agent 具身与上下文管理插件仓库。市场显示名 `Agent Embodiment` / `智能体具身`；包名/目录 `agent-embodiment`；短品牌 `embody`。旧名 `ctx-mon-and-con` 仅用于历史记录和兼容别名。可发布的主体是 `agent-embodiment/`（npm 包名 `agent-embodiment`，当前 `package.json` 版本 `0.43.0`），其余目录是配套资产：
+DeepSeek Harness（DSH）的 agent 具身与上下文管理插件仓库。市场显示名 `Agent Embodiment` / `智能体具身`；包名/目录 `agent-embodiment`；短品牌 `embody`。旧名 `ctx-mon-and-con` 仅用于历史记录和兼容别名。可发布的主体是 `agent-embodiment/`（npm 包名 `agent-embodiment`，当前 `package.json` 版本 `0.44.0`），其余目录是配套资产：
 
 - `eval/`：提示词 / 推理档位对照评测（GSM8K、MATH Level 5），以及 Tier B 50 题深度套件与结果报告。
 - `research/`、`explore/`：对 DSH 插件机制、compaction、UI 的逆向调研与设计笔记。
@@ -29,6 +29,7 @@ node test/compaction-plan.mjs # 压缩范围规划（阈值数学：keepFloor / 
 node test/prompt-assembly.mjs # system-prompt 装配（禁用剔除 / 覆盖优先级 / extra 落点 / inventory）
 node test/persist.mjs       # 原子写、写前备份与备份读取
 node test/scaffold.mjs      # 脚手架生成计划、YAML 与 AGENTS 合并
+node test/templates.mjs     # 6 个模板的 bundle 结构离线校验（不需要模型）
 node test/insights.mjs      # 健康检查与洞察规则
 node test/profile.mjs       # profile 识别、状态目录与旧目录迁移
 node test/render.mjs        # 用 mock React 真跑面板组件（行为级，抓 TDZ 这类渲染崩溃）
@@ -40,7 +41,7 @@ node test/routes-session.mjs  # 会话预算/清理/提示词 6 条路由的直�
 node test/routes-status.mjs   # 状态/live/导出三条路由的直接单测（含缓存 revision 失效）
 ```
 
-当前基线（0.43.0）：client-build 6/6、static 112/112、metrics 66/66、state 26/26、compaction-plan 17/17、prompt-assembly 28/28、persist 7/7、profile 18/18、scaffold 170/170、insights 34/34、render 36/36、fetch-chain 3/3、mount-guard 7/7、locale-keys 6/6、analytics 27/27、runtime 35/35、docs-guard 12/12、routes-scaffold 17/17、routes-session 28/28、routes-status 24/24（共 680）；集成 control 55/55、smoke 115/115、prompt-state 11/11（共 181）。
+当前基线（0.44.0）：client-build 6/6、static 112/112、metrics 66/66、state 26/26、compaction-plan 17/17、prompt-assembly 28/28、persist 7/7、profile 18/18、scaffold 170/170、templates 126/126、insights 34/34、render 36/36、fetch-chain 3/3、mount-guard 7/7、locale-keys 6/6、analytics 27/27、runtime 35/35、docs-guard 12/12、routes-scaffold 17/17、routes-session 28/28、routes-status 24/24（共 806）；集成 control 55/55、smoke 115/115、prompt-state 11/11（共 181）。
 
 CI 在 `.github/workflows/test.yml`：Node 20/22/24 三档跑单元 + `npm run lint`；另有 integration job 从 npm 安装 Cordis（4.0.5 / 4.1.0 两档）跑 control/smoke/prompt-state，不依赖本机 app.asar。两种 job 都带 npm 缓存与 `concurrency` 取消。
 
@@ -72,7 +73,7 @@ npm run lint                # oxlint（devDependency；CI 也跑，0 error）
 ### 版本号同步与 client 构建
 
 ```bash
-node scripts/bump-version.mjs 0.43.0   # package.json / client-src 与 client.js 的 CLIENT_VERSION / README / IMPLEMENTATION 一次改齐
+node scripts/bump-version.mjs 0.44.0   # package.json / client-src 与 client.js 的 CLIENT_VERSION / README / IMPLEMENTATION 一次改齐
 cd agent-embodiment && npm run build:client   # 改过 client-src/ 后必须重建 client.js
 ```
 
@@ -214,7 +215,7 @@ UI 脚本通过 Windows Edge 的 CDP 连接（`scripts/lib/cdp.mjs`，默认 Edg
 - `agent-embodiment/README.md`：用户功能与入口。
 - `agent-embodiment/docs/IMPLEMENTATION.md`：实现细节、路由清单、测试结果（最接近架构总览）。
 - `agent-embodiment/docs/LIMITATIONS.md`：行为边界与已知限制。
-- `agent-embodiment/docs/EVIDENCE.md`：逐版本 UI/运行证据（E16–E53 覆盖 0.19–0.43）。
+- `agent-embodiment/docs/EVIDENCE.md`：逐版本 UI/运行证据（E16–E54 覆盖 0.19–0.44）。
 - `agent-embodiment/docs/CORE-FUNCTION-AUDIT.md`：核心功能冲突、实现一致性与 P1/P2 审计结论。
 - `agent-embodiment/docs/RELEASE-PLAN.md`：0.22.0 → 1.0.0 的版本路线图、发布门禁、兼容矩阵与回滚步骤。
 - `agent-embodiment/docs/UI-PROPOSAL.md`：面板信息架构与视觉提案。

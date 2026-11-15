@@ -2,6 +2,20 @@
 
 格式参考 Keep a Changelog；版本遵循 SemVer。DSH 兼容版本写在每个条目的 Compatibility 下。
 
+## [0.44.0] - 2026-11-15
+
+### Added
+
+- **`test/templates.mjs`：6 个模板的 bundle 结构离线校验（126 项，进 CI）**。不调用模型，回答「这个模板现在能不能交给人用」：
+  - 元数据：6 个模板齐全、4 个 experimental 标记正确、`id/name/description` 完整、`getTemplate` 可按 id 取回。
+  - 生成物（每个模板都验）：`package.json` 合法 JSON 且名字含 slug、patch 里 insert 的是本 preset、`SENSES/HANDS/LOOP/AGENTS.snippet` 非空且无未替换 `{{占位}}`、至少一个 skill 且目录名带 `<slug>-` 前缀、每个 `SKILL.md` frontmatter 有 `name`/`description`、`evals/cases.jsonl` 每行合法且带 `id/task/expect`、`evals/run.mjs` 存在、`embodiment.json` 可解析、安装命令含 slug、experimental 必须带警示。
+  - 一致性：同输入两次生成字节一致（防止模板里混进时间戳/随机量）；未知模板仍按既有契约抛错并列出可选模板。
+- `eval/deep/README.md` 增加「模板冒烟」一节：离线校验 + 真跑命令 + 凭据限制说明。
+
+### Tests
+
+- 单元 680 → **806**（新增 templates 126）；集成 181 不变；lint 0。
+
 ## [0.43.0] - 2026-11-15
 
 ### Added

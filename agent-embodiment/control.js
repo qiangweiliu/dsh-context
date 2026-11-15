@@ -34,6 +34,7 @@
  * 不写 surfaceOp、不碰影子价。
  */
 
+import { buildAssembledSections } from './prompt-assembly.js'
 import { planRegion as planRegionPlan } from './compaction-plan.js'
 import {
   budgetFor,
@@ -189,84 +190,18 @@ export function apply(ctx, config) {
       agent.ctx.on('system-prompt/assemble', async (assembly, _context, next) => {
         const result = await next()
         try {
-          const disabled = new Set(getSessionDisabledPrompts(sessionId))
-          const overrides = getGlobalPromptOverrides()
-          const sessionTexts = getSessionPromptTextMap(sessionId) || new Map()
-          const raw = Array.isArray(result.sections) ? result.sections : []
-          const mapped = []
-          const inventory = []
-          for (const section of raw) {
-            if (disabled.has(section.name)) continue
-            const original = String(section.text === undefined || section.text === null ? '' : section.text)
-            const globalOverridden = Object.prototype.hasOwnProperty.call(overrides, section.name)
-            const sessionOverridden = sessionTexts.has(section.name)
-            const effective = sessionOverridden
-              ? String(sessionTexts.get(section.name))
-              : globalOverridden
-                ? String(overrides[section.name])
-                : original
-            // 原 section 可能是 frozen 的：不改它，重建一个 AssembledSection。
-            const next = { name: section.name, text: effective }
-            if (section.interpolate !== undefined) next.interpolate = section.interpolate
-            mapped.push(next)
-            inventory.push({
-              name: section.name,
-              tokens: Math.ceil(effective.length / 4),
-              text: effective,
-              originalText: original,
-              overridden: globalOverridden || sessionOverridden,
-              globalOverridden,
-              sessionOverridden,
-            })
-          }
-          const extraPrompts = getGlobalExtraPrompts()
-          const extraPlacements = getGlobalExtraPromptPlacements()
-          for (const [name, text] of Object.entries(extraPrompts)) {
-            const sectionName = name.startsWith('agent-embodiment:extra:') || name.startsWith('ctx-mon-and-con:extra:') ? name : `agent-embodiment:extra:${name}`
-            if (disabled.has(sectionName) || disabled.has(sectionName.replace('agent-embodiment:extra:', 'ctx-mon-and-con:extra:'))) continue
-            const value = typeof text === 'string' ? text : ''
-            if (value.trim().length === 0) continue
-            if (mapped.some((section) => section.name === sectionName)) continue
-            const placement = extraPlacements[name] === 'user' ? 'user' : 'system'
-            const inventoryItem = {
-              name: sectionName,
-              tokens: Math.ceil(value.length / 4),
-              text: value,
-              originalText: value,
-              overridden: true,
-              globalOverridden: true,
-              sessionOverridden: false,
-              extra: true,
-              extraName: name,
-              extraPlacement: placement,
-            }
-            if (placement === 'user') {
-              // 加在每次用户消息末尾，不进入 system sections；inventory 只用于展示/会话开关。
-              const atIdentity = inventory.findIndex((section) => section.name === 'harness:identity')
-              if (atIdentity >= 0) inventory.splice(atIdentity + 1, 0, inventoryItem)
-              else inventory.push(inventoryItem)
-              continue
-            }
-            const item = { name: sectionName, text: value }
-            const at = mapped.findIndex((section) => section.name === 'harness:identity')
-            if (at >= 0) {
-              mapped.splice(at + 1, 0, item)
-              inventory.splice(at + 1, 0, inventoryItem)
-            } else {
-              mapped.push(item)
-              inventory.push(inventoryItem)
-            }
-          }
-          result.sections = mapped
-          recordInventory(sessionId, {
-            sections: inventory,
-            tools: (result.tools || []).map((tool) => ({
-              name: tool.name,
-              description: typeof tool.description === 'string' ? tool.description : undefined,
-              parameters: tool.parameters,
-              tokens: Math.ceil(JSON.stringify(tool).length / 4),
-            })),
+          // section 重建与 inventory 生成在 prompt-assembly.js（0.42.0），这里只做取数与写回。
+          const assembled = buildAssembledSections({
+            sections: result.sections,
+            tools: result.tools,
+            disabledPrompts: getSessionDisabledPrompts(sessionId),
+            overrides: getGlobalPromptOverrides(),
+            sessionTexts: getSessionPromptTextMap(sessionId) || new Map(),
+            extraPrompts: getGlobalExtraPrompts(),
+            extraPlacements: getGlobalExtraPromptPlacements(),
           })
+          result.sections = assembled.sections
+          recordInventory(sessionId, { sections: assembled.inventory, tools: assembled.tools })
         } catch (error) {
           log('warn', `assemble hook failed: ${error instanceof Error ? error.message : String(error)}`)
         }

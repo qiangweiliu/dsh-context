@@ -596,6 +596,14 @@ npm 运行依赖：无；生命周期脚本：无
 下一刀顺序（已写入 CHANGELOG）：`syncGates` → `assemble`（需先补 control 断言）→ inventory 注册。
 - 测试：单元 644（新增 compaction-plan 17）、集成 181、lint 0。
 
+## E52. v0.42.0 提示词装配外置（2026-11-15）
+
+- 上一轮评估说 `syncGates`（108 行）是下一刀，实际读代码后发现它由两段组成：门禁同步约 20 行 + `system-prompt/assemble` hook 86 行。后者才是真正的大块，也更值得抽——因为它是「用户设的提示词覆盖/新增/禁用到底怎么生效」的唯一实现。
+- 抽出 `buildAssembledSections(input)` 后，`control.js` 640 → 575 行，hook 缩到 20 行。集成 55/115/11 全绿，说明装配结果未变。
+- 新增 28 项单测，其中几条是 control.mjs 覆盖不到的边界：frozen section 是否被就地修改（会污染宿主的 shared object）、会话覆盖与全局覆盖的优先级、旧前缀 `ctx-mon-and-con:extra:` 的禁用匹配、`interpolate` 字段是否被凭空添加。
+- `static.mjs` 加了「不得再把 `const inventory = []` 写回 control.js」的契约断言，防止以后复制回去。
+- 测试：单元 673、集成 181、lint 0。
+
 ## 已知限制（unknown）
 
 - 未进行独立安全审计；本文件不声称“安全通过”。

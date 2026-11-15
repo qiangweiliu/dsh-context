@@ -2,6 +2,27 @@
 
 格式参考 Keep a Changelog；版本遵循 SemVer。DSH 兼容版本写在每个条目的 Compatibility 下。
 
+## [0.42.0] - 2026-11-15
+
+### Changed
+
+- **`control.js` 拆分第二刀：提示词装配外置为 `prompt-assembly.js`**。`syncGates` 里其实藏着两件事——工具门禁同步（短）与 `system-prompt/assemble` 的 86 行 section 重建 hook（长）。后者在给出「assembly + 各类开关/覆盖」后完全可纯函数化，因此抽为 `buildAssembledSections(input)`。
+  - `control.js` 640 → **575 行**；assemble hook 从 86 行降到 20 行，只负责取数与写回。
+  - 语义逐字保留：禁用 section 剔除（含 extra 的旧前缀 `ctx-mon-and-con:extra:` 双向匹配）、会话覆盖优先于全局覆盖、frozen section 重建而不就地改、extra prompt 的 system/user 两种落点（system 插在 `harness:identity` 之后）、空文本/非字符串/同名去重、inventory 的 `tokens = ceil(len/4)` 与 `overridden`/`globalOverridden`/`sessionOverridden` 标记、tools 的 token 估算。
+
+### Added
+
+- **`test/prompt-assembly.mjs`（28 项）**：覆盖默认重建、frozen section 不被就地改、禁用剔除、全局覆盖与**会话覆盖优先**、`originalText` 保留、普通对象形式的 `sessionTexts`、`interpolate` 保留与不凭空增加、extra prompt 的 system/user 落点、空文本/非字符串/同名跳过、旧前缀禁用匹配、无 identity 时追加末尾、tools 字段与 token 估算、空输入不抛错。
+- `static.mjs` 增加契约断言：`control.js` 必须调用 `buildAssembledSections` 且不再内联 `const inventory = []`——防止装配逻辑被复制回去。
+
+### Tests
+
+- 单元 644 → **673**（新增 prompt-assembly 28、static 110→111）；集成 181 不变；lint 0。
+
+### 剩余（`control.js`）
+
+- 还有两处大块与 Cordis 绑定较深：`syncGates` 的门禁同步（`agent.ctx.tools.restrict` + `agentGates` 生命周期）与两个 inventory `sub.effect`。这两块的测试需要假 agent context，成本高于收益，暂留。
+
 ## [0.41.0] - 2026-11-15
 
 ### Changed

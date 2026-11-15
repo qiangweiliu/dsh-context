@@ -181,6 +181,7 @@ const indexSource = readFileSync(new URL('../index.js', import.meta.url), 'utf8'
 const scaffoldRoutesSource = readFileSync(new URL('../routes-scaffold.js', import.meta.url), 'utf8')
 const analyticsSource = readFileSync(new URL('../analytics.js', import.meta.url), 'utf8')
 const statusRoutesSource = readFileSync(new URL('../routes-status.js', import.meta.url), 'utf8')
+const controlSource = readFileSync(new URL('../control.js', import.meta.url), 'utf8')
 check('client.js 语法可编译', (() => {
   try {
     new Function(clientSource)
@@ -251,6 +252,7 @@ check('会话切换丢弃旧响应并清空历史选择', clientSource.includes(
 check('头部合并上下文构成、概览去掉重复图表与费用 KPI', clientSource.includes('headerCategories') && clientSource.includes('h(SegmentedBar') && clientSource.includes('h(LegendGrid') && !clientSource.includes('data-embodiment-heatmap') && !clientSource.includes('kpiCost'))
 check('打开会话优先用 uiWorkspace.openSession', clientSource.includes("ctx.inject(['uiWorkspace']") && clientSource.includes('workspaceService.openSession') && clientSource.includes('role="treeitem"'))
 check('跨会话分析显式按活动时间排序', analyticsSource.includes('sessionsNewestFirst') && analyticsSource.includes('const picked = list.slice(0, limit)') && indexSource.includes('sessionsNewestFirst(RUNTIME.getSessions().list())'))
+check('提示词装配使用 prompt-assembly.js', controlSource.includes('buildAssembledSections({') && !controlSource.includes('const inventory = []') && !controlSource.includes('recordInventory(sessionId, {\n            sections: inventory'))
 check('analytics 编排与缓存已外置到 analytics.js', analyticsSource.includes('export function createAnalytics') && analyticsSource.includes('ANALYTICS_CACHE_TTL_MS') && indexSource.includes('createAnalytics({') && !indexSource.includes('const analyticsPayload = async'))
 check('服务句柄统一经 runtime 访问（不再有裸闭包变量）', !/ctx\.inject\(\['[^']*RUNTIME/u.test(indexSource) && indexSource.includes('RUNTIME.getConfigEditor()') && indexSource.includes('RUNTIME.setWebServerPresent(true)'))
 check('自动挂载只改已知 preset 并保留控制行配置', indexSource.includes('findKnownPresetEntry') && indexSource.includes('auto-mount skipped: no known agent preset id') && indexSource.includes('config: existingControl.config ?? CONTROL_ROW.config'))

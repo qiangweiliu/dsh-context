@@ -477,6 +477,15 @@ npm 运行依赖：无；生命周期脚本：无
 - 观察（非缺陷）：该隔离实例的状态接口 `profile` 字段返回 `web` 而不是 `rc1`——profile 识别走的是「哪个 profile 的依赖指向本插件」，用默认模板克隆出的 profile 仍带模板名；状态目录因此落在 `profiles/web`，在隔离 `DSH_HOME` 下不影响隔离性，但与目录名不一致，留待后续统一。
 - 测试：单元 422（static 104 / metrics 61）、集成 144、lint 0。
 
+## E39. v0.30.0 峰谷价回归修复、Desktop 探针与写路由测试（2026-11-15）
+
+- **修复的回归**：0.27.0 让配置层支持 `modelPricing[].peak/offPeak`，但设置在面板里的价格卡只映射 5 个平档字段；`POST /config` 是整段替换 `modelPricing`，于是在面板点一次保存就把 yml 配好的峰谷价静默拍平。改为「平档 + 峰谷两档」两组输入框，`pricingDraft()` / `pricingPayload()` 抽成纯函数，单填一半会提示而不是丢弃。
+  - 行为级回归测试（`test/render.mjs`，29→36）：草稿保留峰谷、往返不丢、未配时不写空档、只填一半报 `incomplete`、清空即回全天同价。
+  - 服务端回归测试（`test/smoke.mjs`）：带 `MockConfigEditor` 的隔离 Cordis 上下文里 POST 带 `peak/offPeak` 的补丁，断言落盘后两档仍在。
+- **Desktop 探针**：client 挂载后写 `window.__agentEmbodiment = { version, panelId, slots, mountedAt, helpers }`。Desktop 的 CDP 只有 `dsh://host` inspector target、拿不到面板 DOM，此前只能人工确认；现在 `scripts/ui-check-panel.mjs` 输出 `probe` 字段即可断言版本与挂载状态。
+- **补测试的路由**（此前零覆盖）：`GET /export`（JSON / CSV，含 UTF-8 BOM 与缺 `sessionQuery` 时 503 失败关闭）、`POST /config`（501 分支 + 202 成功路径 + `holidays` 校验）、`POST /config/preset`、`POST /data/reset`、`POST /onboarding`（405 只写 + reset 生效）、`POST /inventory/toggle`（非法参数 + 全局提示词开关被拒）、`POST /inventory/prompt/reset`、`POST /inventory/extra-prompt`(+reset)。smoke 78→103。
+- 测试：单元 430、集成 169、lint 0。
+
 ## 已知限制（unknown）
 
 - 未进行独立安全审计；本文件不声称“安全通过”。

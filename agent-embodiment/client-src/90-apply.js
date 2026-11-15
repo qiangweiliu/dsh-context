@@ -133,6 +133,19 @@
           ),
         ),
       )
+
+      // 5) 挂载成功后在 window 上留一个只读探针：Desktop 的 CDP 只有 host inspector target，
+      //    拿不到面板 DOM；有了这个对象就能用 Runtime.evaluate 断言「版本 + 是否挂载成功」。
+      const marker = {
+        version: CLIENT_VERSION,
+        panelId: PANEL_ID,
+        slots: ['settings.section', 'main', 'sidebar.panellist', 'conversation.composer.dock', 'conversation.composer.dock'],
+        mountedAt: new Date().toISOString(),
+        helpers: { pricingDraft, pricingPayload },
+      }
+      try {
+        if (typeof window !== 'undefined') window.__agentEmbodiment = marker
+      } catch {}
     }
 
     exports.apply = apply

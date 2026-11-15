@@ -167,6 +167,10 @@
       compareValue: { textAlign: 'right', fontVariantNumeric: 'tabular-nums', color: 'var(--dsw-alias-label-primary)' },
       pricingRows: { display: 'flex', flexDirection: 'column', gap: '5px' },
       pricingRow: { display: 'grid', gridTemplateColumns: 'minmax(120px, 1.6fr) repeat(4, minmax(52px, 0.7fr)) auto', gap: '5px', alignItems: 'center' },
+    // 每行价格下面的峰谷两档（可留空 = 全天同价）。
+    pricingItem: { display: 'flex', flexDirection: 'column', gap: '3px', padding: '5px 0', borderTop: '0.5px solid var(--dsw-alias-border-l1)' },
+    pricingBandRow: { display: 'grid', gridTemplateColumns: 'minmax(120px, 1.6fr) repeat(4, minmax(52px, 0.7fr))', gap: '5px', alignItems: 'center' },
+    pricingBandLabel: { fontSize: '10px', lineHeight: '14px', color: 'var(--dsw-alias-label-tertiary)' },
       detailBox: { display: 'flex', flexDirection: 'column', gap: '4px', padding: '8px 10px', borderRadius: '8px', background: 'var(--dsw-alias-bg-layer-2)' },
       error: { margin: 0, fontSize: '11.5px', color: 'var(--dsw-alias-state-error-primary)' },
       diffBox: { display: 'flex', flexDirection: 'column', gap: '1px', maxHeight: '220px', overflow: 'auto', border: '0.5px solid var(--dsw-alias-border-l1)', borderRadius: '8px', padding: '6px 8px', fontFamily: 'var(--dsw-font-mono, monospace)', fontSize: '10.5px', lineHeight: 1.5, whiteSpace: 'pre-wrap', wordBreak: 'break-word' },

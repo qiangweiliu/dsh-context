@@ -602,6 +602,61 @@
       )
     }
 
+    /**
+     * 价格行 → 面板草稿。必须保留 `peak` / `offPeak`：
+     * 0.27.0 起配置层支持峰谷两档，若面板只映射平档，保存一次就会把 yml 里配好的峰谷价静默抹平。
+     */
+    function pricingDraft(rows) {
+      const list = Array.isArray(rows) ? rows : []
+      const text = (value) => (value === undefined || value === null ? '' : String(value))
+      return list.map((row) => ({
+        match: String(row.match || ''),
+        input: text(row.input),
+        cacheRead: text(row.cacheRead),
+        cacheWrite: text(row.cacheWrite),
+        output: text(row.output),
+        peakInput: text(row.peak && row.peak.input),
+        peakOutput: text(row.peak && row.peak.output),
+        offPeakInput: text(row.offPeak && row.offPeak.input),
+        offPeakOutput: text(row.offPeak && row.offPeak.output),
+      }))
+    }
+
+    /**
+     * 面板草稿 → `POST /config` 的 modelPricing。峰谷每档需 input+output 成对填写，
+     * 两者都留空表示该档不启用；只填一半时返回 `incomplete`，由调用方提示而不是静默丢弃。
+     */
+    function pricingPayload(draft) {
+      const list = Array.isArray(draft) ? draft : []
+      const band = (input, output) => {
+        const hasInput = String(input).trim() !== ''
+        const hasOutput = String(output).trim() !== ''
+        if (!hasInput && !hasOutput) return null
+        if (!hasInput || !hasOutput) return 'incomplete'
+        return { input: Number(input), output: Number(output) }
+      }
+      const rows = list.filter((row) => String(row.match).trim().length > 0)
+      if (rows.some((row) => band(row.peakInput, row.peakOutput) === 'incomplete' || band(row.offPeakInput, row.offPeakOutput) === 'incomplete')) {
+        return { incomplete: true, rows: [] }
+      }
+      return {
+        incomplete: false,
+        rows: rows.map((row) => {
+          const peak = band(row.peakInput, row.peakOutput)
+          const offPeak = band(row.offPeakInput, row.offPeakOutput)
+          return {
+            match: String(row.match).trim(),
+            input: Number(row.input) || 0,
+            cacheRead: Number(row.cacheRead) || 0,
+            cacheWrite: Number(row.cacheWrite) || 0,
+            output: Number(row.output) || 0,
+            ...(peak && peak !== 'incomplete' ? { peak } : {}),
+            ...(offPeak && offPeak !== 'incomplete' ? { offPeak } : {}),
+          }
+        }),
+      }
+    }
+
     function PricingSection(props) {
       const t = props.t
       const pricing = props.pricing || {}
@@ -610,29 +665,19 @@
       const [busy, setBusy] = react.useState(false)
       const [notice, setNotice] = react.useState('')
       react.useEffect(() => {
-        const incoming = Array.isArray(pricing.rows) ? pricing.rows : []
-        setRows(incoming.map((row) => ({
-          match: String(row.match || ''),
-          input: String(row.input ?? ''),
-          cacheRead: String(row.cacheRead ?? ''),
-          cacheWrite: String(row.cacheWrite ?? ''),
-          output: String(row.output ?? ''),
-        })))
+        setRows(pricingDraft(pricing.rows))
       }, [pricing.rows])
       const update = (index, key, value) => setRows((current) => current.map((row, at) => at === index ? { ...row, [key]: value } : row))
       const save = () => {
         setBusy(true)
         setNotice('')
-        const payload = rows
-          .filter((row) => row.match.trim().length > 0)
-          .map((row) => ({
-            match: row.match.trim(),
-            input: Number(row.input) || 0,
-            cacheRead: Number(row.cacheRead) || 0,
-            cacheWrite: Number(row.cacheWrite) || 0,
-            output: Number(row.output) || 0,
-          }))
-        postJson(`${STATUS_PATH}/config`, { modelPricing: payload })
+        const next = pricingPayload(rows)
+        if (next.incomplete) {
+          setBusy(false)
+          setNotice(t('pricingBandIncomplete'))
+          return
+        }
+        postJson(`${STATUS_PATH}/config`, { modelPricing: next.rows })
           .then(() => {
             setNotice(t('pricingSaved'))
             if (typeof props.onSaved === 'function') setTimeout(props.onSaved, 1200)
@@ -662,17 +707,27 @@
             )
           : null,
         rows.length === 0 ? h('p', { style: styles.emptyText }, t('pricingEmpty')) : h('div', { style: styles.pricingRows },
-          rows.map((row, index) => h('div', { key: index, style: styles.pricingRow },
-            cell(row, index, 'match', t('pricingMatch')),
-            cell(row, index, 'input', t('pricingInput')),
-            cell(row, index, 'cacheRead', t('pricingCacheRead')),
-            cell(row, index, 'cacheWrite', t('pricingCacheWrite')),
-            cell(row, index, 'output', t('pricingOutput')),
-            h('button', { type: 'button', style: styles.copyBtn, disabled: busy, onClick: () => setRows((current) => current.filter((_, at) => at !== index)) }, t('pricingRemove')),
+          h('p', { style: styles.pricingBandLabel }, t('pricingBandsHint')),
+          rows.map((row, index) => h('div', { key: index, style: styles.pricingItem },
+            h('div', { style: styles.pricingRow },
+              cell(row, index, 'match', t('pricingMatch')),
+              cell(row, index, 'input', t('pricingInput')),
+              cell(row, index, 'cacheRead', t('pricingCacheRead')),
+              cell(row, index, 'cacheWrite', t('pricingCacheWrite')),
+              cell(row, index, 'output', t('pricingOutput')),
+              h('button', { type: 'button', style: styles.copyBtn, disabled: busy, onClick: () => setRows((current) => current.filter((_, at) => at !== index)) }, t('pricingRemove')),
+            ),
+            // 峰谷两档：留空 = 全天同价；填了就在对应时段用这一档。
+            h('div', { style: styles.pricingBandRow },
+              cell(row, index, 'peakInput', t('pricingPeakInput')),
+              cell(row, index, 'peakOutput', t('pricingPeakOutput')),
+              cell(row, index, 'offPeakInput', t('pricingOffPeakInput')),
+              cell(row, index, 'offPeakOutput', t('pricingOffPeakOutput')),
+            ),
           )),
         ),
         h('div', { style: styles.actionRow },
-          h('button', { type: 'button', style: styles.button, disabled: !editable || busy, onClick: () => setRows((current) => [...current, { match: '', input: '', cacheRead: '', cacheWrite: '', output: '' }]), 'data-embodiment-pricing-add': '1' }, t('pricingAdd')),
+          h('button', { type: 'button', style: styles.button, disabled: !editable || busy, onClick: () => setRows((current) => [...current, { match: '', input: '', cacheRead: '', cacheWrite: '', output: '', peakInput: '', peakOutput: '', offPeakInput: '', offPeakOutput: '' }]), 'data-embodiment-pricing-add': '1' }, t('pricingAdd')),
           h('button', { type: 'button', style: styles.button, disabled: !editable || busy, onClick: save, 'data-embodiment-pricing-save': '1' }, busy ? t('saving') : t('pricingSave')),
           notice ? h('span', { style: styles.cardSub }, notice) : null,
         ),

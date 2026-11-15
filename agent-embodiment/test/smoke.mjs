@@ -334,6 +334,153 @@ const badAnalytics = plugin.Config['~standard'].validate({ analyticsLimit: 201 }
 check('analyticsLimit 超过 200 被拒绝', Array.isArray(badAnalytics.issues) && /1\.\.200/.test(badAnalytics.issues[0]?.message ?? ''), JSON.stringify(badAnalytics.issues))
 
 // ── 5. 卸载清理 ───────────────────────────────────────────────────────────
+// ── 3h. 其余写路由与导出（此前零覆盖）─────────────────────────────────────
+const routeOf = (suffix) => webServer.routes.get(`/api/agent-embodiment/status${suffix}`)
+const onboardingRoute = routeOf('/onboarding')
+const exportRoute = routeOf('/export')
+const configRoute = routeOf('/config')
+const presetRoute = routeOf('/config/preset')
+const dataResetRoute = routeOf('/data/reset')
+const toggleRoute = routeOf('/inventory/toggle')
+const promptResetRoute = routeOf('/inventory/prompt/reset')
+const extraPromptRoute = routeOf('/inventory/extra-prompt')
+const extraPromptResetRoute = routeOf('/inventory/extra-prompt/reset')
+check(
+  '注册 onboarding/export/config/data-reset/inventory 写路由',
+  [onboardingRoute, exportRoute, configRoute, presetRoute, dataResetRoute, toggleRoute, promptResetRoute, extraPromptRoute, extraPromptResetRoute].every((route) => route?.kind === 'exact'),
+  [onboardingRoute, exportRoute, configRoute, presetRoute, dataResetRoute, toggleRoute, promptResetRoute, extraPromptRoute, extraPromptResetRoute].map((route) => route?.path ?? null),
+)
+
+const callGet = (route, url = '/') => new Promise((resolve) => {
+  const response = makeResponse()
+  const originalEnd = response.end.bind(response)
+  response.end = (body) => {
+    originalEnd(body)
+    resolve(response)
+  }
+  route.handler({ method: 'GET', url, headers: {} }, response)
+})
+
+// onboarding 是纯写接口：读状态走 /status，别让面板误以为可以 GET。
+const onboardingGet = await callGet(onboardingRoute)
+check('GET /onboarding 返回 405（只读写 /status）', onboardingGet.statusCode === 405, onboardingGet.body)
+
+// 没有 sessionQuery 时必须失败关闭，而不是静默导出空表。
+const exportNoQuery = await callGet(exportRoute, '/?limit=5')
+check('GET /export 缺少 sessionQuery 时返回 503', exportNoQuery.statusCode === 503, exportNoQuery.body)
+
+const badScope = await callJson(dataResetRoute, 'POST', { scope: 'bogus' })
+check('POST /data/reset 非法 scope 返回 400', badScope.statusCode === 400, badScope.body)
+const togglesReset = await callJson(dataResetRoute, 'POST', { scope: 'toggles' })
+check('POST /data/reset {scope:toggles} 返回 202', togglesReset.statusCode === 202, togglesReset.body)
+
+const badToggle = await callJson(toggleRoute, 'POST', { kind: 'bogus', layer: 'session', name: 'x', enabled: true })
+check('POST /inventory/toggle 非法参数返回 400', badToggle.statusCode === 400, badToggle.body)
+const globalPrompt = await callJson(toggleRoute, 'POST', { kind: 'prompt', layer: 'global', name: 'x', enabled: true })
+check('POST /inventory/toggle 全局提示词开关被拒绝（400）', globalPrompt.statusCode === 400, globalPrompt.body)
+
+const emptyExtra = await callJson(extraPromptRoute, 'POST', { name: 'x', text: '   ' })
+check('POST /inventory/extra-prompt 空文本返回 400', emptyExtra.statusCode === 400, emptyExtra.body)
+const noEditorExtra = await callJson(extraPromptRoute, 'POST', { name: 'x', text: 'hi' })
+check('POST /inventory/extra-prompt 无 configEditor 返回 501', noEditorExtra.statusCode === 501, noEditorExtra.body)
+const noEditorPromptReset = await callJson(promptResetRoute, 'POST', {})
+check('POST /inventory/prompt/reset 无 configEditor 返回 501', noEditorPromptReset.statusCode === 501, noEditorPromptReset.body)
+const configNoEditor = await callJson(configRoute, 'POST', { contextWindowTokens: 200000 })
+check('POST /config 无 configEditor 返回 501', configNoEditor.statusCode === 501, configNoEditor.body)
+const presetNoEditor = await callJson(presetRoute, 'POST', { enable: false })
+check('POST /config/preset 无 configEditor 返回 501', presetNoEditor.statusCode === 501, presetNoEditor.body)
+
+// ── 隔离上下文：带上 configEditor + sessionQuery，验证成功路径真的落盘 ──
+class MockConfigEditor extends Service {
+  constructor(ctx) {
+    super(ctx, 'configEditor')
+    this.patches = []
+  }
+  entries() {
+    return [{ options: { id: 'agent-embodiment' }, value: {} }]
+  }
+  async edit(entry, updater) {
+    const next = updater({})
+    this.patches.push(next)
+    return next
+  }
+}
+
+class MockSessionQuery extends Service {
+  constructor(ctx) {
+    super(ctx, 'sessionQuery')
+  }
+  async listSessions() {
+    return []
+  }
+  async observeSession() {
+    return null
+  }
+}
+
+const editorRoot = new Context()
+await editorRoot.plugin(MockCommands)
+await editorRoot.plugin(MockTokenMeter)
+await editorRoot.plugin(MockWebServer)
+await editorRoot.plugin(MockConnection)
+await editorRoot.plugin(MockConfigEditor)
+await editorRoot.plugin(MockSessionQuery)
+const editorFiber = editorRoot.plugin(plugin, {})
+await editorFiber
+const editorRoutes = (suffix) => editorRoot.get('webServer').routes.get(`/api/agent-embodiment/status${suffix}`)
+
+const pricedResponse = await callJson(editorRoutes('/config'), 'POST', {
+  modelPricing: [
+    { match: 'custom-model', input: 1, cacheRead: 0.5, cacheWrite: 1, output: 2, peak: { input: 1.5, output: 3 }, offPeak: { input: 0.5, output: 1 } },
+  ],
+})
+const pricedPayload = JSON.parse(pricedResponse.body || '{}')
+check('POST /config 返回 202 并回显接受的补丁', pricedResponse.statusCode === 202 && pricedPayload.ok === true, pricedResponse.body)
+await new Promise((resolve) => setTimeout(resolve, 10))
+const recorded = editorRoot.get('configEditor').patches.at(-1) ?? {}
+check(
+  'POST /config 落盘时保留峰谷两档（回归：曾被拍平成全天同价）',
+  Array.isArray(recorded.modelPricing) && recorded.modelPricing[0]?.peak?.input === 1.5 && recorded.modelPricing[0]?.offPeak?.output === 1,
+  recorded.modelPricing,
+)
+
+const badHolidays = await callJson(editorRoutes('/config'), 'POST', { holidays: ['2027/01/01'] })
+check('POST /config 非法 holidays 返回 400', badHolidays.statusCode === 400, badHolidays.body)
+const goodHolidays = await callJson(editorRoutes('/config'), 'POST', { holidays: ['2027-01-01'] })
+check('POST /config 合法 holidays 返回 202', goodHolidays.statusCode === 202, goodHolidays.body)
+await new Promise((resolve) => setTimeout(resolve, 10))
+const holidayPatch = editorRoot.get('configEditor').patches.at(-1) ?? {}
+check('POST /config holidays 写入数组', Array.isArray(holidayPatch.holidays) && holidayPatch.holidays[0] === '2027-01-01', holidayPatch.holidays)
+
+const extraSaved = await callJson(editorRoutes('/inventory/extra-prompt'), 'POST', { name: 'smoke-extra', text: 'hello', placement: 'user' })
+check('POST /inventory/extra-prompt 有 configEditor 时返回 202', extraSaved.statusCode === 202, extraSaved.body)
+const extraCleared = await callJson(editorRoutes('/inventory/extra-prompt/reset'), 'POST', { name: 'smoke-extra' })
+check('POST /inventory/extra-prompt/reset 返回 202', extraCleared.statusCode === 202, extraCleared.body)
+const promptCleared = await callJson(editorRoutes('/inventory/prompt/reset'), 'POST', {})
+check('POST /inventory/prompt/reset 有 configEditor 时返回 2xx', [200, 202].includes(promptCleared.statusCode), promptCleared.body)
+
+const exportJson = await callGet(editorRoutes('/export'), '/?limit=5')
+const exportBody = JSON.parse(exportJson.body || '{}')
+check('GET /export 返回 JSON 与 sessions 数组', exportJson.statusCode === 200 && String(exportJson.headers['content-type']).includes('application/json') && Array.isArray(exportBody.sessions), Object.keys(exportBody))
+const exportCsv = await callGet(editorRoutes('/export'), '/?format=csv&limit=5')
+// CSV 带 UTF-8 BOM（Excel 打开不乱码），断言时先剥掉再比对列名。
+const exportCsvBody = String(exportCsv.body).replace(/^\uFEFF/u, '')
+check(
+  'GET /export?format=csv 返回 text/csv、带 BOM 且首行是列名',
+  exportCsv.statusCode === 200 && String(exportCsv.headers['content-type']).startsWith('text/csv') && String(exportCsv.body).startsWith('\uFEFF') && exportCsvBody.split('\n')[0].startsWith('id,title'),
+  exportCsvBody.slice(0, 60),
+)
+
+const resetOnboarding = await callJson(editorRoutes('/onboarding'), 'POST', { reset: true })
+check('POST /onboarding {reset} 返回 202', resetOnboarding.statusCode === 202, resetOnboarding.body)
+const editorStatus = await callGet(editorRoutes(''))
+const editorStatusBody = JSON.parse(editorStatus.body || '{}')
+check('重置后 /status 的 onboarding.completed=false', editorStatusBody.onboarding?.completed === false, JSON.stringify(editorStatusBody.onboarding))
+
+const presetDisable = await callJson(editorRoutes('/config/preset'), 'POST', { enable: false })
+check('POST /config/preset 无 preset 条目时返回 501', presetDisable.statusCode === 501, presetDisable.body)
+try { await editorFiber.dispose() } catch {}
+
 await fiber.dispose()
 check('卸载后 /embody 与 /ctx 注销', !commands.definitions.has('embody') && !commands.definitions.has('ctx'), [...commands.definitions.keys()].join(','))
 await root.fiber.dispose()
@@ -412,6 +559,7 @@ check('settings.section 组件是函数', typeof client.slotRegistrations[0]?.co
   check('没有 connection 时状态路由 403（失败关闭）', denied.statusCode === 403 && String(denied.body) === 'forbidden', JSON.stringify({ code: denied.statusCode, body: denied.body }))
   try { await soloFiber.dispose() } catch {}
 }
+
 
 try {
   rmSync(testHome, { recursive: true, force: true })

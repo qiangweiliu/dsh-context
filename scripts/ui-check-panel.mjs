@@ -74,6 +74,11 @@ const info = await evaluate(`(() => {
     bodyTextLen: (document.body.innerText || '').length,
     bodySample: norm(document.body.innerText).slice(0, 200),
     version: document.querySelector('[data-embodiment-version]')?.getAttribute('data-embodiment-version') || null,
+    // 插件挂载后写在 window 上的探针（Desktop 的 CDP 拿不到面板 DOM，靠这个断言）。
+    probe: (() => {
+      const marker = window.__agentEmbodiment
+      return marker ? { version: marker.version, panelId: marker.panelId, slots: marker.slots?.length ?? 0, mountedAt: marker.mountedAt } : null
+    })(),
   }
 })()`)
 

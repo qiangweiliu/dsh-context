@@ -216,6 +216,36 @@ if (overview) {
   check('余额 dock 渲染失败时也不会抛错', balanceError === null, balanceError ? String(balanceError.message) : null)
 }
 
+// 模型价格：峰谷两档必须能往返。
+// 回归背景：0.27.0 让配置层支持 peak/offPeak，但面板只映射平档，保存一次就把 yml 里配好的峰谷价抹平。
+{
+  const react = makeReact()
+  const loaded = loadClient(source, { react })
+  for (const inject of loaded.slotInjects) inject.callback()
+  const marker = loaded.window.__agentEmbodiment
+  const declaredVersion = source.match(/CLIENT_VERSION\s*=\s*'([^']+)'/u)?.[1]
+  check('挂载后在 window 上留下探针，版本与 CLIENT_VERSION 一致', Boolean(marker && declaredVersion && marker.version === declaredVersion), { marker: marker?.version, declaredVersion })
+  const helpers = marker?.helpers
+  check('探针暴露 pricing helpers', Boolean(helpers && typeof helpers.pricingDraft === 'function' && typeof helpers.pricingPayload === 'function'))
+  if (helpers) {
+    const sourceRows = [{ match: 'deepseek', input: 1, cacheRead: 2, cacheWrite: 3, output: 4, peak: { input: 5, output: 6 }, offPeak: { input: 7, output: 8 } }]
+    const draft = helpers.pricingDraft(sourceRows)
+    check('草稿保留峰谷两档', draft[0].peakInput === '5' && draft[0].peakOutput === '6' && draft[0].offPeakInput === '7' && draft[0].offPeakOutput === '8', draft[0])
+    const roundTrip = helpers.pricingPayload(draft)
+    check(
+      '往返后峰谷两档仍在（回归：面板保存曾抹掉峰谷价）',
+      roundTrip.incomplete === false && roundTrip.rows[0].peak?.input === 5 && roundTrip.rows[0].peak?.output === 6 && roundTrip.rows[0].offPeak?.input === 7 && roundTrip.rows[0].offPeak?.output === 8,
+      roundTrip.rows[0],
+    )
+    const plain = helpers.pricingPayload(helpers.pricingDraft([{ match: 'x', input: 1, output: 2 }]))
+    check('未配峰谷时不写入空档', plain.rows[0].peak === undefined && plain.rows[0].offPeak === undefined, plain.rows[0])
+    const half = helpers.pricingPayload([{ match: 'x', input: '1', output: '2', peakInput: '5', peakOutput: '', offPeakInput: '', offPeakOutput: '' }])
+    check('峰谷只填一半时报 incomplete 而非静默丢弃', half.incomplete === true && half.rows.length === 0, half)
+    const blanked = helpers.pricingPayload([{ match: 'x', input: '1', output: '2', peakInput: '', peakOutput: '', offPeakInput: '', offPeakOutput: '' }])
+    check('清空峰谷两档即回到全天同价', blanked.incomplete === false && blanked.rows[0].peak === undefined && blanked.rows[0].offPeak === undefined, blanked.rows[0])
+  }
+}
+
 const failed = checks.filter((item) => !item.ok)
 console.log(`\n[render] ${checks.length - failed.length}/${checks.length} 项通过`)
 if (failed.length > 0) {

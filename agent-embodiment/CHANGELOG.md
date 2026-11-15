@@ -2,6 +2,22 @@
 
 格式参考 Keep a Changelog；版本遵循 SemVer。DSH 兼容版本写在每个条目的 Compatibility 下。
 
+## [0.30.0] - 2026-11-15
+
+### Fixed
+
+- **面板保存模型价格会抹掉峰谷价**（0.27.0 引入）：价格卡的 `useEffect` 只映射 `match/input/cacheRead/cacheWrite/output`，`peak`/`offPeak` 被丢弃；由于 `POST /config` 整段替换 `modelPricing`，用户在面板点一次「保存」就会把 yml 里配好的峰谷价静默拍平成全天同价。
+  - 价格行改为「平档 + 峰谷两档」两组输入框，`pricingDraft()` / `pricingPayload()` 抽出为纯函数并按原样往返；峰谷每档需 input+output 成对填写，只填一半会提示 `pricingBandIncomplete` 而不是静默丢弃；两档都留空即回到全天同价。
+
+### Added
+
+- **Desktop 验收探针**：client 挂载后在 `window.__agentEmbodiment` 写下 `{ version, panelId, slots, mountedAt, helpers }`。Desktop 的 CDP 只有 inspector target、拿不到面板 DOM，从此可用一条 `Runtime.evaluate` 断言「版本 + 是否挂载成功」；`scripts/ui-check-panel.mjs` 已输出 `probe` 字段。
+
+### Tests
+
+- 单元 430（render 29→36：新增 7 项价格往返与探针断言）、集成 **103**（smoke 78→103）。
+- 覆盖此前零测试的路由：`GET /export`（JSON / CSV，含 BOM 与缺 `sessionQuery` 时 503 失败关闭）、`POST /config`（无 editor 501 分支 + 有 editor 时 202 且**峰谷两档保留** + `holidays` 校验）、`POST /config/preset`、`POST /data/reset`、`POST /onboarding`、`POST /inventory/toggle`（含全局提示词开关被拒）、`POST /inventory/prompt/reset`、`POST /inventory/extra-prompt`(+reset)。新增隔离 Cordis 上下文（`MockConfigEditor` + `MockSessionQuery`）专门测成功路径。
+
 ## [0.29.1] - 2026-11-15
 
 ### Removed

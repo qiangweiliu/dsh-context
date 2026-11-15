@@ -66,3 +66,21 @@
 | 会话读取超时 | 0.24.1 起通过 `AbortSignal` 取消底层读取，超时不再遗留会话观察 |
 | 剩余风险 | 有 `webServer` 但无 `connection` 的自定义组合下路由放行（按 headless 设计）；独立安全审查仍未做，1.0 前需补 |
 
+## 7. 0.32.0 增量复核（2026-11-15）
+
+0.24.1 → 0.32.0 一共加了 1 条写路由、1 个配置面、1 个浏览器侧探针，并把状态目录改成尊重 `DSH_HOME`。逐项结论：
+
+| 项 | 结论 |
+| --- | --- |
+| 新写路由 `POST /status/session-budget` | 经 `authed`；只接受 `application/json`；`tokens` 必须是正数或 `null`（清除），非法值 400、缺 `sessionId` 400；`null` 走幂等的 `clearSessionBudget`；只在进程内 `overrides`（上限 200）生效，不落盘、重启即失效 |
+| 节假日配置 `holidays` / `holidaysIgnoreBuiltin` | 只经 `POST /config` 与 `cordis.patch.yml` 写入；校验为 `YYYY-MM-DD` 字符串数组（≤400，去重排序）+ 布尔；非法值 400 且不写盘；不产生网络请求，只是本地判定峰谷 |
+| 峰谷价 `modelPricing[].peak/offPeak` | 同样是配置面；面板价格卡保存时按原样往返（0.30.0 修掉过「保存抹平峰谷价」的回归）；单价上限由 `rateBand` 校验，非法值拒绝整份补丁 |
+| `window.__agentEmbodiment` 探针 | 只写本页 `window`，含 `version / panelId / slots / mountedAt / helpers`；不含会话内容、token 或路径；`helpers` 是两个纯函数（价格行往返），供 CDP 断言与测试复用。**这是新增的浏览器侧可读面**，第三方脚本同页可读，但信息等价于已渲染的版本号 |
+| 状态目录尊重 `DSH_HOME` | `resolveStateRoots` 让状态与 profile 识别跟随 `DSH_HOME`；隔离实例不再读真实 home 的 `profiles`、也不往真实 home 写（0.32.0 修，见 EVIDENCE E41）。副作用：`DSH_HOME` 指向共享目录时多实例会共享状态，这与 DSH 自身语义一致 |
+| 脚手架路径守卫 | 与状态根同源（`STATE_ROOTS.home/dshHome`），仍拒绝文件系统根、home 及其祖先、系统目录、`$DSH_HOME`、常见凭据目录；逐文件校验不逃逸 `targetDir`；默认拒绝覆盖 |
+| 导出二次确认 | JSON/CSV 含本机绝对路径（`cwd`），面板改为确认后再触发下载，避免误点即落盘 |
+| 写后回读 `?fresh=1` | 绕过 `/status` 的 800ms 缓存读最新值；只影响读取，不改变写操作语义 |
+| 测试面 | 新增 `MockConfigEditor` / `MockSessionQuery` 隔离上下文，覆盖 `POST /config`、`/export`、`/data/reset`、`/onboarding`、`/extra-prompt` 等此前零覆盖的写路由（smoke 78→103） |
+| 剩余风险 | ①仍无独立第三方安全审查（1.0 前必补）；②`window` 探针为新增可读面，若将来放入更敏感字段需重新评估；③`holidays` 允许 400 条，配置补丁 16KB 上限足够，但极端长数组仍会整份替换 `modelPricing` 之外的配置段——写入前仍有自动备份（30 份）兜底 |
+
+

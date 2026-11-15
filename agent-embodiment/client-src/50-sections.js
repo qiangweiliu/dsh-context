@@ -516,6 +516,11 @@
       if (insight.id === 'compaction-failures') return t('insightCompactionFailures').replace('{count}', String(count))
       if (insight.id === 'unknown-pricing') return t('insightUnknownPricing').replace('{sessions}', String(values.sessions || 0)).replace('{tokens}', tokens)
       if (insight.id === 'cost-outlier') return t('insightCostOutlier').replace('{title}', values.title || shortSessionId(values.sessionId || '')).replace('{multiple}', (Number(values.multiple) || 0).toFixed(1)).replace('{cost}', formatCost(values.cost))
+      if (insight.id === 'pricing-stale') return t('insightPricingStale').replace('{days}', String(values.days ?? 0)).replace('{threshold}', String(values.thresholdDays ?? 0))
+      if (insight.id === 'cache-hit-low') return t('insightCacheLow').replace('{share}', formatPercent(values.share, 0)).replace('{tokens}', compactTokens(values.tokens || 0))
+      if (insight.id === 'near-limit-not-compacted') return t('insightNotCompacted').replace('{share}', formatPercent(values.ratio, 0)).replace('{tokens}', compactTokens(values.tokens || 0)).replace('{budget}', compactTokens(values.budget || 0))
+      if (insight.id === 'budget-unconfirmed') return t('insightBudgetUnconfirmed').replace('{tokens}', compactTokens(values.tokens || 0))
+      if (insight.id === 'analytics-truncated') return t('insightAnalyticsTruncated').replace('{scanned}', String(values.scanned ?? 0)).replace('{total}', String(values.total ?? 0))
       return ''
     }
 

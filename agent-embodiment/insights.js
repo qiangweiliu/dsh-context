@@ -181,11 +181,59 @@ export function buildInsights(input = {}) {
     }
   }
 
-  // 首次运行状态由面板的 Onboarding 卡单独承担，不在这里重复成一张洞察卡。
-  void onboarding
-  void budget
+  // 8) 缓存命中率低：系统提示词前缀不稳定（含时间戳 / 会话 id / 随机量）会让每次请求都 miss 前缀缓存。
+  const hitSessions = sessions.filter((session) => typeof session.cacheHit === 'number' && Number.isFinite(session.cacheHit) && positive(session.tokens))
+  if (hitSessions.length >= 3) {
+    const hitTokens = sumBy(hitSessions, (session) => session.tokens)
+    const weighted = sumBy(hitSessions, (session) => session.cacheHit * number(session.tokens)) / (hitTokens || 1)
+    if (hitTokens >= 200000 && weighted < 0.3) {
+      results.push({
+        id: 'cache-hit-low',
+        severity: 'info',
+        values: { share: weighted, sessions: hitSessions.length, tokens: hitTokens },
+        action: { tab: 'settings', anchor: 'config' },
+      })
+    }
+  }
 
-  return results.slice(0, 7)
+  // 9) 已接近错误线但该会话从未压缩过：触发线可能太靠后，或者压缩没真正生效。
+  const budgetTokens = number(budget.tokens)
+  const errorAt = number(budget.errorAt) || 0.9
+  const currentTokens = number(latest && latest.totalTokens)
+  const compactedSessions = new Set(logs.map((entry) => entry && entry.sessionId).filter(Boolean))
+  const latestId = latest && typeof latest.id === 'string' ? latest.id : null
+  if (budgetTokens > 0 && currentTokens > 0 && currentTokens / budgetTokens >= Math.max(0, errorAt - 0.05) && (!latestId || !compactedSessions.has(latestId))) {
+    results.push({
+      id: 'near-limit-not-compacted',
+      severity: 'warn',
+      values: { ratio: currentTokens / budgetTokens, tokens: currentTokens, budget: budgetTokens, errorAt },
+      action: { tab: 'settings', anchor: 'config' },
+    })
+  }
+
+  // 10) 预算一直没确认：所有比例提醒都建立在默认 128k 上，可能整体失真。
+  if (onboarding.budgetConfirmed !== true && sessions.length > 0 && budgetTokens > 0) {
+    results.push({
+      id: 'budget-unconfirmed',
+      severity: 'info',
+      values: { tokens: budgetTokens, sessions: sessions.length },
+      action: { tab: 'settings', anchor: 'config' },
+    })
+  }
+
+  // 11) 分析窗口被 limit 截断：结论只覆盖最近一部分会话，别当成全量。
+  const coverage = analytics.coverage && typeof analytics.coverage === 'object' ? analytics.coverage : null
+  if (coverage && number(coverage.scanned) > 0 && number(coverage.total) > number(coverage.scanned)) {
+    results.push({
+      id: 'analytics-truncated',
+      severity: 'info',
+      values: { scanned: number(coverage.scanned), total: number(coverage.total), limit: number(coverage.limit) },
+      action: { tab: 'trend' },
+    })
+  }
+
+  // 首次运行状态由面板的 Onboarding 卡单独承担，不在这里重复成一张洞察卡。
+  return results.slice(0, 10)
 }
 
 /**

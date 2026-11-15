@@ -2,6 +2,25 @@
 
 格式参考 Keep a Changelog；版本遵循 SemVer。DSH 兼容版本写在每个条目的 Compatibility 下。
 
+## [0.33.0] - 2026-11-15
+
+### Added
+
+- **4 条新洞察规则**（共 11 条，卡片上限 7 → 10）：
+  - `cache-hit-low`：加权前缀缓存命中 < 30% 且样本 ≥ 20 万 tokens —— 提示系统提示词前缀不稳定（时间戳/会话 id/随机量会让每次请求都 miss 缓存）。
+  - `near-limit-not-compacted`：当前会话已到 `errorAt - 5%` 却从未出现在压缩日志里 —— 提示触发线太靠后或控制行没生效。
+  - `budget-unconfirmed`：预算从未确认但已有会话 —— 所有比例提醒都建立在默认 128k 上。
+  - `analytics-truncated`：`coverage.scanned < coverage.total` —— 结论只覆盖最近一部分会话。
+- 补齐 `pricing-stale` 在面板上的文案分支（此前 id 有、文案空，卡片会出现空白行）；新增 5 个词典键（en/zh）。
+
+### Docs
+
+- `docs/security-audit.md` 增加 **0.32.0 增量复核**：新写路由 `session-budget`、`holidays` 配置面、`modelPricing` 峰谷两档、`window.__agentEmbodiment` 探针（新增浏览器可读面，已评估等价于版本号）、`DSH_HOME` 状态目录、脚手架守卫同源、导出二次确认、`?fresh=1` 回读，以及三条剩余风险。
+
+### Tests
+
+- 单元 455（insights 20→29：4 条新规则的触发/不触发、卡片上限 10）。
+
 ## [0.32.0] - 2026-11-15
 
 ### Fixed

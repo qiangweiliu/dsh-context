@@ -47,7 +47,7 @@ check('重复压缩生成洞察', ids.includes('repeated-compaction') && base.fi
 check('压缩失败优先生成洞察', ids.includes('compaction-failures') && base.find((item) => item.id === 'compaction-failures').severity === 'warn', base.find((item) => item.id === 'compaction-failures'))
 check('未知价格生成洞察', ids.includes('unknown-pricing') && base.find((item) => item.id === 'unknown-pricing').values.sessions === 1, base.find((item) => item.id === 'unknown-pricing'))
 check('费用异常会话生成洞察', ids.includes('cost-outlier') && base.find((item) => item.id === 'cost-outlier').values.sessionId === 'a', base.find((item) => item.id === 'cost-outlier'))
-check('洞察最多 7 条且 id 不重复', base.length <= 7 && new Set(ids).size === ids.length, ids)
+check('洞察最多 10 条且 id 不重复', base.length <= 10 && new Set(ids).size === ids.length, ids)
 
 // 价格表时效：超过 30 天提示，未超时/字段缺失都不提示。
 const stale = buildInsights({
@@ -116,6 +116,52 @@ const holidayCovered = buildHealth({
 })
 check('补充日期后 holidays 检查通过', holidayCovered.checks.find((item) => item.id === 'holidays')?.ok === true, holidayCovered.checks)
 check('未传 holidays 时不产生该检查项', noPreset.checks.every((item) => item.id !== 'holidays'), noPreset.checks.map((item) => item.id))
+
+// ── 新增规则：缓存命中 / 贴近线未压缩 / 预算未确认 / 分析窗口截断 ──
+const insightIds = (list) => list.map((item) => item.id)
+
+const cacheSessions = [
+  { id: 'a', tokens: 120000, cacheHit: 0.1, cost: 1 },
+  { id: 'b', tokens: 130000, cacheHit: 0.12, cost: 1 },
+  { id: 'c', tokens: 140000, cacheHit: 0.15, cost: 1 },
+]
+check('缓存命中低时给出 cache-hit-low', insightIds(buildInsights({ analytics: { sessions: cacheSessions } })).includes('cache-hit-low'))
+const warmSessions = cacheSessions.map((session) => ({ ...session, cacheHit: 0.8 }))
+check('缓存命中高时不提示', !insightIds(buildInsights({ analytics: { sessions: warmSessions } })).includes('cache-hit-low'))
+
+const nearLimit = buildInsights({
+  analytics: { sessions: [{ id: 's1', tokens: 1000, cost: 1 }] },
+  latest: { id: 's1', totalTokens: 120000 },
+  budget: { tokens: 128000, errorAt: 0.9 },
+})
+check('贴近错误线且从未压缩时提示 near-limit-not-compacted', insightIds(nearLimit).includes('near-limit-not-compacted'))
+const compacted = buildInsights({
+  analytics: { sessions: [{ id: 's1', tokens: 1000, cost: 1 }] },
+  latest: { id: 's1', totalTokens: 120000 },
+  budget: { tokens: 128000, errorAt: 0.9 },
+  logs: [{ sessionId: 's1', outcome: 'success' }],
+})
+check('已压缩过就不再提示', !insightIds(compacted).includes('near-limit-not-compacted'))
+
+check(
+  '预算未确认且有会话时提示 budget-unconfirmed',
+  insightIds(buildInsights({ analytics: { sessions: [{ id: 's1', tokens: 1000 }] }, budget: { tokens: 128000 }, onboarding: {} })).includes('budget-unconfirmed'),
+)
+check(
+  '预算已确认时不提示',
+  !insightIds(buildInsights({ analytics: { sessions: [{ id: 's1', tokens: 1000 }] }, budget: { tokens: 128000 }, onboarding: { budgetConfirmed: true } })).includes('budget-unconfirmed'),
+)
+
+check(
+  '分析窗口被截断时提示 analytics-truncated',
+  insightIds(buildInsights({ analytics: { sessions: [], coverage: { scanned: 40, total: 120, limit: 40 } } })).includes('analytics-truncated'),
+)
+check(
+  '未截断时不提示',
+  !insightIds(buildInsights({ analytics: { sessions: [], coverage: { scanned: 40, total: 40, limit: 40 } } })).includes('analytics-truncated'),
+)
+
+check('洞察结果最多 10 条', buildInsights({ analytics: { sessions: cacheSessions }, latest: { id: 'a', totalTokens: 120000 }, budget: { tokens: 128000 }, onboarding: {}, logs: [] }).length <= 10)
 
 const failed = checks.filter((item) => !item.ok)
 console.log(`\n[insights] ${checks.length - failed.length}/${checks.length} 项通过`)

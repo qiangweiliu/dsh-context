@@ -21,7 +21,7 @@ window.__ModuleLoader__.load({
 
     const NS = 'agentEmbodiment'
     /** 与 package.json 版本保持一致；宿主版本不同时提示刷新页面而不是重启 DSH。 */
-    const CLIENT_VERSION = '0.32.0'
+    const CLIENT_VERSION = '0.33.0'
     /**
      * API 路径必须相对页面 base 解析，而不是写死根路径：
      * 反向代理部署在 /app/dsh/ 这类前缀下时，根路径 /api/... 会打到网关根并 404。
@@ -263,6 +263,11 @@ window.__ModuleLoader__.load({
       insightCompactionFailures: '{count} compaction failures. Open Events for the error and retry command.',
       insightUnknownPricing: '{sessions} sessions have no price ({tokens} tokens). Add a model price to include them.',
       insightCostOutlier: '{title} costs {multiple}× the median session ({cost}). Open it to see why.',
+      insightPricingStale: 'Built-in prices are {days} days old (refresh cadence {threshold} days); cost and savings estimates drift silently.',
+      insightCacheLow: 'Prefix cache hit is only {share} across {tokens} tokens — the system prompt prefix is probably unstable (timestamps, session ids, random values).',
+      insightNotCompacted: 'This session is already at {share} of budget ({tokens} / {budget}) but has never been compacted — check the trigger line or whether compaction is mounted.',
+      insightBudgetUnconfirmed: 'Budget was never confirmed, so all ratios are estimated against the default {tokens}.',
+      insightAnalyticsTruncated: 'Analytics only covers the newest {scanned} of {total} sessions; widen the limit before drawing conclusions.',
       insightOpen: 'Open',
       insightsEmpty: 'No actionable issues in the scanned range.',
       savingsTitle: 'Context reduction (est.)',
@@ -599,6 +604,11 @@ window.__ModuleLoader__.load({
       insightCompactionFailures: '{count} 次压缩失败。到事件页查看原因和重试命令。',
       insightUnknownPricing: '{sessions} 个会话没有价格（{tokens} tokens）。补充模型价格后可计入费用。',
       insightCostOutlier: '{title} 的费用是中位数的 {multiple} 倍（{cost}）。打开看看原因。',
+      insightPricingStale: '内置价目已 {days} 天未更新（刷新周期 {threshold} 天），费用与节省估算会静默偏差。',
+      insightCacheLow: '前缀缓存命中只有 {share}（{tokens} tokens）——系统提示词前缀可能不稳定（时间戳、会话 id、随机量）。',
+      insightNotCompacted: '本会话已到预算的 {share}（{tokens} / {budget}）却从未压缩——检查触发线或控制行是否挂载。',
+      insightBudgetUnconfirmed: '预算尚未确认，所有比例都按默认 {tokens} 估算。',
+      insightAnalyticsTruncated: '分析只覆盖最近 {scanned} / {total} 个会话，得出结论前先放宽上限。',
       insightOpen: '查看',
       insightsEmpty: '当前范围内没有需要处理的问题。',
       savingsTitle: '上下文减少（估算）',
@@ -3143,6 +3153,11 @@ window.__ModuleLoader__.load({
       if (insight.id === 'compaction-failures') return t('insightCompactionFailures').replace('{count}', String(count))
       if (insight.id === 'unknown-pricing') return t('insightUnknownPricing').replace('{sessions}', String(values.sessions || 0)).replace('{tokens}', tokens)
       if (insight.id === 'cost-outlier') return t('insightCostOutlier').replace('{title}', values.title || shortSessionId(values.sessionId || '')).replace('{multiple}', (Number(values.multiple) || 0).toFixed(1)).replace('{cost}', formatCost(values.cost))
+      if (insight.id === 'pricing-stale') return t('insightPricingStale').replace('{days}', String(values.days ?? 0)).replace('{threshold}', String(values.thresholdDays ?? 0))
+      if (insight.id === 'cache-hit-low') return t('insightCacheLow').replace('{share}', formatPercent(values.share, 0)).replace('{tokens}', compactTokens(values.tokens || 0))
+      if (insight.id === 'near-limit-not-compacted') return t('insightNotCompacted').replace('{share}', formatPercent(values.ratio, 0)).replace('{tokens}', compactTokens(values.tokens || 0)).replace('{budget}', compactTokens(values.budget || 0))
+      if (insight.id === 'budget-unconfirmed') return t('insightBudgetUnconfirmed').replace('{tokens}', compactTokens(values.tokens || 0))
+      if (insight.id === 'analytics-truncated') return t('insightAnalyticsTruncated').replace('{scanned}', String(values.scanned ?? 0)).replace('{total}', String(values.total ?? 0))
       return ''
     }
 

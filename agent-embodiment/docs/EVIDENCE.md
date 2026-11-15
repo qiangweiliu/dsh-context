@@ -505,6 +505,13 @@ npm 运行依赖：无；生命周期脚本：无
   - 真实 home 的 `~/.dsh/agent-embodiment/profiles/web/` 文件时间仍是 **11-14**，即本次运行没有再写进去（旧残留，修复前留下的）。
   - 面板：`tabs=4`、`version=0.32.0`、probe 版本一致、0 error / 0 exception。
 
+## E42. v0.33.0 洞察规则扩展与安全复核（2026-11-15）
+
+- 新增 4 条洞察规则（`cache-hit-low` / `near-limit-not-compacted` / `budget-unconfirmed` / `analytics-truncated`），卡片上限 7 → 10；`test/insights.mjs` 20→29 项，覆盖「触发」与「不触发」两侧。
+- 发现并修掉一个既有缺口：`pricing-stale` 有 id 但面板 `insightText` 没有分支，卡片会渲染空文本；补上文案并新增 5 个词典键。
+- `docs/security-audit.md` 增加 0.32.0 增量复核章节：新写路由 `POST /status/session-budget`（仅进程内、上限 200、不落盘）、`holidays` 与 `modelPricing[].peak/offPeak` 配置面的校验与体积上限、`window.__agentEmbodiment` 探针的暴露面评估、`DSH_HOME` 语义变化（共享目录会共享状态，与 DSH 一致）、脚手架守卫与状态根同源、导出二次确认、`?fresh=1` 只影响读取。剩余风险列了三条。
+- 测试：单元 455（insights 29）、集成 169、lint 0。
+
 ## 已知限制（unknown）
 
 - 未进行独立安全审计；本文件不声称“安全通过”。

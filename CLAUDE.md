@@ -32,7 +32,7 @@ node test/profile.mjs       # profile 识别、状态目录与旧目录迁移
 node test/render.mjs        # 用 mock React 真跑面板组件（行为级，抓 TDZ 这类渲染崩溃）
 ```
 
-当前基线（0.32.0）：client-build 6/6、static 105/105、metrics 66/66、state 26/26、persist 7/7、profile 18/18、scaffold 146/146、insights 20/20、render 36/36、fetch-chain 3/3、mount-guard 7/7、locale-keys 6/6（共 446）；集成 control 55/55、smoke 103/103、prompt-state 11/11（共 169）。
+当前基线（0.33.0）：client-build 6/6、static 105/105、metrics 66/66、state 26/26、persist 7/7、profile 18/18、scaffold 146/146、insights 29/29、render 36/36、fetch-chain 3/3、mount-guard 7/7、locale-keys 6/6（共 455）；集成 control 55/55、smoke 103/103、prompt-state 11/11（共 169）。
 
 CI 在 `.github/workflows/test.yml`：Node 20/22/24 三档跑单元 + `npm run lint`；另有 integration job 从 npm 安装 Cordis（4.0.5 / 4.1.0 两档）跑 control/smoke/prompt-state，不依赖本机 app.asar。两种 job 都带 npm 缓存与 `concurrency` 取消。
 
@@ -64,7 +64,7 @@ npm run lint                # oxlint（devDependency；CI 也跑，0 error）
 ### 版本号同步与 client 构建
 
 ```bash
-node scripts/bump-version.mjs 0.32.0   # package.json / client-src 与 client.js 的 CLIENT_VERSION / README / IMPLEMENTATION 一次改齐
+node scripts/bump-version.mjs 0.33.0   # package.json / client-src 与 client.js 的 CLIENT_VERSION / README / IMPLEMENTATION 一次改齐
 cd agent-embodiment && npm run build:client   # 改过 client-src/ 后必须重建 client.js
 ```
 
@@ -189,7 +189,7 @@ UI 脚本通过 Windows Edge 的 CDP 连接（`scripts/lib/cdp.mjs`，默认 Edg
 - 面板组件必须能真的渲染：`test/render.mjs` 用 mock React 执行 `CtxPanel`，专门抓 TDZ / 未定义变量这类只在渲染时抛错的问题（0.25.0 的面板整块空白就是这么来的）。只加字符串断言不够。
 - **`client.js` 是生成产物**：改 UI 请改 `client-src/` 里的片段，然后跑 `npm run build:client`。`test/client-build.mjs` 会做字节级比对，忘记重建时 CI 直接失败并提示。片段之间共享同一作用域（不是模块），跨片段引用私有函数是可用的，但别在片段里 `import`。
 - `scripts/wsl-verify.sh` 默认 **dry-run**，加 `--apply` 才会安装、`pkill` 同 profile 实例、启动 web；只想跑测试别加 `--apply`。
-- 文档存在少量滞后：`docs/security-audit.md` 的主体仍是 0.21.0 审计（0.24.1 有增量复核章节）；以 `package.json` 的 `engines.dsh` / `dsh.compatibility` 为准。
+- `docs/security-audit.md` 主体是 0.21.0 审计，另有 0.24.1 与 **0.32.0** 增量复核章节；以 `package.json` 的 `engines.dsh` / `dsh.compatibility` 为准。
 - `.probe/` 是本地调试残留，不要提交；`test/deps/` 由 `prepare-deps.mjs` 生成。
 
 ## 文档地图
@@ -197,7 +197,7 @@ UI 脚本通过 Windows Edge 的 CDP 连接（`scripts/lib/cdp.mjs`，默认 Edg
 - `agent-embodiment/README.md`：用户功能与入口。
 - `agent-embodiment/docs/IMPLEMENTATION.md`：实现细节、路由清单、测试结果（最接近架构总览）。
 - `agent-embodiment/docs/LIMITATIONS.md`：行为边界与已知限制。
-- `agent-embodiment/docs/EVIDENCE.md`：逐版本 UI/运行证据（E16–E41 覆盖 0.19–0.32）。
+- `agent-embodiment/docs/EVIDENCE.md`：逐版本 UI/运行证据（E16–E42 覆盖 0.19–0.33）。
 - `agent-embodiment/docs/CORE-FUNCTION-AUDIT.md`：核心功能冲突、实现一致性与 P1/P2 审计结论。
 - `agent-embodiment/docs/RELEASE-PLAN.md`：0.22.0 → 1.0.0 的版本路线图、发布门禁、兼容矩阵与回滚步骤。
 - `agent-embodiment/docs/UI-PROPOSAL.md`：面板信息架构与视觉提案。

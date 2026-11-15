@@ -562,6 +562,14 @@ npm 运行依赖：无；生命周期脚本：无
 - **过程中踩到的坑（已加断言防回归）**：批量替换把 `ctx.inject(['sessions'])` 里的服务名字符串也改成了 `RUNTIME.getSessions()`，导致注入回调不触发 → `connection` 恒为 null → 状态路由返回 403 `forbidden`，smoke 在解析 JSON 时炸掉。`static.mjs` 现在断言 `ctx.inject` 参数里不得出现 `RUNTIME`。
 - 结果：集成 55/115/11 全绿；新增 `test/runtime.mjs` 35 项；单元 573。
 
+## E49. v0.39.0 分析层外置（2026-11-15）
+
+- 目标：搬 `statusHandler` 前，先把它依赖的 `analyticsPayload`（带 5s 短 TTL 缓存）与相关纯函数外置。
+- 风险点与处理：`sessionTimestamp` 的取值优先级是 `lastActivityAt` > `updatedAt` > `createdAt`，且要兼容 `record.header` 与 `record.session.header` 两种形状。第一版实现凭印象写成了 `updatedAt` 优先，发现后改为逐字搬运——这类差异不会报错，只会静默改变会话排序。
+- 顺带修掉 0.38.0 批量迁移留下的两处错误文案（用户可见的 `RUNTIME.getSessionQuery() unavailable…`）。
+- 测试中新发现一个既有行为：`payload.range` 是区间对象而非请求字符串（因为 `...summary` 在赋值之后展开）。按零行为变化保留，并写进单测固定。
+- 结果：`analytics.js`（纯函数 + `createAnalytics`）；集成 55/115/11 全绿；新增 `test/analytics.mjs` 27 项；单元 601。
+
 ## 已知限制（unknown）
 
 - 未进行独立安全审计；本文件不声称“安全通过”。

@@ -2,6 +2,28 @@
 
 格式参考 Keep a Changelog；版本遵循 SemVer。DSH 兼容版本写在每个条目的 Compatibility 下。
 
+## [0.39.0] - 2026-11-15
+
+### Changed
+
+- **跨会话分析外置到 `analytics.js`**（搬 `statusHandler` 前的必要一步）：
+  - 纯函数导出：`parseRange`、`sessionTimestamp`、`sessionsNewestFirst`、`savingsFromLogs`、`ANALYTICS_CACHE_TTL_MS`。
+  - 编排走 `createAnalytics({ getSessionQuery, foldFor, summarizeFolds, readCompactionLog, getPricing, getLimit, readWithTimeout, mapLimit })`，`(range, limit)` 短 TTL 缓存与「折叠失败只记告警」的逻辑原样保留。
+  - `index.js` 只剩 `foldFor` 注入与一行 `const analyticsPayload = (url) => ANALYTICS.payload(url)`；`sessionTimestamp` 的取值优先级（`lastActivityAt` > `updatedAt` > `createdAt`，兼容 `record.session.header`）逐字保留——这一条如果搬错会静默改变会话排序。
+- 修掉 0.38.0 迁移时误改的两条错误文案：`sessionQuery unavailable in this host` 与 `sessionQuery.observeSession unavailable` 曾被替换成 `RUNTIME.getSessionQuery()…`，用户会在面板上看到内部变量名。
+
+### Added
+
+- **`test/analytics.mjs`（27 项）**：区间解析、时间戳优先级与两种 record 形状、倒序且不改入参、节省估算的过滤口径（只算成功且 within range、只累加 before>after）、缓存命中（同 range+limit 不重复 listSessions）、不同 limit 视为不同键、`clearCache` 后重新拉取、limit 上限夹到 200、`limit=0` 回落配置、折叠失败只留告警且最多 5 条、无 `sessionQuery` 抛 503。
+
+### 观察（未改行为）
+
+- `payload.range` 实际是 `summarizeFolds` 返回的区间对象（`{ start, days }`），因为展开 `...summary` 发生在赋值之后；请求参数字符串只体现在缓存键与 `?range=` 里。这是既有行为，本轮按「零行为变化」保留，已在测试里固定，避免以后误以为是字符串。
+
+### Tests
+
+- 单元 573 → **601**（新增 analytics 27、static 107→108）；集成 181 不变；lint 0。
+
 ## [0.38.0] - 2026-11-15
 
 ### Added

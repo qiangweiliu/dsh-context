@@ -23,6 +23,7 @@ import { fileURLToPath } from 'node:url'
 import { detectProfileName, migrateStateFiles, resolveStateRoots, stateDirFor } from './profile.js'
 import { createScaffoldRoutes } from './routes-scaffold.js'
 import { createSessionRoutes } from './routes-session.js'
+import { createAnalytics, sessionsNewestFirst } from './analytics.js'
 import { createRuntime } from './runtime.js'
 
 import {
@@ -61,7 +62,7 @@ import {
   clearSessionBudget,
 } from './state.js'
 
-import { DEFAULT_MODEL_PRICING, PRICING_CURRENCY, PRICING_META, PRICING_SOURCE, PRICING_UPDATED_AT, beijingYear, configureHolidays, csvCell, csvDocument, estimateInputCost, foldSession, holidayInfo, isPeakTime, sessionDetail, summarizeFolds } from './metrics.js'
+import { DEFAULT_MODEL_PRICING, PRICING_CURRENCY, PRICING_META, PRICING_SOURCE, PRICING_UPDATED_AT, beijingYear, configureHolidays, csvCell, csvDocument, foldSession, holidayInfo, isPeakTime, sessionDetail, summarizeFolds } from './metrics.js'
 import { atomicWriteFile, backupFile as backupStateFile, latestBackupJson as latestStateBackup } from './persist.js'
 import { buildHealth, buildInsights } from './insights.js'
 
@@ -668,15 +669,6 @@ export function apply(ctx, config) {
    * 会话列表的排序键。sessionQuery 的 header 只有 createdAt；如果宿主/未来版本
    * 提供 updatedAt/lastActivityAt，优先用更接近“最近活动”的字段。
    */
-  const sessionTimestamp = (record) => {
-    const header = record?.header ?? record?.session?.header ?? record
-    const value = header?.lastActivityAt ?? header?.updatedAt ?? header?.createdAt ?? record?.updatedAt ?? record?.createdAt
-    return Number.isFinite(value) ? value : 0
-  }
-
-  /** 不依赖 provider 的数组顺序：显式按活动时间倒序。 */
-  const sessionsNewestFirst = (records) => (Array.isArray(records) ? records.slice().sort((left, right) => sessionTimestamp(right) - sessionTimestamp(left)) : [])
-
   const budgetOf = (agent) => budgetFor(sessionIdOf(agent), config.contextWindowTokens)
 
   /** 把一次测量压进内存表，供浏览器设置面板读取。 */
@@ -1188,14 +1180,23 @@ export function apply(ctx, config) {
   const foldCache = new Map()
   const FOLD_CACHE_MAX = 60
   const FOLD_CACHE_TTL_MS = 60000
-  // analytics 结果的短 TTL 缓存：/analytics 与 /insights 在 Overview 同时请求同一范围时命中，
-  // 免去第二次 listSessions + 折叠。
-  const analyticsCache = new Map()
-  const ANALYTICS_CACHE_TTL_MS = 5000
+  // 跨会话分析编排（含 (range,limit) 短 TTL 缓存）在 analytics.js；这里只注入依赖。
+  const ANALYTICS = createAnalytics({
+    getSessionQuery: () => RUNTIME.getSessionQuery(),
+    foldFor: (sessionId, header, ttlMs) => observeFold(sessionId, header, ttlMs),
+    summarizeFolds,
+    readCompactionLog: () => listCompactionLog(),
+    getPricing: () => effectivePricing,
+    getLimit: () => config.analyticsLimit,
+    readWithTimeout,
+    mapLimit,
+  })
+  const analyticsPayload = (url) => ANALYTICS.payload(url)
+
   const observeFold = async (sessionId, header, ttlMs = FOLD_CACHE_TTL_MS) => {
     const cached = foldCache.get(sessionId)
     if (cached && Date.now() - cached.at < ttlMs) return cached.fold
-    if (!RUNTIME.getSessionQuery() || typeof RUNTIME.getSessionQuery().observeSession !== 'function') throw new Error('RUNTIME.getSessionQuery().observeSession unavailable')
+    if (!RUNTIME.getSessionQuery() || typeof RUNTIME.getSessionQuery().observeSession !== 'function') throw new Error('sessionQuery.observeSession unavailable')
     const observation = await readWithTimeout((signal) => RUNTIME.getSessionQuery().observeSession(sessionId, { projectionMode: 'none', signal }), 4000, 'observeSession')
     try {
       const fold = foldSession(observation.header ?? header, observation.events ?? [], effectivePricing)
@@ -1207,75 +1208,6 @@ export function apply(ctx, config) {
       const dispose = typeof observation[Symbol.dispose] === 'function' ? observation[Symbol.dispose] : null
       if (dispose) dispose.call(observation)
     }
-  }
-
-  const parseRange = (value) => {
-    if (value === 'today') return 1
-    if (value === '30d') return 30
-    if (value === 'all') return 3650
-    return 7
-  }
-
-  /** 压缩日志里 before→after 的差值，按 Flash 输入价折算成“单次上下文减少”的估算。 */
-  const savingsFromLogs = (logs, start, pricingRows) => {
-    const picked = (Array.isArray(logs) ? logs : []).filter((entry) => {
-      if (!entry || entry.outcome !== 'success') return false
-      const at = Date.parse(entry.at)
-      return Number.isFinite(at) && at >= start
-    })
-    let tokens = 0
-    for (const entry of picked) {
-      const before = Number(entry.before)
-      const after = Number(entry.after)
-      if (Number.isFinite(before) && Number.isFinite(after) && before > after) tokens += before - after
-    }
-    const estimatedCost = estimateInputCost(tokens, 'deepseek-v4.1-flash', pricingRows)
-    return {
-      compactions: picked.length,
-      tokens,
-      estimatedCost,
-      currency: PRICING_CURRENCY,
-      method: 'compaction before-after at Flash input rate; one context reduction per event',
-    }
-  }
-
-  const analyticsPayload = async (url) => {
-    if (!RUNTIME.getSessionQuery() || typeof RUNTIME.getSessionQuery().listSessions !== 'function') {
-      const error = new Error('RUNTIME.getSessionQuery() unavailable in this host')
-      error.statusCode = 503
-      throw error
-    }
-    const days = parseRange(url.searchParams.get('range'))
-    const limit = Math.min(200, Math.max(1, Number(url.searchParams.get('limit')) || config.analyticsLimit))
-    // Overview 打开时会同时请求 /analytics 与 /insights，两条路由都走这里；用短 TTL 缓存
-    // 同一 (range,limit) 的结果，让第二次请求直接命中，避免重复 listSessions + 折叠 + 排序。
-    const cacheKey = `${url.searchParams.get('range') ?? '7d'}\u0000${limit}`
-    const cached = analyticsCache.get(cacheKey)
-    if (cached && Date.now() - cached.at < ANALYTICS_CACHE_TTL_MS) return cached.payload
-    const records = await readWithTimeout((signal) => RUNTIME.getSessionQuery().listSessions(signal), 8000, 'listSessions')
-    const list = sessionsNewestFirst(records)
-    const picked = list.slice(0, limit)
-    const warnings = []
-    const folds = await mapLimit(picked, 4, async (record) => {
-      try {
-        return await observeFold(record.header.id, record.header, record.live ? 3000 : 20000)
-      } catch (error) {
-        warnings.push(`${record.header.id}: ${error instanceof Error ? error.message : String(error)}`)
-        return null
-      }
-    })
-    const summary = summarizeFolds(folds.filter(Boolean), { days })
-    const payload = {
-      ok: true,
-      generatedAt: new Date().toISOString(),
-      range: url.searchParams.get('range') ?? '7d',
-      coverage: { total: list.length, scanned: picked.length, withData: folds.filter(Boolean).length, limit },
-      warnings: warnings.slice(0, 5),
-      savings: savingsFromLogs(listCompactionLog(), summary.range.start, effectivePricing),
-      ...summary,
-    }
-    analyticsCache.set(cacheKey, { at: Date.now(), payload })
-    return payload
   }
 
   /** GET /status/analytics?range=7d|30d|all|today&limit=40 —— 近 N 个会话的聚合。 */
@@ -1294,7 +1226,7 @@ export function apply(ctx, config) {
     const send = jsonSender(response)
     if (!requireMethod(request, response, 'GET')) return
     if (!RUNTIME.getSessionQuery() || typeof RUNTIME.getSessionQuery().observeSession !== 'function') {
-      return send(503, { ok: false, error: 'RUNTIME.getSessionQuery() unavailable in this host' })
+      return send(503, { ok: false, error: 'sessionQuery unavailable in this host' })
     }
     const url = requestUrl(request)
     const sessionId = url.searchParams.get('sessionId') || latestSession()?.id

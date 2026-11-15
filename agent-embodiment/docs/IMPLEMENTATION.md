@@ -2,7 +2,7 @@
 
 本文描述 `agent-embodiment` 的内部结构、集成点和验证方式。面向用户的功能说明见 [README.md](../README.md)；约束与已知限制见 [LIMITATIONS.md](LIMITATIONS.md)。
 
-当前版本：`0.34.1`
+当前版本：`0.35.0`
 
 ## 1. 两个半侧
 
@@ -49,6 +49,7 @@
 - `/status/onboarding`（GET 读、POST 记录预算确认/跳过/preset 授权）；
 - `/status/export`（`?format=json|csv`，按当前扫描范围导出）；
 - `/status/data/reset`（清压缩日志 / 会话开关）；
+- `/status/session-budget`（会话级预算覆盖；`tokens: null` 清除；仅进程内，不落盘）；
 - `/status/inventory`；
 - `/status/inventory/toggle`、`/status/inventory/reset`；
 - `/status/inventory/prompt`、`/status/inventory/prompt/reset`；
@@ -293,11 +294,11 @@ fetch-chain    3/3
 mount-guard    7/7
 locale-keys    6/6
 control       55/55
-smoke       103/103
+smoke       115/115
 prompt-state  11/11
 ```
 
-单元共 479 项、集成 169 项。
+单元共 491 项、集成 181 项。
 
 `client.js` 是**生成产物**：源码在 `client-src/`（11 个片段，按功能分：header / 词典 / 样式 / 核心组件 / dock / inventory / sections / charts / scaffold / panel / apply），`npm run build:client` 按固定顺序拼回单文件。DSH 浏览器侧只加载一个 `client.js` 且模块内只能 `require('react')`，所以发布物保持单文件。改完片段必须重新构建，`test/client-build.mjs` 会做字节级比对并在 CI 里失败提示。`test/render.mjs` 用最小 React mock 真正执行 `client.js` 的面板组件（四个 tab、ARIA 关系、键盘切换、卡片级错误边界）；`fetch-chain.mjs` 执行真实的 fetch 链；`mount-guard.mjs` 固定挂载幂等与 HMR 重挂；`locale-keys.mjs` 校验 en/zh 词典与 `t('key')` 调用点一致。
 

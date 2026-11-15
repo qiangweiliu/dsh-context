@@ -20,6 +20,9 @@ const MAX_OVERRIDES = 200
 /** 每个会话键控状态（工具/提示词开关、提示词文本）最多保留多少个会话。 */
 const MAX_SESSION_STATES = 200
 
+/** 最终回退预算：宿主与控制行都没给值时用它。单一定义，供 docs-guard 断言文档一致。 */
+export const FALLBACK_BUDGET_TOKENS = 100000
+
 /** 全局默认预算（token）；宿主半侧 apply 时写入。 */
 let defaultBudget
 
@@ -150,7 +153,7 @@ export function budgetFor(sessionId, fallback) {
   if (typeof override === 'number') return override
   if (controlBudget > 0) return controlBudget
   if (typeof defaultBudget === 'number') return defaultBudget
-  return typeof fallback === 'number' && fallback > 0 ? fallback : 100000
+  return typeof fallback === 'number' && fallback > 0 ? fallback : FALLBACK_BUDGET_TOKENS
 }
 
 /** 控制半侧记录一次自动/手动压缩的结果。 */

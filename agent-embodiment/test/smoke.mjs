@@ -483,6 +483,49 @@ const presetDisable = await callJson(editorRoutes('/config/preset'), 'POST', { e
 check('POST /config/preset 无 preset 条目时返回 501', presetDisable.statusCode === 501, presetDisable.body)
 try { await editorFiber.dispose() } catch {}
 
+// ── 3i. 会话级提示词与会话重置（此前无覆盖）───────────────────────────────
+const sessionPromptRoute = webServer.routes.get('/api/agent-embodiment/status/inventory/prompt/session')
+const sessionPromptResetRoute = webServer.routes.get('/api/agent-embodiment/status/inventory/prompt/session/reset')
+const inventoryResetRoute = webServer.routes.get('/api/agent-embodiment/status/inventory/reset')
+check(
+  '注册 inventory/reset 与会话级提示词路由',
+  [sessionPromptRoute, sessionPromptResetRoute, inventoryResetRoute].every((route) => route?.kind === 'exact'),
+  [sessionPromptRoute, sessionPromptResetRoute, inventoryResetRoute].map((route) => route?.path ?? null),
+)
+
+const stateApi = await import('../state.js')
+const TEST_SESSION = 'smoke-session-1'
+
+const badText = await callJson(sessionPromptRoute, 'POST', { name: 'persona', sessionId: TEST_SESSION })
+check('会话提示词缺 text 返回 400', badText.statusCode === 400, badText.body)
+const noSessionText = await callJson(sessionPromptRoute, 'POST', { name: 'persona', text: 'x' })
+check('会话提示词无 sessionId 且无会话时返回 409', noSessionText.statusCode === 409, noSessionText.body)
+
+const savedText = await callJson(sessionPromptRoute, 'POST', { name: 'persona', text: '你是资深审阅者', sessionId: TEST_SESSION })
+const savedPayload = JSON.parse(savedText.body || '{}')
+check('会话提示词保存返回 202 并回显 sessionId', savedText.statusCode === 202 && savedPayload.sessionId === TEST_SESSION, savedText.body)
+const textMap = () => stateApi.getSessionPromptTextMap(TEST_SESSION)
+check('会话提示词真的写入状态', textMap()?.get('persona') === '你是资深审阅者', textMap() ? [...textMap()] : null)
+
+const resetOne = await callJson(sessionPromptResetRoute, 'POST', { name: 'persona', sessionId: TEST_SESSION })
+check('按 name 清除会话提示词返回 202', resetOne.statusCode === 202, resetOne.body)
+check('清除后该 section 文本消失', textMap()?.get('persona') === undefined, textMap() ? [...textMap()] : null)
+
+await callJson(sessionPromptRoute, 'POST', { name: 'persona', text: 'a', sessionId: TEST_SESSION })
+await callJson(sessionPromptRoute, 'POST', { name: 'tone', text: 'b', sessionId: TEST_SESSION })
+const resetAll = await callJson(sessionPromptResetRoute, 'POST', { sessionId: TEST_SESSION })
+check('不带 name 清除全部会话提示词', resetAll.statusCode === 202 && (textMap()?.size ?? 0) === 0, textMap() ? [...textMap()] : null)
+
+const badLayer = await callJson(inventoryResetRoute, 'POST', { layer: 'bogus', sessionId: TEST_SESSION })
+check('inventory/reset 非法 layer 返回 400', badLayer.statusCode === 400, badLayer.body)
+const noSessionReset = await callJson(inventoryResetRoute, 'POST', { layer: 'session' })
+check('inventory/reset 无会话时返回 409', noSessionReset.statusCode === 409, noSessionReset.body)
+const sessionReset = await callJson(inventoryResetRoute, 'POST', { layer: 'session', sessionId: TEST_SESSION })
+check('inventory/reset {layer:session} 返回 202', sessionReset.statusCode === 202, sessionReset.body)
+const globalReset = await callJson(inventoryResetRoute, 'POST', { layer: 'global', sessionId: TEST_SESSION })
+check('inventory/reset {layer:global} 无 configEditor 时返回 501', globalReset.statusCode === 501, globalReset.body)
+
+
 await fiber.dispose()
 check('卸载后 /embody 与 /ctx 注销', !commands.definitions.has('embody') && !commands.definitions.has('ctx'), [...commands.definitions.keys()].join(','))
 await root.fiber.dispose()

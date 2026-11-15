@@ -2,6 +2,26 @@
 
 格式参考 Keep a Changelog；版本遵循 SemVer。DSH 兼容版本写在每个条目的 Compatibility 下。
 
+## [0.35.0] - 2026-11-15
+
+### Added
+
+- **`test/docs-guard.mjs`（12 项，已接入 `npm test`）**：断言「同一事实抄了多份」的关键常量是否一致——
+  - 版本号：`package.json` ↔ `client.js` / `client-src/00-head.js` 的 `CLIENT_VERSION` ↔ 两份 README ↔ IMPLEMENTATION ↔ CLAUDE 概览
+  - 预算回退值：`state.js` 新增 `FALLBACK_BUDGET_TOKENS` 单一定义 ↔ LIMITATIONS / CLAUDE
+  - 价格表抓取日期：`metrics.PRICING_UPDATED_AT` ↔ IMPLEMENTATION
+  - 路由清单：`index.js` 注册的每条路由都要出现在 IMPLEMENTATION
+  - 兼容矩阵：`dsh.compatibility.dshReleases` 每个版本都要出现在 PERMISSIONS
+  - 无 runtime dependencies
+
+  首次运行立刻抓到两个真实问题：**CLAUDE 概览的版本号停在 0.29.0**、**IMPLEMENTATION 漏了 `/status/session-budget`**——这正是 0.34.0 那 15 处文档滞后的同一类成因。
+- `state.js` 导出 `FALLBACK_BUDGET_TOKENS = 100000`，`budgetFor` 改用它，让「回退预算」只有一个定义可被断言。
+
+### Tests
+
+- 集成 169 → **181**（smoke 103 → 115）：补齐最后 3 条无覆盖路由——`POST /inventory/reset`（非法 layer 400 / 无会话 409 / `layer:session` 202 / `layer:global` 无 `configEditor` 501）、`POST /inventory/prompt/session`（缺 text 400、无会话 409、保存 202 且**真的写进状态**）、`POST /inventory/prompt/session/reset`（按 name 清除、不带 name 全清）。至此 23 条路由**全部有测试引用**。
+  期间修掉两处测试自身问题：新块插在 `fiber.dispose()` 之后导致路由已注销；`getSessionPromptTextMap` 返回 `Map` 而非普通对象，断言要用 `.get/.size`。
+
 ## [0.34.1] - 2026-11-15
 
 ### Docs

@@ -2,6 +2,23 @@
 
 格式参考 Keep a Changelog；版本遵循 SemVer。DSH 兼容版本写在每个条目的 Compatibility 下。
 
+## [0.34.0] - 2026-11-15
+
+### Docs
+
+- **`PERMISSIONS.md` 与 `docs/LIMITATIONS.md` 按 0.33.0 现状复核**（15 处修正），主要滞后项：
+  - 状态路径改成 `$DSH_HOME/agent-embodiment/...`，并写明 0.32.0 起跟随 `DSH_HOME`、共享同一 `DSH_HOME` 时会共享状态。
+  - 修正「插件不读环境变量」的旧说法：现在会读 `DSH_HOME`（仅用于定位目录）。
+  - **修正 403 语义**：原文写「没有 `connection` 服务时不拦截」，实际 0.25.0 起「有 `webServer` 但无 `connection`」一律 403 失败关闭。
+  - 补上节假日：费用改为「法定节假日按平档计价，可用 `holidays` 补充」，并说明健康检查的跨年提醒。
+  - 补上 `modelPricing` 的 `peak`/`offPeak` 两档（原文仍写「自定义行按全天同价」）。
+  - 路由清单、Cordis 服务清单（`sessions` → `sessionQuery`）、`engines.dsh`、`dshReleases`（0.2.2-rc.1 / rc.3 均 `compatible`）同步。
+  - 新增披露：`window.__agentEmbodiment` 浏览器侧只读探针（含暴露面评估）。
+
+### Tests
+
+- `test/scaffold.mjs` 146 → 170 项：为 6 个模板各加 4 条**跨文件引用一致性**断言——skill 双份放置数量一致、每个 bundle skill 都有 `.agents` 副本、SENSES/HANDS/LOOP 不引用未挂载的宿主工具、README 只点名已生成的文件。这类断裂（改名漏文件、文档承诺不存在的工具）此前无覆盖。
+
 ## [0.33.0] - 2026-11-15
 
 ### Added

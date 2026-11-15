@@ -7,10 +7,10 @@
 | 能力 | 是否使用 | 范围 | 权限档位（商城口径） |
 | --- | --- | --- | --- |
 | 文件读取 | 是 | 插件自己的状态文件与 profile patch（只读读取 current 值）；经 `sessionQuery` 读取会话事件日志的派生字段（标题、cwd、模型、工具名、用量）；不扫描宿主包源码 | 有界只读 |
-| 文件写入 | 是 | `~/.dsh/agent-embodiment/` 下自己的状态与备份；profile 的 `cordis.patch.yml` 仅经官方 `configEditor`；Agent 脚手架写入用户指定的工作区目录 | 插件私有状态 + Profile + 工作区 |
+| 文件写入 | 是 | `$DSH_HOME/agent-embodiment/`（默认 `~/.dsh/agent-embodiment/`）下自己的状态与备份；profile 的 `cordis.patch.yml` 仅经官方 `configEditor`；Agent 脚手架写入用户指定的工作区目录 | 插件私有状态 + Profile + 工作区 |
 | 网络 | 仅本机同源 | 宿主已有 Web 服务器上注册 `/api/agent-embodiment/*` 路由；浏览器端只 `fetch` 同源 API | 无外发 |
 | 命令执行 | 否 | 无 `child_process`、无 Shell、无动态执行外部代码 | 无 |
-| 凭据 | 否 | 不读取 API Key、Cookie、Token；插件运行时代码不读取环境变量（`process.env` 只出现在脚手架生成的脚本文本里，插件本身不执行） | 无 |
+| 凭据 | 否 | 不读取 API Key、Cookie、Token；插件运行时只读一个环境变量 `DSH_HOME`（用于定位状态目录与 profile 识别根，0.32.0 起）；其余 `process.env` 只出现在脚手架生成的脚本文本里，插件本身不执行 | 无 |
 | 外部服务 | 否 | 无遥测、无 CDN、无第三方端点、无账号体系 | 无 |
 | Profile / 会话 | 是 | 经 `tokenMeter.measure(session)` 读取用量；经 `sessionQuery.observeSession` 读取会话事件日志用于跨会话统计与导出（只消费标题/cwd/模型/工具/用量等派生字段，不展示、不上传消息正文）；经 `configEditor` 在用户开启自动压缩时写 preset 的一行 | 敏感持久状态（**high**） |
 
@@ -25,8 +25,8 @@
 
 ### 1.2 读写：插件私有状态
 
-- `~/.dsh/agent-embodiment/session-toggles.json`：按会话保存工具/提示词开关、内联提示词文本、`autoMountControl` 标志。
-- `~/.dsh/agent-embodiment/backups/`：每次写入前备份，保留最近 30 份。
+- `$DSH_HOME/agent-embodiment/profiles/<profile>/session-toggles.json`：按会话保存工具/提示词开关、内联提示词文本、`autoMountControl` 标志。
+- `$DSH_HOME/agent-embodiment/profiles/<profile>/backups/`：每次写入前备份，保留最近 30 份。
 - 边界：只写上述路径；不遍历用户目录；不读取消息正文（跨会话统计通过 `sessionQuery.observeSession` 读取事件日志的标题、cwd、模型、工具名与用量等派生字段，fold 过程不保留或输出消息正文）。
 
 ### 1.3 经官方 `configEditor` 写 Profile
@@ -53,7 +53,7 @@
 ## 2. 网络
 
 - **无外发请求**：宿主侧不调用 `fetch`/`http.request` 连接任何外部地址。
-- 宿主侧仅在 DSH 已有 Web 服务器上注册本机路由（`/api/agent-embodiment/status|config|live|inventory|prompt`）。
+- 宿主侧仅在 DSH 已有 Web 服务器上注册本机路由（`/api/agent-embodiment/status` 及子路由：`live`、`analytics`、`session-detail`、`insights`、`onboarding`、`export`、`inventory/*`、`config`、`config/preset`、`data/reset`、`session-budget`、`scaffold/*`）。
 - 浏览器侧 `client.js` 只 `fetch` 同源 API 路径，路径相对 `document.baseURI` 解析，用于读取状态与提交开关/配置；兼容反向代理的路径前缀。
 - 无 CDN、无外部脚本、无遥测、无第三方服务依赖。
 
@@ -61,7 +61,7 @@
 
 - 无 `child_process` / `exec` / `spawn` / Shell 命令。
 - 无凭据读取：不读环境变量、不读凭据文件、不接触 provider API Key。
-- `package.json` 无 `dependencies` 运行依赖；宿主能力全部来自 Cordis 服务（`commands`、`tokenMeter`、`webServer`、`configEditor`、`sessions`）。
+- `package.json` 无 `dependencies` 运行依赖；宿主能力全部来自 Cordis 服务（`commands`、`tokenMeter`；可选 `webServer`、`configEditor`、`sessionQuery`）。
 - 无 `preinstall/install/postinstall/prepare` 生命周期脚本。
 
 ## 4. 已知风险与失败边界
@@ -76,14 +76,15 @@
 ## 5. 兼容性声明
 
 - `engines.node`：`>=20`
-- `engines.dsh`：`>=0.2.0-rc.2 <0.3.0 || 0.2.1-rc.2 || 0.2.1-rc.3`（**只表示安装范围**，不表示逐版本验证过）
-- `dsh.compatibility.dshReleases`：`0.2.0-rc.2`、`0.2.1-rc.2`、`0.2.1-rc.3`、`0.2.1-rc.5` 标为 `compatible`（均为真实安装/启动验证过的宿主版本）；`0.2.2-rc.1` 标为 `unknown`（集成测试通过，待 Desktop 端到端验收）
+- `engines.dsh`：`>=0.2.0-rc.2 <0.3.0`（**只表示安装范围**，不表示逐版本验证过）
+- `dsh.compatibility.dshReleases`：`0.2.0-rc.2`、`0.2.1-rc.2`、`0.2.1-rc.3`、`0.2.1-rc.5`、`0.2.2-rc.1`、`0.2.2-rc.3` 全部标为 `compatible`（真实安装/启动/面板验证过的宿主版本；`0.2.2-rc.1` 为隔离实例验收，见 `docs/EVIDENCE.md` E41）
 - `dsh.compatibility.profiles`：`web`、`desktop`
 
 其他宿主版本未做运行验证，保持 `unknown`，不以范围声明代替真实验收。状态接口的 `compatibility` 字段会把这两层原样下发，面板据此显示“范围满足但未验证”，不把 `unknown` 当成阻断。
 
 ## 6. 状态文件位置
 
-- 0.25.0 起：`~/.dsh/agent-embodiment/profiles/<profile>/`（`session-toggles.json`、`onboarding.json`、`compaction-log.jsonl`、`backups/`）。所属 profile 由「哪个 profile 的依赖指向本插件目录」判定；判定不出来时退回共享目录 `~/.dsh/agent-embodiment/`（旧行为）。
+- 0.25.0 起：`$DSH_HOME/agent-embodiment/profiles/<profile>/`（`session-toggles.json`、`onboarding.json`、`compaction-log.jsonl`、`backups/`），`DSH_HOME` 默认 `~/.dsh`。所属 profile 由「哪个 profile 的依赖指向本插件目录」判定；判定不出来时退回共享目录 `$DSH_HOME/agent-embodiment/`（旧行为）。
+- **0.32.0 起路径跟随 `DSH_HOME`**：隔离实例（`DSH_HOME=/tmp/x dsh --profile y`）只读写自己的 dsh home，不再落到真实 `~/.dsh`（此前会误读真实 home 的 profiles 并写错位置）。副作用：两个实例指向同一 `DSH_HOME` 时会共享状态，这与 DSH 自身语义一致。
 - 首次进入 profile 目录时，会把共享目录里的同名状态文件**复制**过去，不覆盖已有文件、不删除旧文件。
 - 状态路由的鉴权：有 `webServer` 但没有 `connection` 服务时一律 403（失败关闭）；纯 headless（没有 `webServer`）放行以保持 headless 兼容。

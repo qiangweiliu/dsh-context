@@ -77,6 +77,31 @@ for (const template of SCAFFOLD_TEMPLATES) {
   check(`${template.id}: 不含明文 secret`, !/sk-[A-Za-z0-9]{8,}|BEGIN (RSA |EC |OPENSSH )?PRIVATE KEY|password\s*[:=]\s*["'][^"']+/u.test(generated))
   check(`${template.id}: 所有文件路径相对且无穿越`, plan.files.every((file) => !file.path.startsWith('/') && !file.path.split('/').includes('..')), plan.files.map((file) => file.path))
   check(`${template.id}: 安装命令指向 bundle`, plan.installCommand.includes(`.dsh/scaffolds/${slug}`), plan.installCommand)
+
+  // ── 跨文件引用一致性：改名/漏文件时最容易断的就是这些地方 ──
+  const bundleSkills = skills.filter((item) => item.path.includes(`.dsh/scaffolds/${slug}/skills/`))
+  const agentsSkills = skills.filter((item) => item.path.startsWith('.agents/skills/'))
+  check(`${template.id}: skill 双份放置且数量一致`, bundleSkills.length === agentsSkills.length && bundleSkills.length >= 1, { bundleSkills: bundleSkills.length, agentsSkills: agentsSkills.length })
+  const paired = bundleSkills.every((item) => {
+    const name = item.path.split('/').slice(-2)[0]
+    return agentsSkills.some((other) => other.path === `.agents/skills/${slug}-${name}/SKILL.md`)
+  })
+  check(`${template.id}: 每个 bundle skill 都有对应的 .agents 副本`, paired, bundleSkills.map((item) => item.path))
+
+  const docs = ['SENSES.md', 'HANDS.md', 'LOOP.md'].map((name) => fileOf(plan, name).content)
+  const mentioned = new Set(docs.flatMap((text) => [...text.matchAll(/@deepseek-ai\/dsh-[a-z-]+/gu)].map((match) => match[0])))
+  const allowed = new Set([
+    ...template.tools.map((tool) => tool.name),
+    '@deepseek-ai/dsh-agent-preset',
+    '@deepseek-ai/dsh-persona',
+    '@deepseek-ai/dsh-skill-filesystem',
+    '@deepseek-ai/dsh-tool-skill',
+  ])
+  check(`${template.id}: 文档不引用未挂载的宿主工具`, [...mentioned].every((name) => allowed.has(name)), [...mentioned])
+
+  const readme = fileOf(plan, 'README.md').content
+  const referenced = ['SENSES.md', 'HANDS.md', 'LOOP.md', 'AGENTS.snippet.md', 'evals/cases.jsonl'].filter((name) => readme.includes(name))
+  check(`${template.id}: README 只点名已生成的文件`, referenced.length >= 3 && referenced.every((name) => plan.files.some((item) => item.path.endsWith(name))), referenced)
 }
 
 // 自定义名称/slug

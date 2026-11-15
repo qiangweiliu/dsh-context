@@ -512,6 +512,17 @@ npm 运行依赖：无；生命周期脚本：无
 - `docs/security-audit.md` 增加 0.32.0 增量复核章节：新写路由 `POST /status/session-budget`（仅进程内、上限 200、不落盘）、`holidays` 与 `modelPricing[].peak/offPeak` 配置面的校验与体积上限、`window.__agentEmbodiment` 探针的暴露面评估、`DSH_HOME` 语义变化（共享目录会共享状态，与 DSH 一致）、脚手架守卫与状态根同源、导出二次确认、`?fresh=1` 只影响读取。剩余风险列了三条。
 - 测试：单元 455（insights 29）、集成 169、lint 0。
 
+## E43. v0.34.0 文档复核与模板引用一致性（2026-11-15）
+
+- 复核 `PERMISSIONS.md` / `docs/LIMITATIONS.md` 共 15 处滞后，其中两处是**实质性错误**而非措辞：
+  1. LIMITATIONS 写「没有 `connection` 服务时不拦截」，实际 0.25.0 起「有 `webServer` 无 `connection`」为 403 失败关闭——按旧文档会低估鉴权强度。
+  2. PERMISSIONS 写「插件运行时代码不读取环境变量」，0.32.0 起会读 `DSH_HOME` 定位状态目录——按旧文档会漏披露。
+  其余为路径（`~/.dsh` → `$DSH_HOME`）、节假日计价、自定义峰谷价、路由清单、Cordis 服务名（`sessions` → `sessionQuery`）、`engines.dsh` 与 `dshReleases` 的同步。
+- 新增披露 `window.__agentEmbodiment` 探针：只读、含版本与两个价格换算纯函数，不含会话/token/路径。
+- 模板结构校验：`test/scaffold.mjs` 已对 6 个模板逐项断言文件集、patch、skill 元数据、eval 用例与稳定性；本轮补 4 类**跨文件引用**断言（双份 skill 一致性、`.agents` 副本、文档不引用未挂载工具、README 不点名未生成文件），146 → 170 项。
+- 结论：模板的**结构**已有较强保障，缺口在**任务质量**（`eval` 只记录 transcript、不判分），这一点在 LIMITATIONS 里保持如实标注，不能用结构测试代替。
+- 测试：单元 479（scaffold 170）、集成 169、lint 0。
+
 ## 已知限制（unknown）
 
 - 未进行独立安全审计；本文件不声称“安全通过”。

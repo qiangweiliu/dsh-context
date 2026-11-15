@@ -27,13 +27,13 @@ DSH 默认启用 HMR（`dsh-hmr` + `dsh-client-hmr`），因此：
 - `contextWindowTokens` 是插件预算，不改变模型真实窗口。
 - 底部「插件上下文」百分比的分母是插件预算（含会话级覆盖），不是模型窗口；与内置 ContextMeter 的百分比可能不同。
 - 趋势图只取最近 40 次请求；预算离峰值超过 1.6× 时不画预算线，只在右上角显示峰值/预算占比。
-- 费用按请求完成时间判定峰谷（北京时间工作日 09:00–12:00、14:00–18:00），法定节假日未单独扣除；Search/Fetch 未计入，缓存写入按未命中价估算，价格随官方调整可能滞后。
+- 费用按请求完成时间判定峰谷（北京时间工作日 09:00–12:00、14:00–18:00），**法定节假日按平档计价**：内置 2026 年表可用配置 `holidays`（`YYYY-MM-DD` 数组）补充、`holidaysIgnoreBuiltin` 完全接管；内置表没覆盖当前年份时健康检查会提醒（只提醒，不改变 `healthy`）。Search/Fetch 未计入，缓存写入按未命中价估算，价格随官方调整可能滞后。
 - 旧模型名 `deepseek-chat` / `deepseek-reasoner` 沿用旧价，只用于历史会话估算；当前官方 V4.1 Flash / V4 Pro 使用页面抓取的峰谷价。
 - 当预算低于「系统提示 + 工具定义」的基础开销时，压缩无法把用量降到目标线以下。
 - `warnAt` / `errorAt` 只影响显示颜色，不参与自动压缩。
 - 自动压缩依赖 DSH 的 compaction 服务；没有可安全压缩的历史时会跳过。
 - **预算优先级**（0.25.0 起）：会话覆盖（`/embody <tokens>`）> 控制行 `maxContextTokens`（>0 时）> 宿主 `contextWindowTokens` > 100000。控制行的值不再被宿主默认值遮蔽；`budget.source` 会显示 `control` 或 `default`。
-- **状态目录**：`~/.dsh/agent-embodiment/profiles/<profile>/`（0.25.0 起）。识别不出所属 profile 时（例如手工拷贝、路径不是 profile 依赖）退回共享目录 `~/.dsh/agent-embodiment/`，此时同机多 profile 仍会共享开关与引导状态。
+- **状态目录**：`$DSH_HOME/agent-embodiment/profiles/<profile>/`（0.25.0 起；0.32.0 起跟随 `DSH_HOME`，默认 `~/.dsh`）。识别不出所属 profile 时（例如手工拷贝、路径不是 profile 依赖）退回共享目录 `$DSH_HOME/agent-embodiment/`，此时同机多 profile 仍会共享开关与引导状态。
 - **analytics 性能**：纯函数折叠的基线（`node scripts/bench-analytics.mjs`，固定夹具）——40 会话 × 200 事件：P50 6.6ms / P95 12.4ms / RSS 46MB；200 会话 × 400 事件：P50 18.7ms / P95 62.4ms / RSS 85MB。真实宿主还要加读日志的时间（并发 4、TTL 20s），事件数超过约 8 万时单次扫描会进入百毫秒级，面板会明显停顿。
 
 ## 3. 工具与提示词清单
@@ -68,15 +68,16 @@ Web 形态下，宿主自带的 `auto` 压缩行被 `dsh-web-app` 置为 disable
 
 - 跨会话分析默认只扫描最近 40 个会话（`analyticsLimit`，可配 1..200），不是全量；面板的 `coverage.total / scanned / withData` 会把截断情况直接显示出来。`?limit=` 只能临时覆盖，不会写回配置。
 - 会话排序优先使用 `updatedAt`/`lastActivityAt`；provider 只提供 `createdAt` 时退化为创建时间，因此“最近 N 个”在恢复旧会话的场景下可能不是严格按最后活动时间，界面把它标为近似值。
-- 费用只对内置价格表覆盖的 DeepSeek 模型估算；未知 provider/模型显示 `—`。自定义价格行按全天同价，不会自动跟随官方峰谷调整。
+- 费用只对内置价格表覆盖的 DeepSeek 模型估算；未知 provider/模型显示 `—`。自定义价格行默认全天同价，可用 `peak` / `offPeak` 两档显式区分（面板价格卡两组输入框，留空即全天同价）；不会自动跟随官方调价。
 - 缓存命中、工具调用、压缩次数来自会话事件折叠，可能受日志完整度影响；工具“从未使用”只在已扫描会话里成立，不代表全局从未调用。
 - `unknown-pricing` 只说明“有 token 但算不出费用”，不推断模型一定收费；`cost-outlier` 用中位数 2.5 倍作阈值，只是提示，不是账单异常判定。
+- 0.33.0 起新增 `cache-hit-low`（加权缓存命中 < 30% 且样本 ≥ 20 万 tokens）、`near-limit-not-compacted`（已达 `errorAt − 5%` 且该会话从未压缩）、`budget-unconfirmed`（预算未确认但已有会话）、`analytics-truncated`（`coverage.scanned < total`）四条启发式提示；阈值同为经验值，不证明因果。
 - `tool-schema-share` 的 50% 与 `repeated-compaction` 的 2 次都是启发式阈值；洞察卡不证明因果，也不自动执行禁用/改配置。
 - 节省估算只累加成功压缩的 `before - after`，再按 V4.1 Flash 输入价折算；它不是账单退款，不包含缓存命中差异，也不代表实际少付了同样的钱。
 - 趋势和事件页依赖历史会话日志；缺少日志的会话不会出现在统计中。
 - `/status/export` 只导出当前 `range` / `limit` 下的分析结果（JSON 含汇总与每日桶；CSV 为会话级字段，含 `title`/`cwd`），不导出消息正文；文件由浏览器下载到本机，插件不上传。
 - `/status/data/reset` 只清插件状态：`logs` 清压缩日志，`toggles` 清全部会话工具/提示词开关与会话提示词文本；不清 profile 配置、不清全局工具禁用、不删会话历史。
-- 首次运行状态写在 `~/.dsh/agent-embodiment/onboarding.json`（完成/跳过、预算确认、preset 授权、版本），不写 profile 配置；删掉该文件会重新出现首次运行卡。
+- 首次运行状态写在 `$DSH_HOME/agent-embodiment/profiles/<profile>/onboarding.json`（完成/跳过、预算确认、preset 授权、版本），不写 profile 配置；删掉该文件会重新出现首次运行卡。
 - 勾选“允许写入控制行”只表示授权；实际是否生效仍以控制行是否挂载、`control.active` 为准。跳过向导不会自动挂载。
 
 ## 7. 平台与安装
@@ -90,7 +91,7 @@ Web 形态下，宿主自带的 `auto` 压缩行被 `dsh-web-app` 置为 disable
 ## 8. 未验证项
 
 - 未对 DSH `0.2.0-rc.1`、`0.2.1-alpha.*`、`0.1.x` 做运行验证。
-- DSH `0.2.1-rc.3` 已做 headless + Web 实测并加入兼容矩阵；Desktop（Electron）尚未在该版本上验收。
+- DSH `0.2.1-rc.3` 已做 headless + Web 实测并加入兼容矩阵；Desktop（Electron）尚未在该版本上验收。`0.2.2-rc.1` 走的是隔离实例（独立 npm 目录 + 独立 `DSH_HOME` + 独立 profile + 端口 3081），未在 Desktop Electron 上验收。
 - Desktop 插件管理器的部分边界行为与 Web 形态不同，不能完全用 WSL 结果替代。
 - 未进行独立安全审计；[PERMISSIONS.md](../PERMISSIONS.md) 只披露访问面，不构成安全认证。
 - 自动压缩在高负载/超大历史下的耗时未做系统性压测。
@@ -100,7 +101,7 @@ Web 形态下，宿主自带的 `auto` 压缩行被 `dsh-web-app` 置为 disable
 
 - 只写用户提交的**绝对**工作区目录；拒绝文件系统根目录、用户 home 及其祖先、`/etc` 等系统目录、DSH 配置目录和常见凭据目录，默认不覆盖已有文件。
 - 生成的是起点模板，不保证直接达到生产质量；必须用真实任务和 eval 继续迭代。
-- `ops-runbook`、`browser-operator`、`data-analyst`、`support-router` 标记为 `experimental`，依赖外部 MCP/知识库，尚未做任务验证。
+- `ops-runbook`、`browser-operator`、`data-analyst`、`support-router` 标记为 `experimental`，依赖外部 MCP/知识库，尚未做任务验证。**结构校验**只保证生成的 bundle 自洽（YAML 可解析、技能文件齐全、MCP 占位符合法），不代表任务质量。
 - 生成的 preset 复用 `agent-embodiment/control`；同一 profile 需要安装本插件，否则 preset 激活会失败。
 - MCP 行可由用户提交的 JSON 生成（stdio / streamable-http）；插件只写配置，不执行 MCP 命令；secret 用 `${ENV_VAR}`，安装/启用前仍需审查 command/args 与凭据。
 - `AGENTS.md` 支持带 marker 的幂等合并（保留用户内容）；不勾选 `writeAgents` 时只生成 `AGENTS.snippet.md`。
@@ -112,7 +113,8 @@ Web 形态下，宿主自带的 `auto` 压缩行被 `dsh-web-app` 置为 disable
 
 ## 10. 其他
 
-- 插件的 HTTP 路由先经过 `ctx.connection.requestRejection`（Host/Origin + 浏览器/API 认证）；没有 `connection` 服务时不拦截。POST 只接受 `application/json`。
+- 插件的 HTTP 路由先经过 `ctx.connection.requestRejection`（Host/Origin + 浏览器/API 认证）；没有 `connection` 服务时：纯 headless 放行，**有 `webServer` 则一律 403（失败关闭，0.25.0 起）**。POST 只接受 `application/json`。
+- 面板挂载后会在本页 `window.__agentEmbodiment` 写一个只读探针（`version` / `panelId` / `slots` / `mountedAt` / 两个价格换算纯函数），供 CDP 与测试断言；同页第三方脚本可读，内容等价于已渲染的版本号，不含会话、token 或路径。
 - 上下文上限、提示词覆盖、工具开关的实际执行在 `control.js`（preset 平面）；control 未挂载时这些功能不生效。
 
 - 插件不会修改会话历史来“修复”旧提示词；它只影响后续请求。

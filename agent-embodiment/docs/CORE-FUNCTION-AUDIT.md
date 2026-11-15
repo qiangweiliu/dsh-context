@@ -52,6 +52,23 @@
 - 六条洞察规则是启发式阈值（如工具 schema 占比、重复压缩次数），不是异常检测模型。
 - 数据导出/清理只覆盖插件自己的压缩日志和会话开关；不删除 DSH 会话日志。
 
+## 0.3 0.26.0–0.34.0 复核（2026-11-15）
+
+这一轮跨度较大，且多数缺陷是**真实用户可见**的（面板空白、数据被抹、隔离失效），因此单独记录根因与守卫方式：
+
+| 版本 | 缺陷 | 根因 | 守卫 |
+| --- | --- | --- | --- |
+| 0.26.1 | 面板整块空白 | `SegmentedBar` 里调用 `t()` 但 `t` 不在该作用域，只有「存在构成数据」时才会走到该分支 | `render.mjs` 真执行四个 tab（只做字符串断言发现不了） |
+| 0.26.1 | 状态永远 error | `fetchJson` 已解析响应，调用方又 `.json()` 一次 | `fetch-chain.mjs` |
+| 0.28.0 | HMR 后「侧栏有、主区空」 | 挂载标记是布尔值，新 bundle 的 `apply()` 提前 return | 版本化标记 + disposer 重放，`mount-guard.mjs` |
+| 0.27.0 | 写后读到旧状态 | `/status` 用纯 TTL 缓存，写入不失效 | revision 绑定缓存 + `?fresh=1`；smoke 断言「status 返回刚写入的记录」 |
+| 0.27.0 | 清除会话预算返回 400 | `setSessionBudget(id, null)` 返回 false | 改走幂等的 `clearSessionBudget` |
+| 0.30.0 | 面板保存抹掉峰谷价 | 价格卡只映射平档字段，而 `POST /config` 整段替换 `modelPricing` | `pricingDraft/pricingPayload` 纯函数往返 + render 回归；服务端断言落盘保留两档 |
+| 0.32.0 | 「隔离实例」污染真实 home | 状态目录用 `homedir()` 硬拼，忽略 `DSH_HOME` | `resolveStateRoots` + profile 用例「真实 home=web / 隔离=rc1」 |
+| 0.33.0 | 洞察卡渲染空白行 | `pricing-stale` 有 id 但无文案分支 | `insightText` 补分支，`locale-keys` 兜住缺键 |
+
+**共性结论**：这些都是「实现自洽、测试全绿，但用户可见结果是错的」。共同守卫是**行为级测试 + 真实数据夹具**（真执行组件、真走请求链、真起隔离实例），而不是源码字符串匹配。0.28.0 的断言分工与 0.30.0 的 Desktop 探针正是为此。
+
 ## 1. 核心功能定义
 
 按 README、package 描述和实际代码，核心功能可以归纳为：
@@ -215,7 +232,7 @@ README 声称不重复实现引擎；`control.js` 确实调用官方 `compactIfN
 **影响**：用户可能把 header/session 金额当成实际扣费；尤其 header 是当前会话累计估算，计费卡是区间估算。  
 **建议**：header 用“费用（估）”，会话卡 tooltip 或副标题标注“估算”；所有成本入口共享同一标签 key。
 
-### P2-6 文档和测试的边界滞后
+### P2-6 文档和测试的边界滞后（0.28.0 / 0.34.0 已大部分修复）
 
 - `docs/IMPLEMENTATION.md:49` 的路由已修正为 `/api/agent-embodiment/status/config`；其余路由仍建议统一由 `STATUS_PATH` 生成。
 - `docs/IMPLEMENTATION.md:160` 说自动挂载 `preset-standard`，实现可能选任意 preset（见 P1-2）。
@@ -223,6 +240,12 @@ README 声称不重复实现引擎；`control.js` 确实调用官方 `compactIfN
 - 静态测试主要是源码字符串断言；P1-1/P1-2/P1-3 这类顺序、preset 选择、共享状态同步没有测试覆盖；UI 会话切换此前也主要靠人工验证。
 
 **建议**：给顺序、自动挂载目标、重置共享状态加单元/集成断言；文档中的路径统一为 `STATUS_PATH` 常量。
+
+### P2-6 复核结论（0.28.0 / 0.34.0）
+
+- **静态断言已收敛**：0.28.0 起 `static.mjs` 只保留跨文件契约（版本副本、manifest、exports 形状、locale），文件头写明不再新增源码字符串断言；行为进 `render.mjs`（真执行组件）、`fetch-chain.mjs`（请求链）、`mount-guard.mjs`（挂载幂等）。
+- **原本无覆盖的三类都补上了**：预算优先级（`test/state.mjs` 往返）、自动挂载目标选择（`test/control.mjs` + smoke 的 preset 路由）、重置共享状态（`test/state.mjs` + smoke 的 `data/reset`）。UI 会话切换由 `fetch-chain.mjs` 的 `lastPathRef` 场景覆盖。
+- **仍存在的部分**：`IMPLEMENTATION.md` 与 `PERMISSIONS.md` 的路径/清单是手工副本，靠 0.34.0 复核才发现 15 处滞后；这类「文档随实现漂移」没有自动守卫，只能人工复核。
 
 ## 4. 逐模块结论
 

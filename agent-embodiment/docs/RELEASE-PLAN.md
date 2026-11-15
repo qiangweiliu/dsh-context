@@ -62,8 +62,13 @@ Tier B 证据（50 题）：
 | `0.23.0` | 证据与压缩控制 | 已并入工作区 | 压缩可控 | 3 reps 对照、三档 preset、控制未挂载提示、analytics 限额、rc.3 兼容、费用估算 |
 | `0.24.0` | 产品补齐 | 已并入 0.24.1 | 可解释与可信任 | 首次运行引导、洞察/健康检查、节省估算、数据导出与清理、4 tab IA、会话对比、自定义价格 |
 | `0.24.1` | patch | 已并入 0.25.0 | 安全与可靠性 | CSV 公式注入、状态原子写 + 备份回落、读取超时 AbortSignal、PERMISSIONS 对齐、CI 集成、版本 bump 脚本 |
-| `0.25.0` | minor | **当前工作区版本** | 修正真实缺陷 + 工程化 | 面板 TDZ 崩溃、预算优先级、状态目录按 profile 隔离、鉴权失败关闭、CSV BOM、价格表时效、client 错误边界与 a11y、oxlint/CI、analytics 基线 |
-| `1.0.0` | major | 2026-12 起，按门禁 | 稳定承诺 | 移除 `/ctx` 别名与旧状态迁移、冻结配置面、安全审查、兼容矩阵 |
+| `0.25.0` | minor | 已并入 0.26 | 修正真实缺陷 + 工程化 | 面板 TDZ 崩溃、预算优先级、状态目录按 profile 隔离、鉴权失败关闭、CSV BOM、价格表时效、client 错误边界与 a11y、oxlint/CI、analytics 基线 |
+| `0.26.0`–`0.27.0` | minor | 已发布 | 性能/UX 与价格模型 | 状态缓存 revision 失效、峰谷价与节假日、会话预算面板入口、导出二次确认 |
+| `0.28.0`–`0.29.1` | minor/patch | 已发布 | 可维护性 | `client.js` 拆 `client-src` + 构建与防漂移测试、写操作统一 `postJson`、**不再发布 npm**（只走市场 + 源码安装） |
+| `0.30.0`–`0.31.0` | minor | 已发布 | 数据正确性与可验证性 | 峰谷价保存回归修复、`window.__agentEmbodiment` 探针（Desktop CDP 可断言）、节假日跨年健康提醒、死词典键清理（37 → 0） |
+| `0.32.0`–`0.33.0` | minor | 已发布 | 隔离与洞察 | 状态目录 / profile 识别尊重 `DSH_HOME`、4 条新洞察规则、`security-audit` 0.32.0 增量复核 |
+| `0.34.0`–`0.34.1` | patch | **当前版本** | 文档与测试准确性 | `PERMISSIONS`/`LIMITATIONS` 15 处复核（含 403 语义、环境变量披露两处实质错误）、模板跨文件引用一致性测试、审计与路线图对齐 |
+| `1.0.0` | major | 2026-12 起，按门禁 | 稳定承诺 | 移除 `/ctx` 别名与旧状态迁移、冻结配置面、**独立安全审查**、兼容矩阵 |
 
 ---
 
@@ -88,7 +93,7 @@ npm run test:integration
 - 文档/版本同步：`package.json`、`client.js` 的 `CLIENT_VERSION`、README、IMPLEMENTATION、EVIDENCE、市场申请文件。
 - 市场文案：不再承诺“更准/更强”；scaffold 标注 optional/experimental。
 - 发布：打 tag `v0.22.0` + 向 `awesome-dsh-plugin` 提 PR（**不发布 npm**）。
-- 回滚：`dsh plugin add agent-embodiment@0.21.0`，再用 `scripts/clean-agent-embodiment-profile-patch.mjs` 清 preset 残留。
+- 回滚：本项目**不发布 npm**，回滚走 `git checkout v0.21.0 -- agent-embodiment` 后再 `dsh plugin --profile <name> add <本地路径>`；随后用 `scripts/clean-agent-embodiment-profile-patch.mjs` 清 preset 残留。
 
 ### 3.2 0.22.1（patch）
 

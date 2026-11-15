@@ -23,6 +23,7 @@ import { fileURLToPath } from 'node:url'
 import { detectProfileName, migrateStateFiles, resolveStateRoots, stateDirFor } from './profile.js'
 import { createScaffoldRoutes } from './routes-scaffold.js'
 import { createSessionRoutes } from './routes-session.js'
+import { createStatusRoutes } from './routes-status.js'
 import { createAnalytics, sessionsNewestFirst } from './analytics.js'
 import { createRuntime } from './runtime.js'
 
@@ -934,51 +935,6 @@ export function apply(ctx, config) {
   }
 
   /** GET 实时占用：按 sessionId 找到 Session，用 tokenMeter 现场测量。 */
-  const liveHandler = (request, response) => {
-    const send = jsonSender(response)
-    if (!requireMethod(request, response, 'GET')) return
-    const requested = requestUrl(request).searchParams.get('sessionId') ?? ''
-    let sessionId = requested
-    let session
-    if (RUNTIME.getSessions() && typeof RUNTIME.getSessions().get === 'function') {
-      if (requested) {
-        session = RUNTIME.getSessions().get(requested)
-      } else if (typeof RUNTIME.getSessions().list === 'function') {
-        const all = sessionsNewestFirst(RUNTIME.getSessions().list())
-        const latest = all[0]
-        if (latest) {
-          session = latest
-          sessionId = latest.id
-        }
-      }
-    }
-    if (!session) return send(404, { ok: false, error: requested ? 'unknown session' : 'no session yet' })
-    let used = null
-    let measurement
-    try {
-      measurement = ctx.tokenMeter.measure(session)
-      used = typeof measurement?.totalTokens === 'number' ? measurement.totalTokens : null
-    } catch {
-      measurement = undefined
-    }
-    const budget = budgetFor(sessionId, config.contextWindowTokens)
-    return send(200, {
-      ok: true,
-      sessionId,
-      used,
-      budget,
-      compacting: controlState.compacting,
-      breakdown: breakdownOf(session, measurement),
-      warnAt: config.warnAt,
-      errorAt: config.errorAt,
-      triggerAt: config.triggerAt,
-      targetAt: config.targetAt,
-      keepTokens: config.keepTokens,
-      compressionStrategy: config.compressionStrategy,
-      ratio: typeof used === 'number' && budget > 0 ? used / budget : null,
-    })
-  }
-
   /** 常见 preset id；desktop app 等环境可能用其他 id。 */
   const PRESET_IDS = ['preset-standard', 'preset-desktop', 'desktop', 'agent-preset', 'default', 'preset-default']
 
@@ -1247,78 +1203,6 @@ export function apply(ctx, config) {
   const bumpStatusRevision = () => {
     RUNTIME.bumpStatusRevision()
   }
-
-  const statusHandler = (request, response) => {
-    if (!requireMethod(request, response, 'GET')) return
-    const sendCached = (text) => {
-      response.statusCode = 200
-      response.setHeader('content-type', 'application/json; charset=utf-8')
-      response.setHeader('cache-control', 'no-store')
-      response.end(text)
-    }
-    const url = requestUrl(request)
-    if (
-      url.searchParams.get('fresh') !== '1'
-      && RUNTIME.readStatusCache().text
-      && RUNTIME.readStatusCache().revision === RUNTIME.getStatusRevision()
-      && Date.now() - RUNTIME.readStatusCache().at < STATUS_CACHE_MS
-    ) {
-      return sendCached(RUNTIME.readStatusCache().text)
-    }
-    const latestMeasurement = [...measurements.values()].reverse()[0] ?? null
-    const onboardingPayload = { ...onboarding, budgetTokens: config.contextWindowTokens }
-    const control = controlSnapshot()
-    const holidayState = holidayInfo()
-    const health = buildHealth({
-      control,
-      configEditable: Boolean(RUNTIME.getConfigEditor() && typeof RUNTIME.getConfigEditor().edit === 'function'),
-      onboarding: onboardingPayload,
-      latest: latestMeasurement,
-      version: PLUGIN_VERSION,
-      holidays: holidayState,
-      year: beijingYear(Date.now()),
-    })
-    const body = JSON.stringify({
-      plugin: 'agent-embodiment',
-      version: PLUGIN_VERSION,
-      profile: PROFILE_NAME ?? null,
-      compatibility: COMPATIBILITY,
-      budget: {
-        tokens: config.contextWindowTokens,
-        warnAt: config.warnAt,
-        errorAt: config.errorAt,
-        triggerAt: config.triggerAt,
-        targetAt: config.targetAt,
-        keepTokens: config.keepTokens,
-        compressionStrategy: config.compressionStrategy,
-        analyticsLimit: config.analyticsLimit,
-        // 生效来源：控制行 >0 时它优先于宿主默认值（见 state.budgetFor）。
-        source: getControlBudget() > 0 ? 'control' : 'default',
-        controlTokens: getControlBudget(),
-      },
-      sessionBudgets: listSessionBudgets(),
-      control,
-      health,
-      onboarding: onboardingPayload,
-      configEditable: Boolean(RUNTIME.getConfigEditor() && typeof RUNTIME.getConfigEditor().edit === 'function'),
-      measurements: [...measurements.values()].reverse(),
-      pricing: {
-        currency: PRICING_CURRENCY,
-        source: PRICING_SOURCE,
-        updatedAt: PRICING_UPDATED_AT,
-        peakNow: isPeakTime(Date.now()),
-        peakHours: '周一至周五 09:00–12:00、14:00–18:00（北京时间）',
-        models: PRICING_META,
-        custom: Array.isArray(config.modelPricing) && config.modelPricing.length > 0,
-        rows: Array.isArray(config.modelPricing) ? config.modelPricing : [],
-        // 节假日：内置表 + 配置补充；面板只读展示，避免每年改代码发版。
-        holidays: holidayInfo(),
-      },
-    })
-    RUNTIME.writeStatusCache({ at: Date.now(), revision: RUNTIME.getStatusRevision(), text: body })
-    sendCached(body)
-  }
-
   // 所有写操作前自动备份（profile patch 与状态文件），保留最近 30 份；实现见状态目录初始化处。
 
   // 可写配置：宿主平面有 configEditor 服务时（Web/Desktop profile 都有），
@@ -1631,33 +1515,6 @@ export function apply(ctx, config) {
    * 等价于在会话里执行 `/embody <tokens>` / `/embody reset`。tokens 传 null 或 0 表示清除。
    */
   /** GET /status/export?format=json|csv：导出当前扫描范围的分析结果。 */
-  const exportHandler = async (request, response) => {
-    if (!requireMethod(request, response, 'GET')) return
-    try {
-      const url = requestUrl(request)
-      const payload = await analyticsPayload(url)
-      const format = (url.searchParams.get('format') || 'json').toLowerCase()
-      if (format === 'csv') {
-        const columns = ['id', 'title', 'cwd', 'model', 'tokens', 'input', 'cacheRead', 'cacheWrite', 'output', 'requests', 'toolCalls', 'compactions', 'activeMs', 'cost', 'lastActivityAt']
-        const lines = [columns.join(',')]
-        for (const session of payload.sessions) lines.push(columns.map((column) => csvCell(session[column])).join(','))
-        response.statusCode = 200
-        response.setHeader('content-type', 'text/csv; charset=utf-8')
-        response.setHeader('content-disposition', `attachment; filename="agent-embodiment-${payload.range}.csv"`)
-        response.setHeader('cache-control', 'no-store')
-        response.end(csvDocument(lines))
-        return
-      }
-      response.statusCode = 200
-      response.setHeader('content-type', 'application/json; charset=utf-8')
-      response.setHeader('content-disposition', `attachment; filename="agent-embodiment-${payload.range}.json"`)
-      response.setHeader('cache-control', 'no-store')
-      response.end(JSON.stringify(payload, null, 2))
-    } catch (error) {
-      sendJson(response, error?.statusCode || 500, { ok: false, error: error instanceof Error ? error.message : String(error) })
-    }
-  }
-
   /** POST /status/data/reset：清空压缩日志和/或会话开关；不删除 profile 配置。 */
   /** POST /inventory/toggle {kind, name, layer, enabled}。 */
   const inventoryToggleHandler = (request, response) => {
@@ -1843,6 +1700,45 @@ export function apply(ctx, config) {
     getExtraPrompts: () => RUNTIME.getExtraPrompts(),
     getExtraPromptPlacements: () => RUNTIME.getExtraPromptPlacements(),
     writeExtraPrompts,
+  })
+
+  // ── 状态读取三条路由已抽到 routes-status.js（0.40.0）──
+  const {
+    statusHandler,
+    liveHandler,
+    exportHandler,
+  } = createStatusRoutes({
+    runtime: RUNTIME,
+    getConfig: () => config,
+    getMeasurements: () => measurements,
+    controlSnapshot,
+    getCompacting: () => controlState.compacting,
+    measure: (session) => ctx.tokenMeter.measure(session),
+    budgetFor,
+    breakdownOf,
+    requestUrl,
+    jsonSender,
+    sendJson,
+    requireMethod,
+    sessionsNewestFirst,
+    analyticsPayload,
+    buildHealth,
+    holidayInfo,
+    beijingYear,
+    isPeakTime,
+    listSessionBudgets,
+    getControlBudget,
+    csvCell,
+    csvDocument,
+    statusCacheMs: STATUS_CACHE_MS,
+    constants: {
+      version: PLUGIN_VERSION,
+      compatibility: COMPATIBILITY,
+      pricingCurrency: PRICING_CURRENCY,
+      pricingSource: PRICING_SOURCE,
+      pricingUpdatedAt: PRICING_UPDATED_AT,
+      pricingMeta: PRICING_META,
+    },
   })
 
   ctx.inject(['webServer'], (sub) => {

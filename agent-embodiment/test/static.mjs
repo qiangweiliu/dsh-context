@@ -180,6 +180,7 @@ const metricsSource = readFileSync(new URL('../metrics.js', import.meta.url), 'u
 const indexSource = readFileSync(new URL('../index.js', import.meta.url), 'utf8')
 const scaffoldRoutesSource = readFileSync(new URL('../routes-scaffold.js', import.meta.url), 'utf8')
 const analyticsSource = readFileSync(new URL('../analytics.js', import.meta.url), 'utf8')
+const statusRoutesSource = readFileSync(new URL('../routes-status.js', import.meta.url), 'utf8')
 check('client.js 语法可编译', (() => {
   try {
     new Function(clientSource)
@@ -242,7 +243,9 @@ check('client 在 control 未挂载时给出提示', clientSource.includes('data
 check('趋势图有纵轴、预算线与压缩标记', clientSource.includes('niceAxisMax') && clientSource.includes('trendBudgetLabel') && clientSource.includes('trendMarkerDot'))
 check('头部摘要与趋势请求数走本地化单位', clientSource.includes('data-embodiment-header-status') && clientSource.includes("t('requestsUnit')"))
 check('内置 DeepSeek 官方人民币峰谷价', metricsSource.includes('DeepSeek V4.1 Flash') && metricsSource.includes('offPeak') && metricsSource.includes('isPeakTime'))
-check('状态接口暴露价目与峰谷时段', indexSource.includes('pricing:') && indexSource.includes('PRICING_META') && indexSource.includes('peakNow'))
+check('状态接口暴露价目与峰谷时段', statusRoutesSource.includes('pricing:') && statusRoutesSource.includes('pricingMeta') && statusRoutesSource.includes('peakNow'))
+check('状态缓存条件（fresh / revision / TTL）在 routes-status.js', statusRoutesSource.includes("searchParams.get('fresh') !== '1'") && statusRoutesSource.includes('cached.revision === runtime.getStatusRevision()') && statusRoutesSource.includes('statusCacheMs') && indexSource.includes('createStatusRoutes({'))
+check('导出仍是 JSON/CSV 双格式且带 filename', statusRoutesSource.includes("format === 'csv'") && statusRoutesSource.includes('content-disposition') && statusRoutesSource.includes('csvDocument'))
 check('面板有计费卡并显示人民币费用', clientSource.includes('data-embodiment-billing') && clientSource.includes('formatCost') && clientSource.includes("t('billingTitle')"))
 check('会话切换丢弃旧响应并清空历史选择', clientSource.includes('lastPathRef') && clientSource.includes('setSelected(null)') && clientSource.includes('sessionRef.current !== requestedSession') && clientSource.includes('detailSession || activeSession'))
 check('头部合并上下文构成、概览去掉重复图表与费用 KPI', clientSource.includes('headerCategories') && clientSource.includes('h(SegmentedBar') && clientSource.includes('h(LegendGrid') && !clientSource.includes('data-embodiment-heatmap') && !clientSource.includes('kpiCost'))

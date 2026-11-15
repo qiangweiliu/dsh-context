@@ -2,6 +2,26 @@
 
 格式参考 Keep a Changelog；版本遵循 SemVer。DSH 兼容版本写在每个条目的 Compatibility 下。
 
+## [0.40.0] - 2026-11-15
+
+### Changed
+
+- **`status` / `live` / `export` 三条路由外置到 `routes-status.js`**（P1.4 最后一块）。`apply()` 里不再有任何 HTTP handler 实现，只剩依赖装配与路由注册；`index.js` **1964 → 1787 行**（起点 2157，累计减 370 行）。
+  - 依赖全部显式注入：`runtime`、`getConfig`、`getMeasurements`、`controlSnapshot`、`getCompacting`、`measure`、`budgetFor`、`breakdownOf`、`analyticsPayload`、`csvCell` / `csvDocument`、`statusCacheMs` 与一组常量。
+  - 缓存条件逐字保留：`?fresh=1` 绕过、`revision` 一致、`Date.now() - at < STATUS_CACHE_MS`；响应头（`no-store`、导出 `filename`）与 CSV 列顺序也未变。
+  - `status` 里的 `profile` 改从 `runtime.paths.profileName` 取；`onboarding` 从 `runtime.getOnboarding()` 取并叠加 `budgetTokens`。
+
+### Added
+
+- **`test/routes-status.mjs`（24 项）**：以前只能「起完整宿主再观察」的行为，现在可直接断言——
+  - status：payload 结构（plugin/version/profile/budget 来源/health/pricing.holidays/sessionBudgets/configEditable）、缓存命中（不重复构建）、`?fresh=1` 绕过、**revision 变化后失效**、`TTL=0` 时每次重建、已有缓存直接返回。
+  - live：未知 session 与无会话都 404、`used`/`budget`/`ratio` 计算、`tokenMeter` 抛错时降级为 `used: null` 而非 500。
+  - export：JSON 附件名、CSV 带 BOM 且列顺序固定、**公式注入中和**（`=cmd` 变成 `'=cmd`）、analytics 的 503 原样透出、POST 405。
+
+### Tests
+
+- 单元 601 → **627**（新增 routes-status 24、static 108→110）；集成 181 不变；lint 0。
+
 ## [0.39.0] - 2026-11-15
 
 ### Changed

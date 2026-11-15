@@ -570,6 +570,14 @@ npm 运行依赖：无；生命周期脚本：无
 - 测试中新发现一个既有行为：`payload.range` 是区间对象而非请求字符串（因为 `...summary` 在赋值之后展开）。按零行为变化保留，并写进单测固定。
 - 结果：`analytics.js`（纯函数 + `createAnalytics`）；集成 55/115/11 全绿；新增 `test/analytics.mjs` 27 项；单元 601。
 
+## E50. v0.40.0 拆分完成：状态读取三路由外置（2026-11-15）
+
+- P1.4 的最后一块。`status`(70 行) / `live`(44 行) / `export`(26 行) 移入 `routes-status.js`，`apply()` 里不再有 handler 实现。
+- 三条 handler 的依赖都很少（8/6/3 个 apply 内符号），真正的难度不在体量而在「缓存与响应头必须逐字保留」：`?fresh=1` 绕过、`revision` 一致、`Date.now() - at < STATUS_CACHE_MS` 三个条件缺一个就会让面板读到陈旧数据或每次都全量重建。
+- 新增 `test/routes-status.mjs` 24 项，第一次可以断言「revision 变化后缓存失效」与「`tokenMeter` 抛错时 live 降级为 `used: null` 而不是 500」——这两条以前只能靠真机观察。
+- 累计效果：`index.js` 2157 → 1787 行；`apply()` 从 1695 行降到约 1300 行；新增 4 个路由模块（scaffold/session/status）+ 2 个领域模块（runtime/analytics），对应 111 项脱离 Cordis 的单测（17+28+24+35+27−10 重叠部分按实际计）。
+- 测试：单元 627、集成 181、lint 0。
+
 ## 已知限制（unknown）
 
 - 未进行独立安全审计；本文件不声称“安全通过”。

@@ -30,6 +30,8 @@ import { loadClient } from './client-harness.mjs'
 const testHome = mkdtempSync(join(tmpdir(), 'ctx-smoke-home-'))
 process.env.HOME = testHome
 process.env.USERPROFILE = testHome
+// 0.32.0 起插件尊重 DSH_HOME；测试必须清掉，否则状态会落到真实 dsh home。
+delete process.env.DSH_HOME
 
 const depsRoot = new URL('./deps/dsh/node_modules/@deepseek-ai/', import.meta.url)
 const cordisEntry = new URL('cordis/lib/index.js', depsRoot)

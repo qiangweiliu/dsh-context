@@ -10,6 +10,7 @@
  */
 
 import { copyFileSync, existsSync, mkdirSync, readFileSync, readdirSync } from 'node:fs'
+import { homedir } from 'node:os'
 import { join, resolve } from 'node:path'
 
 /** 需要按 profile 隔离的状态文件。 */
@@ -52,6 +53,27 @@ export function detectProfileName(profilesRoot, selfPath) {
     }
   } catch {}
   return null
+}
+
+/**
+ * 由 home 与 DSH_HOME 推出插件要用的几个目录。
+ *
+ * 必须尊重 `DSH_HOME`：否则「隔离实例」（`DSH_HOME=/tmp/x dsh --profile y`）会去读真实
+ * `~/.dsh/profiles`、把状态写进真实 home，还会识别成那边的 profile ——
+ * 0.29.0 的 rc.1 隔离验收里 `profile` 字段返回 `web` 而不是 `rc1` 就是这个原因。
+ *
+ * @param {{ home?: string, dshHome?: string }} [options]
+ */
+export function resolveStateRoots(options = {}) {
+  const home = resolve(options.home || homedir())
+  const dshHome = options.dshHome ? resolve(options.dshHome) : join(home, '.dsh')
+  return {
+    home,
+    dshHome,
+    stateBase: join(dshHome, 'agent-embodiment'),
+    legacyState: join(dshHome, 'ctx-mon-and-con'),
+    profilesRoot: join(dshHome, 'profiles'),
+  }
 }
 
 /**

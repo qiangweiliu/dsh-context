@@ -32,7 +32,7 @@ node test/profile.mjs       # profile 识别、状态目录与旧目录迁移
 node test/render.mjs        # 用 mock React 真跑面板组件（行为级，抓 TDZ 这类渲染崩溃）
 ```
 
-当前基线（0.31.0）：client-build 6/6、static 105/105、metrics 66/66、state 26/26、persist 7/7、profile 11/11、scaffold 146/146、insights 20/20、render 36/36、fetch-chain 3/3、mount-guard 7/7、locale-keys 6/6（共 439）；集成 control 55/55、smoke 103/103、prompt-state 11/11（共 169）。
+当前基线（0.32.0）：client-build 6/6、static 105/105、metrics 66/66、state 26/26、persist 7/7、profile 18/18、scaffold 146/146、insights 20/20、render 36/36、fetch-chain 3/3、mount-guard 7/7、locale-keys 6/6（共 446）；集成 control 55/55、smoke 103/103、prompt-state 11/11（共 169）。
 
 CI 在 `.github/workflows/test.yml`：Node 20/22/24 三档跑单元 + `npm run lint`；另有 integration job 从 npm 安装 Cordis（4.0.5 / 4.1.0 两档）跑 control/smoke/prompt-state，不依赖本机 app.asar。两种 job 都带 npm 缓存与 `concurrency` 取消。
 
@@ -64,7 +64,7 @@ npm run lint                # oxlint（devDependency；CI 也跑，0 error）
 ### 版本号同步与 client 构建
 
 ```bash
-node scripts/bump-version.mjs 0.31.0   # package.json / client-src 与 client.js 的 CLIENT_VERSION / README / IMPLEMENTATION 一次改齐
+node scripts/bump-version.mjs 0.32.0   # package.json / client-src 与 client.js 的 CLIENT_VERSION / README / IMPLEMENTATION 一次改齐
 cd agent-embodiment && npm run build:client   # 改过 client-src/ 后必须重建 client.js
 ```
 
@@ -180,7 +180,7 @@ UI 脚本通过 Windows Edge 的 CDP 连接（`scripts/lib/cdp.mjs`，默认 Edg
 - 首次安装/启停由 DSH HMR 热生效，不需要重启 DSH；Web 0.2.0-rc.2 与 Desktop 0.2.1-rc.2 均已实测（`EVIDENCE.md` E16/E17）。页面没更新时 Web 刷新一次即可。替换已安装包（升级版本）仍需要重启 DSH 进程；修改 `client.js` 后 HMR 会重载，失败时刷新页面。面板在宿主/客户端版本不一致时会显示“刷新页面”提示。安装后不显示时先确认 `--profile` 与运行实例一致（Desktop=`desktop`，WSL web=`web`）。
 - 第三方插件不能默认 `import '@deepseek-ai/*'`；集成测试才从 app.asar 解出真实 Cordis。
 - Agent 脚手架生成 preset 时，`dsh-subagent` service 与 `spawn` provider 已由基础组合全局提供，preset 只挂 `dsh-tool-subagent`；重复挂载会让 preset 激活失败（E18 实测）。
-- 测试会临时改 `HOME`/`USERPROFILE` 到临时目录（`smoke.mjs`、`prompt-state.mjs`），避免污染真实 profile；新增落盘逻辑时保持这一习惯。
+- 测试会临时改 `HOME`/`USERPROFILE` 到临时目录并 **`delete process.env.DSH_HOME`**（`smoke.mjs`、`prompt-state.mjs`），避免污染真实 profile —— 0.32.0 起插件按 `DSH_HOME` 定位状态目录，不清掉这个变量就会写到真实 dsh home。
 - 单元套件依赖仓库布局：`test/static.mjs` 会读 `../../README.md` 断言版本副本一致，所以在独立安装副本（如 `~/dsh-plugins/agent-embodiment`）里 `npm test` 会 `ENOENT`。验收脚本因此在源码检出目录跑单元、只在安装副本跑 `node --check` 与集成（`scripts/wsl-verify.sh`）。
 - 不要手改 `cordis.yml`（恒为空）；用户 tweak 写 `cordis.patch.yml`，插件自身走 `ctx.configEditor`。
 - 追加到用户消息末尾的提示词不是隐藏指令，会在会话历史里可见；不要把它当作秘密注入机制。
@@ -197,7 +197,7 @@ UI 脚本通过 Windows Edge 的 CDP 连接（`scripts/lib/cdp.mjs`，默认 Edg
 - `agent-embodiment/README.md`：用户功能与入口。
 - `agent-embodiment/docs/IMPLEMENTATION.md`：实现细节、路由清单、测试结果（最接近架构总览）。
 - `agent-embodiment/docs/LIMITATIONS.md`：行为边界与已知限制。
-- `agent-embodiment/docs/EVIDENCE.md`：逐版本 UI/运行证据（E16–E40 覆盖 0.19–0.31）。
+- `agent-embodiment/docs/EVIDENCE.md`：逐版本 UI/运行证据（E16–E41 覆盖 0.19–0.32）。
 - `agent-embodiment/docs/CORE-FUNCTION-AUDIT.md`：核心功能冲突、实现一致性与 P1/P2 审计结论。
 - `agent-embodiment/docs/RELEASE-PLAN.md`：0.22.0 → 1.0.0 的版本路线图、发布门禁、兼容矩阵与回滚步骤。
 - `agent-embodiment/docs/UI-PROPOSAL.md`：面板信息架构与视觉提案。

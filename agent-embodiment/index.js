@@ -17,11 +17,10 @@ export const name = 'agent-embodiment'
 
 /** 与 control.js 共享的进程内状态（同一包内相对 import，不涉及 npm 依赖）。 */
 import { appendFileSync, copyFileSync, existsSync, mkdirSync, readFileSync, statSync, writeFileSync } from 'node:fs'
-import { homedir } from 'node:os'
 import { dirname, isAbsolute, join, resolve, sep } from 'node:path'
 import { fileURLToPath } from 'node:url'
 
-import { detectProfileName, migrateStateFiles, stateDirFor } from './profile.js'
+import { detectProfileName, migrateStateFiles, resolveStateRoots, stateDirFor } from './profile.js'
 
 import {
   budgetFor,
@@ -483,9 +482,11 @@ export function apply(ctx, config) {
   // 状态目录：0.21.0 从 ctx-mon-and-con 改名；首次启动把旧目录的状态文件复制过来。
   // 0.25.0 起按 profile 再分一层（识别依据：哪个 profile 的依赖真的指向本插件目录），
   // 识别不出来时沿用旧的共享目录，行为与以前一致。
-  const BASE_STATE_DIR = join(homedir(), '.dsh', 'agent-embodiment')
-  const LEGACY_STATE_DIR = join(homedir(), '.dsh', 'ctx-mon-and-con')
-  const PROFILE_NAME = detectProfileName(join(homedir(), '.dsh', 'profiles'), dirname(fileURLToPath(import.meta.url)))
+  // 0.32.0 起尊重 DSH_HOME：隔离实例不能读真实 home 的 profiles，也不能往那儿写状态。
+  const STATE_ROOTS = resolveStateRoots({ dshHome: process.env.DSH_HOME })
+  const BASE_STATE_DIR = STATE_ROOTS.stateBase
+  const LEGACY_STATE_DIR = STATE_ROOTS.legacyState
+  const PROFILE_NAME = detectProfileName(STATE_ROOTS.profilesRoot, dirname(fileURLToPath(import.meta.url)))
   const STATE_DIR = stateDirFor(BASE_STATE_DIR, PROFILE_NAME)
   try {
     mkdirSync(STATE_DIR, { recursive: true })
@@ -2018,8 +2019,8 @@ export function apply(ctx, config) {
 
   /** 拒绝系统目录、home 及其祖先、DSH 配置目录和常见凭据目录。 */
   const protectedScaffoldPath = (root) => {
-    const home = resolve(homedir())
-    const dshHome = resolve(process.env.DSH_HOME || join(home, '.dsh'))
+    const home = STATE_ROOTS.home
+    const dshHome = STATE_ROOTS.dshHome
     const systemPrefixes = ['/etc', '/usr', '/bin', '/sbin', '/boot', '/dev', '/proc', '/sys', '/var', '/root']
     const privateDirs = ['.ssh', '.gnupg', '.aws', '.kube', '.config', '.local'].map((name) => join(home, name))
     // Windows 没有 /etc、/usr；用盘符根 + 系统目录环境变量覆盖 C:\Windows、Program Files 等。

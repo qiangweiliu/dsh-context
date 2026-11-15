@@ -2,13 +2,14 @@
  * profile 识别与状态目录迁移的离线测试。
  *
  * 运行：node test/profile.mjs
- * 覆盖：link 依赖 / 普通依赖 / 不匹配 / 目录不存在 / 非法 profile 名 / 迁移不覆盖。
+ * 覆盖：link 依赖 / 普通依赖 / 不匹配 / 目录不存在 / 非法 profile 名 / 迁移不覆盖 /
+ * 目录根按 DSH_HOME 解析（隔离实例必须读写自己的 dsh home）。
  */
 import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
-import { join } from 'node:path'
+import { join, resolve } from 'node:path'
 
-import { detectProfileName, migrateStateFiles, stateDirFor } from '../profile.js'
+import { detectProfileName, migrateStateFiles, resolveStateRoots, stateDirFor } from '../profile.js'
 
 const checks = []
 function check(name, condition, detail) {
@@ -68,6 +69,37 @@ check('源目录与目标相同时不复制', migrateStateFiles(legacyDir, legac
 try {
   rmSync(root, { recursive: true, force: true })
 } catch {}
+
+// 目录根：必须尊重 DSH_HOME，否则隔离实例会读真实 home 的 profiles 并写错状态目录。
+const fakeHome = resolve('/home/someone')
+const rootsDefault = resolveStateRoots({ home: fakeHome })
+check('默认根落在 <home>/.dsh 下', rootsDefault.dshHome === join(fakeHome, '.dsh') && rootsDefault.stateBase === join(fakeHome, '.dsh', 'agent-embodiment'), rootsDefault)
+check('默认 profilesRoot 指向 <home>/.dsh/profiles', rootsDefault.profilesRoot === join(fakeHome, '.dsh', 'profiles'), rootsDefault.profilesRoot)
+check('legacy 目录名保持不变（旧数据迁移仍可用）', rootsDefault.legacyState.endsWith('ctx-mon-and-con'), rootsDefault.legacyState)
+
+const fakeDshHome = resolve('/tmp/dsh-home-rc1')
+const rootsIsolated = resolveStateRoots({ home: fakeHome, dshHome: fakeDshHome })
+check('DSH_HOME 优先于 home', rootsIsolated.dshHome === fakeDshHome && rootsIsolated.stateBase === join(fakeDshHome, 'agent-embodiment'), rootsIsolated)
+check('DSH_HOME 下识别自己的 profiles', rootsIsolated.profilesRoot === join(fakeDshHome, 'profiles'), rootsIsolated.profilesRoot)
+
+// 端到端：隔离 home 里的 profile 必须被识别成自己的名字，而不是真实 home 的同路径 profile。
+const rootA = mkdtempSync(join(tmpdir(), 'ctx-roots-a-'))
+const rootB = mkdtempSync(join(tmpdir(), 'ctx-roots-b-'))
+const pluginDir = join(rootA, 'agent-embodiment')
+mkdirSync(pluginDir, { recursive: true })
+for (const [root, profiles] of [[rootA, ['web']], [rootB, ['rc1']]]) {
+  for (const name of profiles) {
+    const dir = join(root, '.dsh', 'profiles', name)
+    mkdirSync(dir, { recursive: true })
+    writeFileSync(join(dir, 'package.json'), JSON.stringify({ dependencies: { 'agent-embodiment': `link:${pluginDir}` } }))
+  }
+}
+const realRoots = resolveStateRoots({ home: rootA })
+const isolatedRoots = resolveStateRoots({ home: rootA, dshHome: join(rootB, '.dsh') })
+check('真实 home 识别到 web', detectProfileName(realRoots.profilesRoot, pluginDir) === 'web', detectProfileName(realRoots.profilesRoot, pluginDir))
+check('隔离 DSH_HOME 识别到 rc1（此前会误报 web）', detectProfileName(isolatedRoots.profilesRoot, pluginDir) === 'rc1', detectProfileName(isolatedRoots.profilesRoot, pluginDir))
+rmSync(rootA, { recursive: true, force: true })
+rmSync(rootB, { recursive: true, force: true })
 
 const failed = checks.filter((item) => !item.ok)
 console.log(`\n[profile] ${checks.length - failed.length}/${checks.length} 项通过`)

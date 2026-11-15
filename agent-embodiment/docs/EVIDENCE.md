@@ -493,6 +493,18 @@ npm 运行依赖：无；生命周期脚本：无
 - **死词典键清理**：用脚本比对 `t('literal')` 引用与词典键，37 个未引用键里 4 个（`compareTokens/Requests/Cost/Compactions`）实际是 `SessionCompare` 通过数组 + `t(key)` 动态使用的——先把它们改成字面量引用，再删掉其余 33 个。未引用键归零，`client.js` 235.5 KB（-2.7 KB）。
 - 测试：单元 439（metrics 66 / insights 20）、集成 169、lint 0。
 
+## E41. v0.32.0 DSH_HOME 隔离修复与 rc.1 复验（2026-11-15）
+
+- **问题**：`index.js` 用 `homedir()` 硬拼 `~/.dsh`，忽略 `DSH_HOME`。E38 里「隔离实例的 `profile` 返回 web」不是识别逻辑错，而是**它读的是真实 home 的 profiles**；同时状态文件也被写进了真实 `~/.dsh/agent-embodiment/`，所谓隔离并不成立。
+- 修复：`profile.js` 增加 `resolveStateRoots({ home, dshHome })`（`DSH_HOME` 优先），`index.js` 的 `BASE_STATE_DIR` / `LEGACY_STATE_DIR` / profile 识别根 / 脚手架路径守卫全部同源。
+- 测试侧：本机环境 `DSH_HOME=C:\Users\40410\.dsh` 是设着的，修完之后 `smoke.mjs` 立刻红了（压缩日志写到了真实目录）——这正是修复生效的证据。`smoke.mjs` / `prompt-state.mjs` 现在额外 `delete process.env.DSH_HOME`，测试恢复 103/103 与 11/11。
+- `test/profile.mjs` 11→18 项：`resolveStateRoots` 的默认/覆盖行为、legacy 目录名不变、以及端到端「同一插件目录在真实 home 里识别为 web、在隔离 `DSH_HOME` 里识别为 rc1」。
+- 复验结果（0.2.2-rc.1 + `DSH_HOME=/tmp/dsh-home-rc1` + profile `rc1` + 端口 3081）：
+  - 状态接口：`{"version":"0.32.0","profile":"rc1","controlActive":false}` —— **`profile` 从 `web` 变成 `rc1`**，与目录名一致。
+  - 状态落点：`/tmp/dsh-home-rc1/agent-embodiment/profiles/rc1/`（11:37 新建）。
+  - 真实 home 的 `~/.dsh/agent-embodiment/profiles/web/` 文件时间仍是 **11-14**，即本次运行没有再写进去（旧残留，修复前留下的）。
+  - 面板：`tabs=4`、`version=0.32.0`、probe 版本一致、0 error / 0 exception。
+
 ## 已知限制（unknown）
 
 - 未进行独立安全审计；本文件不声称“安全通过”。

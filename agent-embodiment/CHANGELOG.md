@@ -2,6 +2,22 @@
 
 格式参考 Keep a Changelog；版本遵循 SemVer。DSH 兼容版本写在每个条目的 Compatibility 下。
 
+## [0.32.0] - 2026-11-15
+
+### Fixed
+
+- **状态目录与 profile 识别忽略 `DSH_HOME`**：`index.js` 用 `join(homedir(), '.dsh', ...)` 硬拼路径，所以在「隔离实例」（`DSH_HOME=/tmp/x dsh --profile y`）里会去读真实 `~/.dsh/profiles`、把状态写进真实 home，并把 `profile` 字段报成真实 home 里的那个 profile。0.29.0 的 `0.2.2-rc.1` 隔离验收里 `profile` 返回 `web` 而不是 `rc1` 就是这个原因——当时的「隔离」其实并不隔离。
+  - `profile.js` 新增 `resolveStateRoots({ home, dshHome })`：`DSH_HOME` 优先，返回 `{ home, dshHome, stateBase, legacyState, profilesRoot }`。
+  - `index.js` 的状态目录、legacy 目录、profile 识别根、脚手架路径守卫统一走它（守卫原本已尊重 `DSH_HOME`，现在与状态目录同源）。
+
+### Changed
+
+- 测试隔离补一条硬要求：`smoke.mjs` / `prompt-state.mjs` 在改 `HOME` 之外还要 `delete process.env.DSH_HOME`——否则 0.32.0 起会把状态写进真实 dsh home（本机 CI 环境里 `DSH_HOME` 是设着的，这一条不补就会挂）。
+
+### Tests
+
+- 单元 446（profile 11→18：`resolveStateRoots` 默认/覆盖、`legacy` 名保持、端到端「真实 home 识别 web / 隔离 DSH_HOME 识别 rc1」）。
+
 ## [0.31.0] - 2026-11-15
 
 ### Added

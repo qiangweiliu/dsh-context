@@ -684,6 +684,32 @@ E53 里模板冒烟因缺 `DEEPSEEK_API_KEY` 全线失败。与其等凭据，�
 
 本地双平台验证：Windows 22/22、WSL/Linux 22/22。
 
+## E57. 评估环境里的明文凭据副本（0.46.0 后续修正，2026-11-15）
+
+这件事**不是审计发现的**，是用户一句「模板转正为什么需要独立配置一个模型」问出来的。
+
+追下去发现 `eval/deep/setup-conditions.mjs` 会把 `~/.dsh/.credentials.yaml` **复制**进每个隔离 `DSH_HOME`。实测已经在磁盘上留下 3 份明文密钥副本（`probe`、`base-home`、`plugin-home`），全部含完整的 key 集合。
+
+刚做完的独立安全审计专门列了「凭证泄漏」这一类，而我在评估脚本里批量复制密钥——**审计范围只覆盖插件运行时代码，没覆盖 `eval/`，所以两边都没发现**。
+
+顺带查出同一脚本的三个设计问题，都属于「没想清楚哪个变量该控制」：
+
+| 问题 | 后果 |
+| --- | --- |
+| 复制 `.credentials.yaml` 进每个 home | 明文密钥多份副本；副本指向同一账号，评估烧的是同一份额度 |
+| 把 `contextWindow` 缩到 40000 并加激进 compaction | 这套 tuning 是为 compaction 实验准备的；模板题不涉及压缩，套用它引入了无关变量 |
+| 建 `base-home` + `plugin-home` 两套 | 模板评估只改 `DSH_AGENTS_HOME`，`DSH_HOME` 可以完全相同，第二套是多余的 |
+
+修正：
+
+- 新增 `eval/deep/template-conditions.mjs`：**单套 home、不 tuning、不复制凭据**。
+- `setup-conditions.mjs` 改为默认不复制凭据（`--copy-credentials` 才复制），头部注释写明 tuning 只适用 compaction 类实验。
+- 已删除那 3 份明文副本；验证方式是删掉后跑一轮——不再 `MISSING_CREDENTIAL`，而是直接打到 API（当时报配额 429），证明 `apiKeyEnv: OPENCODE_GO_API_KEY` 只要环境变量就够。
+
+教训：**安全审查的范围要和代码的范围一致**。审计了插件、漏了评估脚本，等于给了自己一个不受审的后门；而「在别处复制一份凭据让它跑起来」这种便利写法，恰恰是最容易被略过的一类问题。
+
+- 插件运行时代码本轮无改动；测试基线不变（单元 829、集成 181、lint 0）。
+
 ## 已知限制（unknown）
 
 - 未进行独立安全审计；本文件不声称“安全通过”。

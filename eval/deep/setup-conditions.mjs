@@ -13,7 +13,13 @@
  *
  * 说明：从现有 headless profile 复制 provider 配置，但把模型声明的上下文窗口
  * 调小到 40000、输出上限 16000，并给 compaction-basic 设置小 headroom/保留比例，
- * 以便在几十轮内触发压缩。凭据文件只复制到隔离 DSH_HOME，不打印内容。
+ * 以便在几十轮内触发压缩。
+ *
+ * 注意：这套 tuning 是为 **compaction 类实验**准备的。纯模板评估不该用它
+ * （题目不涉及压缩，缩窗口只会引入无关变量）——模板评估请用 template-conditions.mjs。
+ *
+ * 凭据默认**不**复制：headless 的 llm-pi-ai 读 `apiKeyEnv: OPENCODE_GO_API_KEY`，
+ * 运行时 export 即可。需要复制时显式 `--copy-credentials`（会在 home 里留明文）。
  */
 import { copyFileSync, existsSync, mkdirSync, readFileSync, rmSync, symlinkSync, writeFileSync } from 'node:fs'
 import { homedir } from 'node:os'
@@ -31,6 +37,10 @@ const CREDENTIALS = resolve(flag('credentials', join(homedir(), '.dsh', '.creden
 const BASE = resolve(flag('base-home', '/tmp/dsh-memory-base'))
 const PLUGIN = resolve(flag('plugin-home', '/tmp/dsh-memory-plugin'))
 const SCAFFOLD = resolve(flag('scaffold-home', '/tmp/deep-scaffold'))
+// 默认**不**把凭据文件复制进隔离 home：那是明文密钥的多份副本。改为运行时用环境
+// 变量注入（headless 的 llm-pi-ai 读 apiKeyEnv: OPENCODE_GO_API_KEY）。
+// 需要复制时显式加 --copy-credentials，且应放在不共享、可删除的位置。
+const COPY_CREDENTIALS = args.includes('--copy-credentials')
 
 function writeProfile(home) {
   const profile = join(home, 'profiles', 'headless')
@@ -46,8 +56,14 @@ function writeProfile(home) {
     dsh: { profile: { bundles: ['@deepseek-ai/dsh-base', '@deepseek-ai/dsh-headless'] } },
   }, null, 2)}\n`)
   mkdirSync(join(home, 'sessions'), { recursive: true })
-  if (existsSync(CREDENTIALS)) copyFileSync(CREDENTIALS, join(home, '.credentials.yaml'))
-  else console.warn(`[deep-setup] credentials not found: ${CREDENTIALS}`)
+  if (COPY_CREDENTIALS) {
+    if (existsSync(CREDENTIALS)) {
+      copyFileSync(CREDENTIALS, join(home, '.credentials.yaml'))
+      console.warn(`[deep-setup] 已复制凭据到 ${join(home, '.credentials.yaml')}（明文，用完请删除）`)
+    } else {
+      console.warn(`[deep-setup] credentials not found: ${CREDENTIALS}`)
+    }
+  }
 }
 
 function tunePatch(home) {
@@ -86,10 +102,12 @@ console.log(JSON.stringify({
   base: BASE,
   plugin: PLUGIN,
   scaffold: SCAFFOLD,
+  credentials: COPY_CREDENTIALS ? 'copied (明文，用完请删)' : 'not copied → 运行时注入 OPENCODE_GO_API_KEY',
   next: [
-    `node eval/deep/run.mjs --condition base --workers 3 --out eval/results/deep-b-base.jsonl`,
-    `node eval/deep/run.mjs --condition plugin --workers 3 --out eval/results/deep-b-plugin.jsonl`,
-    `node eval/deep/run.mjs --condition scaffold --workers 3 --out eval/results/deep-b-scaffold.jsonl`,
-    `node eval/deep/run.mjs --condition compact --workers 3 --out eval/results/deep-b-compact.jsonl`,
+    'export OPENCODE_GO_API_KEY=...   # 不复制凭据时必须先导出',
+    'node eval/deep/run.mjs --condition base --workers 3 --out eval/results/deep-b-base.jsonl',
+    'node eval/deep/run.mjs --condition plugin --workers 3 --out eval/results/deep-b-plugin.jsonl',
+    'node eval/deep/run.mjs --condition scaffold --workers 3 --out eval/results/deep-b-scaffold.jsonl',
+    'node eval/deep/run.mjs --condition compact --workers 3 --out eval/results/deep-b-compact.jsonl',
   ],
 }, null, 2))

@@ -100,3 +100,56 @@ node eval/deep/run.mjs --questions eval/deep/questions-templates.jsonl \
 
 - `opencode-go` 有**月度配额**，本轮用尽后所有运行以 `status: exit-1` + `QUOTA: 429 GoUsageLimitError` 失败，不是模型答错。判分时务必区分 `failed`（运行失败）与 `correct: false`（答错）——本轮第一批 12 次运行就是被这个坑掩盖过一次。
 - WSL 的 `/tmp` 会随实例空闲清空，条件目录一律放 `~/.cache/embody-eval`。
+
+## 8. 方法修正：环境不该复用 compaction 实验的那套
+
+第 6 节给的复现命令有三个问题，都是我在设计时没想清楚「什么变量该被控制」。
+
+### 8.1 不该缩上下文窗口
+
+原先模板评估直接用 `setup-conditions.mjs` 产出的 `base-home` / `plugin-home`。那个脚本会把 `contextWindow` 从 1M 调到 **40000**、`maxTokens` 调到 16000，并加上激进的 `compaction-basic`（headroom 1024 / retainRatio 0.05）。
+
+这套 tuning 是为 **compaction 类实验**服务的——目的是让压缩在几十轮内可被观察到。而模板题（故障排查、页面操作）根本不涉及压缩，**套用它等于让待测对象在一个为别的实验改过的环境里跑**，引入了与「模板好不好」无关的变量。
+
+### 8.2 不该建两套 home
+
+`run.mjs` 里 `--condition scaffold` 与 `--condition base` 的实际差别只有一件事：是否设置 `DSH_AGENTS_HOME`（指向脚手架的 `.agents` 目录）。`DSH_HOME` **可以完全相同**。
+
+原来分 `base-home` / `plugin-home` 是为了「装/不装插件」那类对照，模板评估不需要——它不改变插件，只改变注入的 skills。
+
+### 8.3 不该复制凭据
+
+原先 `setup-conditions.mjs` 会把 `~/.dsh/.credentials.yaml` **复制**进每个隔离 home，造成三个后果：
+
+1. 磁盘上多出**明文密钥副本**（实测生成了 3 份：`probe`、`base-home`、`plugin-home`）。刚做完的安全审计专门盯着「凭证暴露」，这个设计等于自己在批量复制密钥。
+2. 副本指向**同一个账号**，所以评估烧的是同一份额度——本轮把 `opencode-go` 月度配额跑干就是这么来的。
+3. 密钥轮换后旧副本失效，容易变成难查的「明明换了 key 还报错」。
+
+实测确认：provider 配置里是 `apiKeyEnv: OPENCODE_GO_API_KEY`，**运行时 export 即可**，不需要任何凭据文件。验证方式是删掉 home 里的 `.credentials.yaml` 后跑一轮——不再报 `MISSING_CREDENTIAL`，而是直接打到 API（那次报的是配额 429）。
+
+### 8.4 改成了什么
+
+新增 `eval/deep/template-conditions.mjs`：只建**一套**、**不 tuning**、**不复制凭据**的 home。
+
+```bash
+export OPENCODE_GO_API_KEY=...              # 必须；不再写进任何文件
+node eval/deep/template-conditions.mjs      # → ~/.cache/embody-eval/tpl-home
+
+# 两个臂共用同一个 home，差别只有 --scaffold-home
+node eval/deep/run.mjs --questions eval/deep/questions-templates.jsonl \
+  --condition base --ds-home ~/.cache/embody-eval/tpl-home \
+  --ids tpl-ops-01,tpl-ops-02,tpl-ops-03 --workers 1 \
+  --out eval/results/template-hard/base.jsonl
+
+node eval/deep/run.mjs --questions eval/deep/questions-templates.jsonl \
+  --condition scaffold --ds-home ~/.cache/embody-eval/tpl-home \
+  --scaffold-home ~/.cache/embody-eval/tpl-ops \
+  --ids tpl-ops-01,tpl-ops-02,tpl-ops-03 --workers 1 \
+  --out eval/results/template-hard/ops-runbook.jsonl
+```
+
+`setup-conditions.mjs` 也改了：凭据默认不复制，需要时显式 `--copy-credentials`；头部注释写明它的 tuning 只适用于 compaction 类实验。已生成的 3 份明文副本已删除。
+
+### 8.5 对已有数据的影响（诚实说明）
+
+第 3 节那组数据是在**旧环境**（40000 窗口 + 激进 compaction）下跑出来的。它在两个臂之间是对称的（base 与模板组用同一套 tuning），所以「ops 两组都 3/3、browser 2/3 → 3/3」的方向性结论**不受影响**；但绝对数值不能当作「在用户真实配置下的表现」，重新评估时应按 8.4 的新环境跑一遍。

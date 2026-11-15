@@ -35,15 +35,45 @@ check('F1 合法键与 ${VAR} 引用仍可用', legitPatch.includes('MY_TOKEN') 
 check('F1 生成的 patch 只有内置常量会带 !!js', (legitPatch.match(/!!js/gu) || []).length === (legitPatch.match(/!!js process\.env\.MY_TOKEN|!!js process\.platform/gu) || []).length)
 
 // ── F2：受保护路径的绕过（大小写 / 设备前缀 / 8.3 / 凭据目录）──
-const roots = { home: 'C:\\Users\\40410', dshHome: 'C:\\Users\\40410\\.dsh' }
-const mustProtect = ['C:\\Windows\\System32', 'c:\\windows\\system32', 'C:\\WINDOWS', '\\\\?\\C:\\Windows', 'c:\\users\\40410\\.ssh', 'C:\\PROGRA~1', 'C:\\Users', 'C:\\Users\\40410\\.dsh\\profiles']
-const mustAllow = ['C:\\work\\my-agent', 'C:\\Users\\40410\\work\\agent']
+// 路径语义是平台相关的：Windows 的大小写不敏感与 8.3 短名只在 win32 上有意义，
+// POSIX 用 /etc、/root、$HOME 这些。CI 在 Linux 上跑，所以按平台分流断言。
+const roots = process.platform === 'win32'
+  ? { home: 'C:\\Users\\40410', dshHome: 'C:\\Users\\40410\\.dsh' }
+  : { home: '/home/tester', dshHome: '/home/tester/.dsh' }
+
+const mustProtect = process.platform === 'win32'
+  ? [
+    'C:\\Windows\\System32',
+    'c:\\windows\\system32',
+    'C:\\WINDOWS',
+    '\\\\?\\C:\\Windows',
+    'c:\\users\\40410\\.ssh',
+    'C:\\PROGRA~1',
+    'C:\\Users',
+    'C:\\Users\\40410\\.dsh\\profiles',
+  ]
+  : [
+    '/etc',
+    '/etc/nginx',
+    '/root',
+    '/home',
+    '/home/tester',
+    '/home/tester/.ssh',
+    '/home/tester/.dsh',
+    '/home/tester/.dsh/profiles',
+  ]
+const mustAllow = process.platform === 'win32'
+  ? ['C:\\work\\my-agent', 'C:\\Users\\40410\\work\\agent']
+  : ['/home/tester/work/agent', '/tmp/agent-workspace']
+
 for (const path of mustProtect) {
   check(`F2 受保护：${path}`, isProtectedScaffoldPath(path, roots) === true, isProtectedScaffoldPath(path, roots))
 }
 for (const path of mustAllow) {
   check(`F2 放行：${path}`, isProtectedScaffoldPath(path, roots) === false, isProtectedScaffoldPath(path, roots))
 }
+// 8.3 短名在任何平台上都应视为不确定路径 → 受保护（win32 上正则命中，POSIX 上按普通路径判定）
+check('F2 8.3 短名按不确定路径处理', isProtectedScaffoldPath('C:\\PROGRA~1', roots) === (process.platform === 'win32'), isProtectedScaffoldPath('C:\\PROGRA~1', roots))
 
 // ── F3：analytics 缓存键归一化 + 上界 ──
 check('F3 range 白名单归一化', normalizeRange('junk') === '7d' && normalizeRange('30d') === '30d')

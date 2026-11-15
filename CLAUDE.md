@@ -42,7 +42,7 @@ node test/routes-session.mjs  # 会话预算/清理/提示词 6 条路由的直�
 node test/routes-status.mjs   # 状态/live/导出三条路由的直接单测（含缓存 revision 失效）
 ```
 
-当前基线（0.46.0）：client-build 6/6、static 113/113、metrics 66/66、state 26/26、compaction-plan 17/17、prompt-assembly 28/28、persist 7/7、profile 18/18、scaffold 170/170、templates 126/126、security 21/21、insights 34/34、render 36/36、fetch-chain 3/3、mount-guard 7/7、locale-keys 6/6、analytics 27/27、runtime 35/35、docs-guard 12/12、routes-scaffold 17/17、routes-session 28/28、routes-status 24/24（共 828）；集成 control 55/55、smoke 115/115、prompt-state 11/11（共 181）。
+当前基线（0.46.0）：client-build 6/6、static 113/113、metrics 66/66、state 26/26、compaction-plan 17/17、prompt-assembly 28/28、persist 7/7、profile 18/18、scaffold 170/170、templates 126/126、security 22/22、insights 34/34、render 36/36、fetch-chain 3/3、mount-guard 7/7、locale-keys 6/6、analytics 27/27、runtime 35/35、docs-guard 12/12、routes-scaffold 17/17、routes-session 28/28、routes-status 24/24（共 829）；集成 control 55/55、smoke 115/115、prompt-state 11/11（共 181）。
 
 CI 在 `.github/workflows/test.yml`：Node 20/22/24 三档跑单元 + `npm run lint`；另有 integration job 从 npm 安装 Cordis（4.0.5 / 4.1.0 两档）跑 control/smoke/prompt-state，不依赖本机 app.asar。两种 job 都带 npm 缓存与 `concurrency` 取消。
 
@@ -134,7 +134,7 @@ UI 脚本通过 Windows Edge 的 CDP 连接（`scripts/lib/cdp.mjs`，默认 Edg
 - `compaction-plan.js`（0.41.0）：压缩范围规划（阈值数学）。`control.js` 的 `planRegion` 改为薄适配层。
 - `prompt-assembly.js`（0.42.0）：`system-prompt/assemble` 的 section 重建（纯函数）。`control.js` 的 hook 从 86 行降到 20 行，`control.js` 640 → 575 行；剩余大块是 `syncGates` 的门禁同步与两个 inventory `sub.effect`。
 - `routes-inventory.js`（0.43.0）：inventory 路由组 + `withLivePromptState`。`index.js` 1787 → 1681 行。
-- 0.46.0 是**安全与验证**版本，没有新增模块：修复独立审计的 9 条问题（`test/security.mjs` 21 项回归），并把「模板转正」评估如实记录为负结果。
+- 0.46.0 是**安全与验证**版本，没有新增模块：修复独立审计的 9 条问题（`test/security.mjs` 22 项回归），并把「模板转正」评估如实记录为负结果。
 - `state.js`：两个半侧共享的进程内状态。Cordis realm 隔离使二者互相 `import` 服务不可行，但同一包内 `./state.js` 的 ESM 模块缓存是同一份实例。
 - `persist.js`：状态文件的原子写、写前备份与备份读取（`atomicWriteFile` / `backupFile` / `latestBackupJson`），不依赖 Cordis，由 `test/persist.mjs` 单独覆盖；状态文件损坏时 `index.js` 会回落到最近备份。
 - `profile.js`：按「哪个 profile 的依赖指向本插件目录」识别所属 profile，决定状态目录（`profiles/<name>/`）并从旧共享目录迁移状态文件；由 `test/profile.mjs` 覆盖。

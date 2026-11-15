@@ -70,9 +70,9 @@ export function isProtectedScaffoldPath(root, roots) {
     if (windowsDirs.some((dir) => isAtOrUnder(target, dir))) return true
   }
   if (target === home) return true
-  // 8.3 短名（PROGRA~1、WINDOW~1）：没有文件系统展开就无法确定真实目录，
-  // 一律按受保护处理，宁可让用户换一个目录也不要猜。
-  if (/(^|[\\/])[^\\/]{1,8}~\d/u.test(String(root ?? ''))) return true
+  // 8.3 短名（PROGRA~1、WINDOW~1）只存在于 Windows：没有文件系统展开就无法确定真实目录，
+  // 一律按受保护处理，宁可让用户换一个目录也不要猜。POSIX 上 `~1` 是合法字符，不做该判断。
+  if (process.platform === 'win32' && /(^|[\\/])[^\\/]{1,8}~\d/u.test(String(root ?? ''))) return true
   // home 的任意祖先（/home、C:\Users、C:\ 等）都不允许。
   let cursor = roots.home
   while (dirname(cursor) !== cursor) {

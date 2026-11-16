@@ -18,6 +18,9 @@
       const detailSession = selected || activeSession
       const detailPath = detailSession ? `${STATUS_PATH}/session-detail?sessionId=${encodeURIComponent(detailSession)}` : `${STATUS_PATH}/session-detail`
       const [liveState, reloadLive] = useLive(livePath, usageTick, Boolean(activeSession))
+      const skillsPath = activeSession ? `${STATUS_PATH}/skills?sessionId=${encodeURIComponent(activeSession)}` : `${STATUS_PATH}/skills`
+      // 技能目录只在 Settings 拉取；切换会话时会话根可能不同，因此也跟 activeSession 走。
+      const [skillsState, reloadSkills] = useLive(skillsPath, activeSession, tab === 'settings')
       const [invState, reloadInv] = useLive(inventoryPath, usageTick, tab === 'settings')
       const [analyticsState, reloadAnalytics] = useLive(analyticsPath, activeSession, tab === 'overview' || tab === 'trend' || tab === 'settings')
       const [insightsState, reloadInsights] = useLive(insightsPath, activeSession, tab === 'overview')
@@ -38,6 +41,7 @@
         load()
         reloadLive()
         if (tab === 'settings') reloadInv()
+        if (tab === 'settings') reloadSkills()
         if (tab === 'overview' || tab === 'trend' || tab === 'settings') reloadAnalytics()
         if (tab === 'overview') reloadInsights()
         if (tab === 'trend' || tab === 'events') reloadDetail()
@@ -292,6 +296,7 @@
           guard('balance-display', h(BalanceDisplayCard, { t })),
         )))
         body.push(guard('inventory', h(InventoryCard, { t, data: invState.data, loading: invState.data === null && invState.error === null, error: invState.data === null ? invState.error : null, reload: reloadInv, sessionId: activeSession, controlActive: Boolean(control.active) })))
+        body.push(guard('skills', h(SkillsCard, { t, data: skillsState.data, loading: skillsState.data === null && skillsState.error === null, error: skillsState.data === null ? skillsState.error : null, reload: reloadSkills, sessionId: activeSession })))
         body.push(guard('pricing', h(PricingSection, { t, pricing: data ? data.pricing : null, editable: Boolean(data.configEditable), onSaved: load })))
         body.push(guard('data', h(DataCard, { t, range, coverage: analytics ? analytics.coverage : null, alertsEnabled, onAlertsChange: setAlerts, onDone: reloadAll })))
         body.push(guard('labs', h(LabsCard, { t })))

@@ -22,6 +22,7 @@ import { fileURLToPath } from 'node:url'
 
 import { detectProfileName, migrateStateFiles, resolveStateRoots, stateDirFor } from './profile.js'
 import { createScaffoldRoutes } from './routes-scaffold.js'
+import { createSkillRoutes } from './routes-skills.js'
 import { createSessionRoutes } from './routes-session.js'
 import { createStatusRoutes } from './routes-status.js'
 import { createInventoryRoutes } from './routes-inventory.js'
@@ -1535,6 +1536,40 @@ export function apply(ctx, config) {
   /** 清除会话级提示词文本覆盖：POST /inventory/prompt/session/reset {name?, sessionId?}。 */
   // ── Agent Embodiment Scaffold：三条路由已抽到 routes-scaffold.js（0.36.0）──
   // 依赖显式注入，因此可以用假 request/response 直接单测，不需要构造 Cordis 上下文。
+  // ── 技能读取（只读）：宿主 skills 注册表可能缺席，缺席时路由返回 503 ──
+  ctx.inject(['skills'], (sub) => {
+    RUNTIME.setSkills(sub?.skills ?? null)
+    if (typeof sub.effect === 'function') sub.effect(() => () => { RUNTIME.setSkills(null) }, 'agent-embodiment: skills presence')
+  })
+
+  const { skillsHandler, skillBodyHandler } = createSkillRoutes({
+    jsonSender,
+    requireMethod,
+    requestUrl,
+    getSkills: () => RUNTIME.getSkills(),
+    getCwdForSession: (sessionId) => {
+      const sessions = RUNTIME.getSessions()
+      if (!sessions || typeof sessions.get !== 'function') return null
+      const record = sessions.get(sessionId)
+      const header = record?.header ?? record?.session?.header ?? record
+      return typeof header?.cwd === 'string' && header.cwd.length > 0 ? header.cwd : null
+    },
+    defaultCwd: () => process.cwd(),
+    // 注册表在全局层读不到 preset 作用域的 provider（ScopeKey 是 dsh-scope 的私有
+    // Symbol），所以空目录时按标准根目录兜底扫描；这两个 home 与宿主 provider 一致。
+    resolveHomes: () => ({
+      dshHome: RUNTIME.paths.dshHome,
+      agentsHome: process.env.DSH_AGENTS_HOME && process.env.DSH_AGENTS_HOME.length > 0
+        ? process.env.DSH_AGENTS_HOME
+        : join(RUNTIME.paths.home, '.agents'),
+    }),
+    logger: (level, message) => {
+      const logger = ctx.logger
+      const target = level === 'warn' ? 'warn' : 'info'
+      if (typeof logger?.[target] === 'function') logger[target](`agent-embodiment: ${message}`)
+    },
+  })
+
   const { scaffoldTemplateList, scaffoldPreviewHandler, scaffoldGenerateHandler } = createScaffoldRoutes({
     home: STATE_ROOTS.home,
     dshHome: STATE_ROOTS.dshHome,
@@ -1678,6 +1713,8 @@ export function apply(ctx, config) {
         server.register({ kind: 'exact', path: `${STATUS_PATH}/inventory/prompt/session/reset`, handler: authed(sessionPromptResetHandler) }),
         server.register({ kind: 'exact', path: `${STATUS_PATH}/inventory/extra-prompt`, handler: authed(extraPromptHandler) }),
         server.register({ kind: 'exact', path: `${STATUS_PATH}/inventory/extra-prompt/reset`, handler: authed(extraPromptResetHandler) }),
+        server.register({ kind: 'exact', path: `${STATUS_PATH}/skills`, handler: authed(skillsHandler) }),
+        server.register({ kind: 'exact', path: `${STATUS_PATH}/skills/body`, handler: authed(skillBodyHandler) }),
         server.register({ kind: 'exact', path: `${STATUS_PATH}/scaffold/templates`, handler: authed(scaffoldTemplateList) }),
         server.register({ kind: 'exact', path: `${STATUS_PATH}/scaffold/preview`, handler: authed(scaffoldPreviewHandler) }),
         server.register({ kind: 'exact', path: `${STATUS_PATH}/scaffold/generate`, handler: authed(scaffoldGenerateHandler) }),

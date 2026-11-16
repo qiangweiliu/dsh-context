@@ -750,6 +750,50 @@ UI-PROPOSAL §9 里剩的两项，一项真做、一项早就做了。
 
 - 测试：单元 833、集成 181、lint 0。
 
+## E60. v0.49.0 技能目录（只读）（2026-11-16）
+
+需求是「给插件加技能管理」。先把宿主能力读清楚再定范围，结论是**只读这一层现在做**，启停与编辑不做。
+
+### 宿主侧的事实（读 app.asar 得出，不是猜的）
+
+- 技能由 `ctx.skills` 注册表提供（`@deepseek-ai/dsh-skill` 拥有 Service Definition），`dsh-skill-filesystem` 以 provider 身份注册。
+- 根目录按 rank 扫：`.dsh/skills`(100)、`.agents/skills`(200)、`custom`(300)、`~/.dsh/skills`(400)、`~/.agents/skills`(500)、bundled(600)。
+- 注册表只有三个读方法：`list(options)`、`snapshot(options)` → `{ skills, complete }`、`get(name, options)` → 含正文的完整定义。
+- 每个技能带 `invocation: { modelInvocable, userInvocable }`，值来自 `SKILL.md` 的 `disable-model-invocation` / `user-invocable`。**注册表没有按会话过滤的接口。**
+
+### 为什么只做到只读
+
+「按会话启停技能」听着自然，但宿主的 invocation 是**文件属性**，不是运行时开关。硬做只能注册同名 runtime stub 去遮蔽 provider 的候选（`runtime` rank 250 优先），代价是遮蔽后正文也取不到、语义变成「假装没这个技能」。那不是管理，是 hack，所以没做，只把边界写进 `LIMITATIONS.md`。
+
+### 踩到的坑：宿主平面读不到技能的真正原因
+
+第一版直接用 `ctx.skills.list()`。桌面/WSL 上装了插件、`~/.agents/skills` 里明明有 5 个技能，接口却稳定返回 `total: 0`、`complete: true`。
+
+原因不是「宿主没挂 provider」，而是**作用域**：注册表的 provider 注册在 agent preset 的作用域层，`list()` 不带 `scope` 时只读全局层；要读 preset 层就必须传 `ScopeKey`，而 `ScopeKey` 是 `dsh-scope` 里 `Symbol('dsh.scope')` 上的**模块私有**值——插件又按「运行时不 import 任何 npm 包」运行（`link:` 安装解析不到宿主依赖），根本拿不到它。
+
+这一步是靠「装上去真跑一次」发现的。单测全绿、接口 200、`complete: true`，但内容是空的——**空结果比报错更危险**，它看起来像成功。
+
+### 解法：两条取数路径 + 如实标注来源
+
+| 路径 | 何时 | 能力边界 |
+| --- | --- | --- |
+| 注册表（`via: registry`） | 能读到就用，权威 | 含 runtime 技能、preset `customSkillDirs` |
+| 目录扫描（`via: filesystem`） | 注册表在全局层为空时 | 只覆盖 4 个标准根，看不到 `customSkillDirs` |
+
+面板把 `via` 显示成「来源：宿主注册表 / 目录扫描」，不假装两者等价。扫盘规则对齐宿主：只扫顶层、目录包 `<name>/SKILL.md` 或扁平 `<name>.md`、同名按 rank 先到先得、跳过 `.system`。
+
+### 真实数据又抓到一个 bug
+
+扫盘上线后列出 6 个，但 `~/.agents/skills/humanizer-zh` 是**指向目录的符号链接**，被漏了：`Dirent.isDirectory()` 对符号链接恒为 `false`，我按「不是目录就当扁平 .md」处理，名字不以 `.md` 结尾就跳过了。改为对链接 `stat` 一次再判断，悬空链接跳过。修完 7 个，`humanizer-zh` 正文 7825 字符可取。
+
+### 另外两个被工具纠正的地方
+
+- `docs-guard` 在我漏写 `/status/skills/body` 时直接失败（`IMPLEMENTATION 覆盖全部注册路由`），说明「文档路由清单 vs 代码注册」这条一致性断言在起作用。
+- 第一版超时计时器加了 `unref()`，测试表现为「顶层 await 悬挂、进程直接退出」：unref 的计时器不保活事件循环，可能在触发前就没了。被「注册表卡住」用例当场抓到，改成不 unref 并把超时做成可注入（测试用 40ms）。
+
+- 测试：单元 898（`routes-skills` 62、`static` 121）、集成 181、lint 0。
+
+
 ## 已知限制（unknown）
 
 - 未进行独立安全审计；本文件不声称“安全通过”。

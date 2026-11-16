@@ -294,6 +294,14 @@ for (const inject of secondMount.slotInjects) inject.callback()
   check('两段 <style> 都在 dispose 时移除', (clientSource.match(/\.remove\(\)/gu) || []).length >= 2)
 }
 
+// 技能读取（只读）必须真的挂上：注入 skills 服务 + 注册两条 GET 路由。
+{
+  check('技能服务以 ctx.inject([skills]) 注入', indexSource.includes("ctx.inject(['skills'],"))
+  check('技能路由已注册', indexSource.includes('/skills`') && indexSource.includes('/skills/body`'))
+  check('技能路由全部套 authed', /server\.register\(\{ kind: 'exact', path: `\$\{STATUS_PATH\}\/(skills|skills\/body)`, handler: authed\(/u.test(indexSource))
+  check('技能模块不写盘（只读）', !/writeFileSync|mkdirSync|unlinkSync/u.test(readFileSync(new URL('../routes-skills.js', import.meta.url), 'utf8')))
+}
+
 check('client 重复挂载只注册一次', firstMount.slotRegistrations.length === 5 && secondMount.slotRegistrations.length === 0, `${firstMount.slotRegistrations.length}/${secondMount.slotRegistrations.length}`)
 
 const failed = checks.filter((entry) => !entry.ok)

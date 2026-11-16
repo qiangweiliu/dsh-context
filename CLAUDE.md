@@ -4,7 +4,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## 项目概览
 
-DeepSeek Harness（DSH）的 agent 具身与上下文管理插件仓库。市场显示名 `Agent Embodiment` / `智能体具身`；包名/目录 `agent-embodiment`；短品牌 `embody`。旧名 `ctx-mon-and-con` 仅用于历史记录和兼容别名。可发布的主体是 `agent-embodiment/`（npm 包名 `agent-embodiment`，当前 `package.json` 版本 `0.48.0`），其余目录是配套资产：
+DeepSeek Harness（DSH）的 agent 具身与上下文管理插件仓库。市场显示名 `Agent Embodiment` / `智能体具身`；包名/目录 `agent-embodiment`；短品牌 `embody`。旧名 `ctx-mon-and-con` 仅用于历史记录和兼容别名。可发布的主体是 `agent-embodiment/`（npm 包名 `agent-embodiment`，当前 `package.json` 版本 `0.49.0`），其余目录是配套资产：
 
 - `eval/`：提示词 / 推理档位对照评测（GSM8K、MATH Level 5），以及 Tier B 50 题深度套件与结果报告。
 - `research/`、`explore/`：对 DSH 插件机制、compaction、UI 的逆向调研与设计笔记。
@@ -40,9 +40,10 @@ node test/docs-guard.mjs    # 文档与代码关键常量一致性（版本 / �
 node test/routes-scaffold.mjs # 脚手架三条路由的直接单测（假 request/response，不需要 Cordis）
 node test/routes-session.mjs  # 会话预算/清理/提示词 6 条路由的直接单测
 node test/routes-status.mjs   # 状态/live/导出三条路由的直接单测（含缓存 revision 失效）
+node test/routes-skills.mjs   # 技能目录两条只读路由 + 目录扫描（注册表/扫盘选择 / frontmatter 解析 / 符号链接 / 超时）
 ```
 
-当前基线（0.48.0）：client-build 6/6、static 117/117、metrics 66/66、state 26/26、compaction-plan 17/17、prompt-assembly 28/28、persist 7/7、profile 18/18、scaffold 170/170、templates 126/126、security 22/22、insights 34/34、render 36/36、fetch-chain 3/3、mount-guard 7/7、locale-keys 6/6、analytics 27/27、runtime 35/35、docs-guard 12/12、routes-scaffold 17/17、routes-session 28/28、routes-status 24/24（共 833）；集成 control 55/55、smoke 115/115、prompt-state 11/11（共 181）。
+当前基线（0.49.0）：client-build 6/6、static 121/121、metrics 66/66、state 26/26、compaction-plan 17/17、prompt-assembly 28/28、persist 7/7、profile 18/18、scaffold 170/170、templates 126/126、security 22/22、insights 34/34、render 36/36、fetch-chain 3/3、mount-guard 7/7、locale-keys 6/6、analytics 27/27、runtime 35/35、docs-guard 12/12、routes-scaffold 17/17、routes-session 28/28、routes-status 24/24、routes-skills 62/62（共 898）；集成 control 55/55、smoke 115/115、prompt-state 11/11（共 181）。
 
 CI 在 `.github/workflows/test.yml`：Node 20/22/24 三档跑单元 + `npm run lint`；另有 integration job 从 npm 安装 Cordis（4.0.5 / 4.1.0 两档）跑 control/smoke/prompt-state，不依赖本机 app.asar。两种 job 都带 npm 缓存与 `concurrency` 取消。
 
@@ -74,7 +75,7 @@ npm run lint                # oxlint（devDependency；CI 也跑，0 error）
 ### 版本号同步与 client 构建
 
 ```bash
-node scripts/bump-version.mjs 0.48.0   # package.json / client-src 与 client.js 的 CLIENT_VERSION / README / IMPLEMENTATION 一次改齐
+node scripts/bump-version.mjs 0.49.0   # package.json / client-src 与 client.js 的 CLIENT_VERSION / README / IMPLEMENTATION 一次改齐
 cd agent-embodiment && npm run build:client   # 改过 client-src/ 后必须重建 client.js
 ```
 
@@ -144,6 +145,8 @@ UI 脚本通过 Windows Edge 的 CDP 连接（`scripts/lib/cdp.mjs`，默认 Edg
 - `compaction-plan.js`（0.41.0）：压缩范围规划（阈值数学）。`control.js` 的 `planRegion` 改为薄适配层。
 - `prompt-assembly.js`（0.42.0）：`system-prompt/assemble` 的 section 重建（纯函数）。`control.js` 的 hook 从 86 行降到 20 行，`control.js` 640 → 575 行；剩余大块是 `syncGates` 的门禁同步与两个 inventory `sub.effect`。
 - `routes-inventory.js`（0.43.0）：inventory 路由组 + `withLivePromptState`。`index.js` 1787 → 1681 行。
+- `routes-skills.js`（0.49.0）：技能目录两条只读路由（`/status/skills`、`/status/skills/body`）。**只读**：不启停、不改 SKILL.md——invocation 是文件属性（frontmatter 的 `disable-model-invocation` / `user-invocable`），注册表没有按会话过滤的接口。
+- **技能取数有两条路径，别只写注册表那条**：约 0.49.0 起先问 `ctx.skills` 注册表（`via: registry`，权威），全局层为空时按 provider 的 rank 顺序扫标准根目录（`via: filesystem`）。之所以要兜底：provider 注册在 preset 作用域层，`ScopeKey` 是 `dsh-scope` 的模块私有 Symbol，宿主平面插件拿不到，注册表按全局层读出来永远是空的（0.49.0 实测 `total: 0` 才发现的）。扫盘遵循宿主规则：只扫顶层、同名 rank 先到先得、跳过 `.system`、跟随符号链接。
 - 0.46.0 是**安全与验证**版本，没有新增模块：修复独立审计的 9 条问题（`test/security.mjs` 22 项回归）。0.48.0 决定那 4 个 `experimental` 模板不转正，任务级评估工具与数据归档到 `eval/deep/archive/templates/`。
 - `state.js`：两个半侧共享的进程内状态。Cordis realm 隔离使二者互相 `import` 服务不可行，但同一包内 `./state.js` 的 ESM 模块缓存是同一份实例。
 - `persist.js`：状态文件的原子写、写前备份与备份读取（`atomicWriteFile` / `backupFile` / `latestBackupJson`），不依赖 Cordis，由 `test/persist.mjs` 单独覆盖；状态文件损坏时 `index.js` 会回落到最近备份。
@@ -177,7 +180,7 @@ UI 脚本通过 Windows Edge 的 CDP 连接（`scripts/lib/cdp.mjs`，默认 Edg
 
 所有路由都挂在 `/api/agent-embodiment/status` 下，注册时统一套 `authed`：先调用 `ctx.connection.requestRejection`（Host/Origin + 浏览器/API 认证），拒绝返回 401/403；没有 `connection` 时：纯 headless（无 `webServer`）放行，**有 `webServer` 则 403 失败关闭**（0.25.0 起）。POST 只接受 `application/json`，其他 content-type 返回 415。
 
-- 读取（GET）：`status`、`status/live`、`status/analytics`、`status/session-detail`、`status/insights`、`status/onboarding`、`status/export`、`status/inventory`、`status/scaffold/templates`。
+- 读取（GET）：`status`、`status/live`、`status/analytics`、`status/session-detail`、`status/insights`、`status/onboarding`、`status/export`、`status/inventory`、`status/scaffold/templates`、`status/skills`、`status/skills/body`。
 - 写入（POST）：`status/config`（全局配置补丁，16KB 上限）、`status/config/preset`（控制行启停）、`status/onboarding`（确认/跳过/授权）、`status/data/reset`（清日志/开关）、`status/inventory/{toggle,reset,prompt,prompt/reset,prompt/session,prompt/session/reset,extra-prompt,extra-prompt/reset}`、`status/scaffold/{preview,generate}`。
 - 默认请求体上限 256KB（`readJson` 可传更小值）；配置补丁 16KB，脚手架 spec 64KB。
 - `scaffold/generate` 要求绝对 `targetDir`，拒绝文件系统根、home 及其祖先、系统目录、`$DSH_HOME` 与常见凭据目录；逐文件校验路径不逃逸 `targetDir`；默认拒绝覆盖（409），`overwrite:true` 才覆盖。
@@ -227,7 +230,7 @@ UI 脚本通过 Windows Edge 的 CDP 连接（`scripts/lib/cdp.mjs`，默认 Edg
 - `agent-embodiment/README.md`：用户功能与入口。
 - `agent-embodiment/docs/IMPLEMENTATION.md`：实现细节、路由清单、测试结果（最接近架构总览）。
 - `agent-embodiment/docs/LIMITATIONS.md`：行为边界与已知限制。
-- `agent-embodiment/docs/EVIDENCE.md`：逐版本 UI/运行证据（E16–E59 覆盖 0.19–0.48）。
+- `agent-embodiment/docs/EVIDENCE.md`：逐版本 UI/运行证据（E16–E60 覆盖 0.19–0.49）。
 - `agent-embodiment/docs/CORE-FUNCTION-AUDIT.md`：核心功能冲突、实现一致性与 P1/P2 审计结论。
 - `agent-embodiment/docs/RELEASE-PLAN.md`：0.22.0 → 1.0.0 的版本路线图、发布门禁、兼容矩阵与回滚步骤。
 - `agent-embodiment/docs/UI-PROPOSAL.md`：面板信息架构与视觉提案；§9 是实测核对（§2 的 14 条问题到 0.47.0 全部落地，含一次自查失败的记录）。`static.mjs` 会断言该文档登记的组件都存在于 `client.js`，并锁住焦点环 / `prefers-reduced-motion` 两段样式注入。

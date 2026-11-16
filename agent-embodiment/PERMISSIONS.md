@@ -6,7 +6,7 @@
 
 | 能力 | 是否使用 | 范围 | 权限档位（商城口径） |
 | --- | --- | --- | --- |
-| 文件读取 | 是 | 插件自己的状态文件与 profile patch（只读读取 current 值）；经 `sessionQuery` 读取会话事件日志的派生字段（标题、cwd、模型、工具名、用量）；不扫描宿主包源码 | 有界只读 |
+| 文件读取 | 是 | 插件自己的状态文件与 profile patch（只读读取 current 值）；经 `sessionQuery` 读取会话事件日志的派生字段（标题、cwd、模型、工具名、用量）；经宿主 `ctx.skills` 读取技能目录与 SKILL.md 正文（含技能文件绝对路径，0.49.0，只读）；不扫描宿主包源码 | 有界只读 |
 | 文件写入 | 是 | `$DSH_HOME/agent-embodiment/`（默认 `~/.dsh/agent-embodiment/`）下自己的状态与备份；profile 的 `cordis.patch.yml` 仅经官方 `configEditor`；Agent 脚手架写入用户指定的工作区目录 | 插件私有状态 + Profile + 工作区 |
 | 网络 | 仅本机同源 | 宿主已有 Web 服务器上注册 `/api/agent-embodiment/*` 路由；浏览器端只 `fetch` 同源 API | 无外发 |
 | 命令执行 | 否 | 无 `child_process`、无 Shell、无动态执行外部代码 | 无 |
@@ -44,7 +44,15 @@
 - 内容：生成 preset patch、Markdown、SKILL.md、eval JSONL、可选 MCP 配置、可选 `AGENTS.md` 标记 section；不写入真实 secret（MCP 的 `${ENV_VAR}` 转为 `!!js process.env.*`）；**不在生成阶段执行任何 MCP 命令**。生成的 preset 安装仍需用户手动执行 `dsh plugin add` 或使用官方插件管理器；安装后 DSH 可能按生成的 MCP 行启动本地命令，这属于用户审查/启用后的行为。
 - **MCP 命令面**：面板提交的 `mcp[].command` / `args` / `env` 只做类型校验、不做白名单——生成阶段不执行，但会被写入 preset，安装后由 DSH 当作本地命令启动。UI 在输入框给出示例并提示「会用本机命令启动」，请只填你信任的命令。
 
-### 1.5 数据导出（由浏览器下载）
+### 1.5 技能目录读取（0.49.0，只读）
+
+- 触发：用户在设置页展开「技能」卡片，或直接 GET `/api/agent-embodiment/status/skills`、`/status/skills/body?name=`。
+- 读取面：经宿主 `ctx.skills` 注册表拿到技能目录（`name`、`description`、`whenToUse`、`source`、`provider`、**技能文件的绝对路径**）与单个技能的正文。
+- 边界：**只读，不写任何技能文件**；不接受任意 `?cwd=`——扫描根只来自 `?sessionId=` 指向的会话工作目录（回落到进程默认目录），避免把该路由变成「输入任意路径并返回其中文件路径」的枚举器。
+- **注意**：返回结果含技能文件的本机绝对路径。面板是本机浏览器同源使用，风险与导出功能同级；若要截图或分享面板内容，请注意路径信息。
+- 不读取技能以外的目录；不执行技能内容（正文只是文本）。
+
+### 1.6 数据导出（由浏览器下载）
 
 - `/api/agent-embodiment/status/export` 返回当前扫描范围内的汇总与会话级字段（`id`、`title`、`cwd`、model、tokens、费用、时间等），CSV 单元格做了公式注入中和（`=`/`+`/`-`/`@` 开头的文本会加前导 `'`）。
 - **注意**：`cwd` 是本机绝对路径、`title` 是会话标题，导出文件里都会包含这些本机信息；请勿把导出文件直接分享给不信任的第三方。
@@ -53,7 +61,7 @@
 ## 2. 网络
 
 - **无外发请求**：宿主侧不调用 `fetch`/`http.request` 连接任何外部地址。
-- 宿主侧仅在 DSH 已有 Web 服务器上注册本机路由（`/api/agent-embodiment/status` 及子路由：`live`、`analytics`、`session-detail`、`insights`、`onboarding`、`export`、`inventory/*`、`config`、`config/preset`、`data/reset`、`session-budget`、`scaffold/*`）。
+- 宿主侧仅在 DSH 已有 Web 服务器上注册本机路由（`/api/agent-embodiment/status` 及子路由：`live`、`analytics`、`session-detail`、`insights`、`onboarding`、`export`、`inventory/*`、`config`、`config/preset`、`data/reset`、`session-budget`、`scaffold/*`、`skills`、`skills/body`）。
 - 浏览器侧 `client.js` 只 `fetch` 同源 API 路径，路径相对 `document.baseURI` 解析，用于读取状态与提交开关/配置；兼容反向代理的路径前缀。
 - 无 CDN、无外部脚本、无遥测、无第三方服务依赖。
 

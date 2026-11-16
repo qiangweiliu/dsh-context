@@ -834,6 +834,103 @@
       )
     }
 
+    /**
+     * 技能目录（只读）。宿主把技能能力做成 `ctx.skills` 注册表，文件系统 provider 扫描
+     * `.dsh/skills`、`.agents/skills`、`~/.dsh/skills`、`~/.agents/skills` 等根目录。
+     * 这里只展示「有什么、来自哪里、进不进模型」，不提供开关：技能的 invocation 由各自
+     * SKILL.md 的 frontmatter 决定，改它等于改文件，那是另一个动作。
+     */
+    function SkillsCard(props) {
+      const t = props.t
+      const data = props.data
+      const error = props.error
+      const [openName, setOpenName] = react.useState(null)
+      const [bodies, setBodies] = react.useState({})
+      const [bodyError, setBodyError] = react.useState(null)
+
+      const toggleBody = (name) => {
+        if (openName === name) {
+          setOpenName(null)
+          return
+        }
+        setOpenName(name)
+        if (bodies[name] !== undefined) return
+        setBodyError(null)
+        const query = props.sessionId ? `&sessionId=${encodeURIComponent(String(props.sessionId))}` : ''
+        fetchJson(`${STATUS_PATH}/skills/body?name=${encodeURIComponent(name)}${query}`)
+          .then((payload) => {
+            if (payload && payload.ok) setBodies((previous) => ({ ...previous, [name]: payload }))
+            else throw new Error((payload && payload.error) || 'invalid payload')
+          })
+          .catch((failure) => setBodyError(String((failure && failure.message) || failure)))
+      }
+
+      const head = h('div', { style: styles.cardHead },
+        h('h3', { style: styles.cardTitle }, t('skillsTitle')),
+        data && data.counts
+          ? h('span', { style: styles.cardSub }, t('skillsCount').replace('{model}', String(data.counts.model || 0)).replace('{total}', String(data.counts.total || 0)))
+          : null,
+      )
+
+      if (props.loading) {
+        return h('div', { style: styles.card, 'data-embodiment-skills': 'loading' }, head, h('p', { style: styles.emptyText }, t('loading')))
+      }
+      if (error) {
+        return h('div', { style: styles.card, 'data-embodiment-skills': 'error' },
+          head,
+          h('p', { style: styles.error }, String(error)),
+          h('button', { type: 'button', style: styles.button, onClick: () => props.reload && props.reload() }, t('retry')),
+        )
+      }
+      if (!data) {
+        return h('div', { style: styles.card, 'data-embodiment-skills': 'empty' }, head, h('p', { style: styles.emptyText }, t('skillsEmpty')))
+      }
+      if (data.ok === false) {
+        return h('div', { style: styles.card, 'data-embodiment-skills': 'unavailable' },
+          head,
+          h('p', { style: styles.emptyText }, String(data.error || t('skillsUnavailable'))),
+          data.hint ? h('p', { style: { ...styles.emptyText, fontSize: '11px' } }, String(data.hint)) : null,
+        )
+      }
+
+      const skills = Array.isArray(data.skills) ? data.skills : []
+      const rows = skills.length > 0
+        ? h('ul', { style: styles.insightList }, skills.map((skill) => {
+          const body = bodies[skill.name]
+          const isOpen = openName === skill.name
+          return h('li', { key: skill.name, style: styles.insightItem, 'data-embodiment-skill': skill.name },
+            h('div', { style: { display: 'flex', alignItems: 'center', gap: '6px', flexWrap: 'wrap', minWidth: 0 } },
+              h('span', { style: { ...styles.badge, ...(skill.modelInvocable ? styles.badgeOk : styles.badgeWarn) }, title: t('skillsModelHint') }, skill.modelInvocable ? t('skillsModelYes') : t('skillsModelNo')),
+              h('span', { style: { ...styles.badge, ...(skill.userInvocable ? styles.badgeOk : styles.badgeWarn) }, title: t('skillsUserHint') }, skill.userInvocable ? t('skillsUserYes') : t('skillsUserNo')),
+              h('span', { style: { fontFamily: 'ui-monospace, SFMono-Regular, Menlo, monospace', fontSize: '12px' }, title: skill.path || '' }, skill.name),
+              skill.source ? h('span', { style: styles.cardSub }, skill.source) : null,
+              h('button', { type: 'button', style: styles.copyBtn, onClick: () => toggleBody(skill.name), 'data-embodiment-skill-toggle': skill.name }, isOpen ? t('collapse') : t('skillsView')),
+            ),
+            h('p', { style: { ...styles.text, margin: '2px 0 0' } }, skill.description || ''),
+            isOpen && skill.whenToUse ? h('p', { style: { ...styles.text, margin: '2px 0 0', opacity: 0.8 } }, skill.whenToUse) : null,
+            isOpen
+              ? (body
+                ? h('div', { style: { marginTop: '6px' } },
+                  body.path ? h('div', { style: { ...styles.cardSub, fontSize: '11px', wordBreak: 'break-all' } }, body.path) : null,
+                  h('pre', { style: styles.pre }, body.content || ''),
+                  body.truncated ? h('p', { style: { ...styles.text, fontSize: '11px' } }, t('skillsTruncated')) : null,
+                )
+                : h('p', { style: { ...styles.text, marginTop: '6px' } }, bodyError || t('loading')))
+              : null,
+          )
+        }))
+        : h('p', { style: styles.emptyText }, t('skillsEmpty'))
+
+      return h('div', { style: styles.card, 'data-embodiment-skills': '1' },
+        head,
+        h('p', { style: styles.text }, t('skillsHint')),
+        data.complete === false ? h('p', { style: { ...styles.banner, margin: '0 0 6px' } }, t('skillsIncomplete')) : null,
+        data.via ? h('p', { style: { ...styles.cardSub, fontSize: '11px' } }, t('skillsVia').replace('{via}', t(data.via === 'registry' ? 'skillsViaRegistry' : data.via === 'registry-empty' ? 'skillsViaRegistryEmpty' : 'skillsViaFilesystem'))) : null,
+        data.cwd ? h('p', { style: { ...styles.cardSub, fontSize: '11px', wordBreak: 'break-all' } }, t('skillsCwd').replace('{cwd}', String(data.cwd))) : null,
+        rows,
+      )
+    }
+
     /** 共享面板：设置分区与整页都用它。 */
 
     // ── 会话洞察：KPI / 每日图 / 会话卡 / 趋势 / 事件 ───────────────────────

@@ -2,6 +2,32 @@
 
 格式参考 Keep a Changelog；版本遵循 SemVer。DSH 兼容版本写在每个条目的 Compatibility 下。
 
+## [0.49.0] - 2026-11-16
+
+### Added
+
+- **技能目录（只读）**：Settings 分区新增 `SkillsCard`，列出当前工作区可发现的技能，并可展开看 `SKILL.md` 正文。
+  - 两个新路由，都套 `authed`、都只读：
+    - `GET /status/skills`（`?sessionId=`）→ 技能目录，含 `name` / `description` / `whenToUse` / `source` / `provider` / `path` / `modelInvocable` / `userInvocable`，外加 `counts`、`complete`、`cwd`。
+    - `GET /status/skills/body?name=`→ 单个技能正文；非 kebab-case 名字 400、不存在 404、超 200k 字符截断并标 `truncated`。
+  - **取数有两条路径，响应用 `via` 如实标注**：先问宿主 `ctx.skills` 注册表（`via: "registry"`，权威，含 runtime 注册与 preset `customSkillDirs`）；注册表在全局层为空时按 provider 的 rank 顺序扫标准根目录（`via: "filesystem"`）。
+  - **为什么必须兜底**：技能 provider 注册在 agent preset 的作用域层，而本插件是宿主平面插件——`ScopeKey` 是 `dsh-scope` 的模块私有 Symbol，插件又按「不 import 任何 npm 包」运行，拿不到它，注册表按全局层读出来永远是空的（实测 `total: 0`）。
+  - 扫盘与宿主规则一致：只扫根的顶层、目录包 `<name>/SKILL.md` 或扁平 `<name>.md`、同名先到先得（rank 小的赢）、跳过 `.system` 等隐藏项、**跟随符号链接**（悬空链接跳过）。
+  - 扫描根由会话的工作目录决定。**不接受任意 `?cwd=`**，避免把只读路由变成「枚举任意目录文件路径」的接口。
+  - 展示 `modelInvocable` / `userInvocable` 两个徽章，但**不提供开关**：这两个值来自每个 `SKILL.md` 的 frontmatter，改它等于改文件，属于另一个动作。
+  - 8s 超时保护：provider 卡住时返回 500 并写 warn 日志，不让 HTTP 请求无限挂住。
+
+### Tests
+
+- 新增 `test/routes-skills.mjs`（**62 项**）：列表映射与计数、invocation 摊平、cwd 解析优先级（sessionId > 默认目录，且忽略请求里的 `?cwd=`）、注册表优先 vs 扫盘兜底的选择与 `via` 标注、provider 抛错 500（不泄漏堆栈）、`complete:false` 透传、GET 方法限制、正文 200/404（两条取数路径分别覆盖）、5 类非法技能名 400、超长正文截断与原始字符数、超时路径；另有纯函数层：frontmatter 解析（含引号、YAML 布尔四种写法、缺 description/非法 name）、根目录 rank 规划、扫盘去重与隐藏项跳过、符号链接目录/悬空链接。
+- `static.mjs` 117 → **121**：锁住「`ctx.inject(['skills'],` 存在」「两条技能路由已注册且套 authed」「`routes-skills.js` 不写盘」。
+- 单元 833 → **898**；集成 181 不变；lint 0。
+
+### Docs
+
+- `docs/IMPLEMENTATION.md`：路由清单补 `/status/skills` 与 `/status/skills/body`（`docs-guard` 会校验路由清单完整性，漏写会直接失败）。
+- `README.md`、`LIMITATIONS.md`、`CLAUDE.md` 同步：说明技能是只读展示、开关由 frontmatter 决定、注册表缺席时的行为。
+
 ## [0.48.0] - 2026-11-15
 
 ### Changed

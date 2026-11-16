@@ -21,7 +21,7 @@ window.__ModuleLoader__.load({
 
     const NS = 'agentEmbodiment'
     /** 与 package.json 版本保持一致；宿主版本不同时提示刷新页面而不是重启 DSH。 */
-    const CLIENT_VERSION = '0.48.0'
+    const CLIENT_VERSION = '0.49.0'
     /**
      * API 路径必须相对页面 base 解析，而不是写死根路径：
      * 反向代理部署在 /app/dsh/ 这类前缀下时，根路径 /api/... 会打到网关根并 404。
@@ -79,6 +79,7 @@ window.__ModuleLoader__.load({
       collapse: 'Collapse',
       expand: 'Expand',
       retry: 'Retry',
+      loading: 'Loading…',
       error: 'Could not load status',
       errorUnauthorized: 'This session is no longer authenticated. Refresh the page or sign in again.',
       errorForbidden: 'This session cannot access the plugin API. Refresh the page or check the token.',
@@ -224,6 +225,25 @@ window.__ModuleLoader__.load({
       scaffoldCopied: 'Copied',
       scaffoldEmpty: 'Preview to see the files this preset will create.',
       labsTitle: 'Labs: Agent scaffold',
+      skillsTitle: 'Skills',
+      skillsHint: 'Skills discovered under .dsh/skills, .agents/skills, ~/.dsh/skills and ~/.agents/skills. Read-only here: the invocation flags come from each SKILL.md frontmatter.',
+      skillsCount: '{model} of {total} reach the model',
+      skillsEmpty: 'No skills found for this workspace.',
+      skillsUnavailable: 'The skills registry is not mounted in this host.',
+      skillsIncomplete: 'Some skill providers did not finish; this list may be partial.',
+      skillsCwd: 'Scanned workspace: {cwd}',
+      skillsVia: 'source: {via}',
+      skillsViaRegistry: 'host registry',
+      skillsViaFilesystem: 'directory scan',
+      skillsViaRegistryEmpty: 'registry empty, scan found nothing',
+      skillsView: 'View',
+      skillsTruncated: 'Body truncated; open the file for the rest.',
+      skillsModelYes: 'model',
+      skillsModelNo: 'model off',
+      skillsUserYes: 'user',
+      skillsUserNo: 'user off',
+      skillsModelHint: 'Whether this skill is advertised to and loadable by the model.',
+      skillsUserHint: 'Whether a person can invoke this skill directly.',
       labsHint: 'Experimental and separate from the context loop. Only repo-coder and web-researcher are validated.',
       onboardingTitle: 'Set up context control',
       onboardingIntro: 'Three steps, about a minute. You can skip; budget and strategy stay editable in Settings.',
@@ -424,6 +444,7 @@ window.__ModuleLoader__.load({
       collapse: '收起',
       expand: '展开',
       retry: '重试',
+      loading: '正在加载…',
       error: '读取状态失败',
       errorUnauthorized: '本会话登录已失效，请刷新页面或重新登录。',
       errorForbidden: '本会话无权访问插件接口，请刷新页面或检查 token。',
@@ -569,6 +590,25 @@ window.__ModuleLoader__.load({
       scaffoldCopied: '已复制',
       scaffoldEmpty: '先预览，看看这个 preset 会生成哪些文件。',
       labsTitle: 'Labs：Agent 脚手架',
+      skillsTitle: '技能',
+      skillsHint: '来自 .dsh/skills、.agents/skills、~/.dsh/skills、~/.agents/skills 等根目录的技能。这里只读：能否进模型、能否给用户调，由各自 SKILL.md 的 frontmatter 决定。',
+      skillsCount: '{total} 个技能，其中 {model} 个进模型',
+      skillsEmpty: '当前工作区没有发现技能。',
+      skillsUnavailable: '当前宿主没有挂载技能注册表。',
+      skillsIncomplete: '部分技能 provider 未完成，列表可能不完整。',
+      skillsCwd: '扫描的工作区：{cwd}',
+      skillsVia: '来源：{via}',
+      skillsViaRegistry: '宿主注册表',
+      skillsViaFilesystem: '目录扫描',
+      skillsViaRegistryEmpty: '注册表为空，扫描也没找到',
+      skillsView: '查看',
+      skillsTruncated: '正文已截断，完整内容请打开文件。',
+      skillsModelYes: '模型',
+      skillsModelNo: '模型·关',
+      skillsUserYes: '用户',
+      skillsUserNo: '用户·关',
+      skillsModelHint: '该技能是否对模型可见、可加载。',
+      skillsUserHint: '该技能是否允许用户直接调用。',
       labsHint: '实验能力，和上下文闭环分开；只有 repo-coder 与 web-researcher 经过验证。',
       onboardingTitle: '设置上下文控制',
       onboardingIntro: '三步，大约一分钟；可以跳过，预算和策略之后仍可在设置里修改。',
@@ -3479,6 +3519,103 @@ window.__ModuleLoader__.load({
       )
     }
 
+    /**
+     * 技能目录（只读）。宿主把技能能力做成 `ctx.skills` 注册表，文件系统 provider 扫描
+     * `.dsh/skills`、`.agents/skills`、`~/.dsh/skills`、`~/.agents/skills` 等根目录。
+     * 这里只展示「有什么、来自哪里、进不进模型」，不提供开关：技能的 invocation 由各自
+     * SKILL.md 的 frontmatter 决定，改它等于改文件，那是另一个动作。
+     */
+    function SkillsCard(props) {
+      const t = props.t
+      const data = props.data
+      const error = props.error
+      const [openName, setOpenName] = react.useState(null)
+      const [bodies, setBodies] = react.useState({})
+      const [bodyError, setBodyError] = react.useState(null)
+
+      const toggleBody = (name) => {
+        if (openName === name) {
+          setOpenName(null)
+          return
+        }
+        setOpenName(name)
+        if (bodies[name] !== undefined) return
+        setBodyError(null)
+        const query = props.sessionId ? `&sessionId=${encodeURIComponent(String(props.sessionId))}` : ''
+        fetchJson(`${STATUS_PATH}/skills/body?name=${encodeURIComponent(name)}${query}`)
+          .then((payload) => {
+            if (payload && payload.ok) setBodies((previous) => ({ ...previous, [name]: payload }))
+            else throw new Error((payload && payload.error) || 'invalid payload')
+          })
+          .catch((failure) => setBodyError(String((failure && failure.message) || failure)))
+      }
+
+      const head = h('div', { style: styles.cardHead },
+        h('h3', { style: styles.cardTitle }, t('skillsTitle')),
+        data && data.counts
+          ? h('span', { style: styles.cardSub }, t('skillsCount').replace('{model}', String(data.counts.model || 0)).replace('{total}', String(data.counts.total || 0)))
+          : null,
+      )
+
+      if (props.loading) {
+        return h('div', { style: styles.card, 'data-embodiment-skills': 'loading' }, head, h('p', { style: styles.emptyText }, t('loading')))
+      }
+      if (error) {
+        return h('div', { style: styles.card, 'data-embodiment-skills': 'error' },
+          head,
+          h('p', { style: styles.error }, String(error)),
+          h('button', { type: 'button', style: styles.button, onClick: () => props.reload && props.reload() }, t('retry')),
+        )
+      }
+      if (!data) {
+        return h('div', { style: styles.card, 'data-embodiment-skills': 'empty' }, head, h('p', { style: styles.emptyText }, t('skillsEmpty')))
+      }
+      if (data.ok === false) {
+        return h('div', { style: styles.card, 'data-embodiment-skills': 'unavailable' },
+          head,
+          h('p', { style: styles.emptyText }, String(data.error || t('skillsUnavailable'))),
+          data.hint ? h('p', { style: { ...styles.emptyText, fontSize: '11px' } }, String(data.hint)) : null,
+        )
+      }
+
+      const skills = Array.isArray(data.skills) ? data.skills : []
+      const rows = skills.length > 0
+        ? h('ul', { style: styles.insightList }, skills.map((skill) => {
+          const body = bodies[skill.name]
+          const isOpen = openName === skill.name
+          return h('li', { key: skill.name, style: styles.insightItem, 'data-embodiment-skill': skill.name },
+            h('div', { style: { display: 'flex', alignItems: 'center', gap: '6px', flexWrap: 'wrap', minWidth: 0 } },
+              h('span', { style: { ...styles.badge, ...(skill.modelInvocable ? styles.badgeOk : styles.badgeWarn) }, title: t('skillsModelHint') }, skill.modelInvocable ? t('skillsModelYes') : t('skillsModelNo')),
+              h('span', { style: { ...styles.badge, ...(skill.userInvocable ? styles.badgeOk : styles.badgeWarn) }, title: t('skillsUserHint') }, skill.userInvocable ? t('skillsUserYes') : t('skillsUserNo')),
+              h('span', { style: { fontFamily: 'ui-monospace, SFMono-Regular, Menlo, monospace', fontSize: '12px' }, title: skill.path || '' }, skill.name),
+              skill.source ? h('span', { style: styles.cardSub }, skill.source) : null,
+              h('button', { type: 'button', style: styles.copyBtn, onClick: () => toggleBody(skill.name), 'data-embodiment-skill-toggle': skill.name }, isOpen ? t('collapse') : t('skillsView')),
+            ),
+            h('p', { style: { ...styles.text, margin: '2px 0 0' } }, skill.description || ''),
+            isOpen && skill.whenToUse ? h('p', { style: { ...styles.text, margin: '2px 0 0', opacity: 0.8 } }, skill.whenToUse) : null,
+            isOpen
+              ? (body
+                ? h('div', { style: { marginTop: '6px' } },
+                  body.path ? h('div', { style: { ...styles.cardSub, fontSize: '11px', wordBreak: 'break-all' } }, body.path) : null,
+                  h('pre', { style: styles.pre }, body.content || ''),
+                  body.truncated ? h('p', { style: { ...styles.text, fontSize: '11px' } }, t('skillsTruncated')) : null,
+                )
+                : h('p', { style: { ...styles.text, marginTop: '6px' } }, bodyError || t('loading')))
+              : null,
+          )
+        }))
+        : h('p', { style: styles.emptyText }, t('skillsEmpty'))
+
+      return h('div', { style: styles.card, 'data-embodiment-skills': '1' },
+        head,
+        h('p', { style: styles.text }, t('skillsHint')),
+        data.complete === false ? h('p', { style: { ...styles.banner, margin: '0 0 6px' } }, t('skillsIncomplete')) : null,
+        data.via ? h('p', { style: { ...styles.cardSub, fontSize: '11px' } }, t('skillsVia').replace('{via}', t(data.via === 'registry' ? 'skillsViaRegistry' : data.via === 'registry-empty' ? 'skillsViaRegistryEmpty' : 'skillsViaFilesystem'))) : null,
+        data.cwd ? h('p', { style: { ...styles.cardSub, fontSize: '11px', wordBreak: 'break-all' } }, t('skillsCwd').replace('{cwd}', String(data.cwd))) : null,
+        rows,
+      )
+    }
+
     /** 共享面板：设置分区与整页都用它。 */
 
     // ── 会话洞察：KPI / 每日图 / 会话卡 / 趋势 / 事件 ───────────────────────
@@ -3963,6 +4100,9 @@ window.__ModuleLoader__.load({
       const detailSession = selected || activeSession
       const detailPath = detailSession ? `${STATUS_PATH}/session-detail?sessionId=${encodeURIComponent(detailSession)}` : `${STATUS_PATH}/session-detail`
       const [liveState, reloadLive] = useLive(livePath, usageTick, Boolean(activeSession))
+      const skillsPath = activeSession ? `${STATUS_PATH}/skills?sessionId=${encodeURIComponent(activeSession)}` : `${STATUS_PATH}/skills`
+      // 技能目录只在 Settings 拉取；切换会话时会话根可能不同，因此也跟 activeSession 走。
+      const [skillsState, reloadSkills] = useLive(skillsPath, activeSession, tab === 'settings')
       const [invState, reloadInv] = useLive(inventoryPath, usageTick, tab === 'settings')
       const [analyticsState, reloadAnalytics] = useLive(analyticsPath, activeSession, tab === 'overview' || tab === 'trend' || tab === 'settings')
       const [insightsState, reloadInsights] = useLive(insightsPath, activeSession, tab === 'overview')
@@ -3983,6 +4123,7 @@ window.__ModuleLoader__.load({
         load()
         reloadLive()
         if (tab === 'settings') reloadInv()
+        if (tab === 'settings') reloadSkills()
         if (tab === 'overview' || tab === 'trend' || tab === 'settings') reloadAnalytics()
         if (tab === 'overview') reloadInsights()
         if (tab === 'trend' || tab === 'events') reloadDetail()
@@ -4237,6 +4378,7 @@ window.__ModuleLoader__.load({
           guard('balance-display', h(BalanceDisplayCard, { t })),
         )))
         body.push(guard('inventory', h(InventoryCard, { t, data: invState.data, loading: invState.data === null && invState.error === null, error: invState.data === null ? invState.error : null, reload: reloadInv, sessionId: activeSession, controlActive: Boolean(control.active) })))
+        body.push(guard('skills', h(SkillsCard, { t, data: skillsState.data, loading: skillsState.data === null && skillsState.error === null, error: skillsState.data === null ? skillsState.error : null, reload: reloadSkills, sessionId: activeSession })))
         body.push(guard('pricing', h(PricingSection, { t, pricing: data ? data.pricing : null, editable: Boolean(data.configEditable), onSaved: load })))
         body.push(guard('data', h(DataCard, { t, range, coverage: analytics ? analytics.coverage : null, alertsEnabled, onAlertsChange: setAlerts, onDone: reloadAll })))
         body.push(guard('labs', h(LabsCard, { t })))

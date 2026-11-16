@@ -54,6 +54,8 @@ export function createRuntime(options) {
   let connection = null
   let configEditor = null
   let sessionProjections = null
+  // 技能注册表（@deepseek-ai/dsh-skill 提供的 `skills` 服务）。只读用途：列目录、取正文。
+  let skills = null
   let webServerPresent = false
 
   // ── 状态缓存 ──
@@ -88,6 +90,8 @@ export function createRuntime(options) {
     setConfigEditor: (value) => { configEditor = value ?? null },
     getSessionProjections: () => sessionProjections,
     setSessionProjections: (value) => { sessionProjections = value ?? null },
+    getSkills: () => skills,
+    setSkills: (value) => { skills = value ?? null },
     isWebServerPresent: () => webServerPresent,
     markWebServerPresent: () => { webServerPresent = true },
     setWebServerPresent: (value) => { webServerPresent = value === true },

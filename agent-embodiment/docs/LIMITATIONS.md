@@ -118,6 +118,18 @@ Web 形态下，宿主自带的 `auto` 压缩行被 `dsh-web-app` 置为 disable
 - 面板挂载后会在本页 `window.__agentEmbodiment` 写一个只读探针（`version` / `panelId` / `slots` / `mountedAt` / 两个价格换算纯函数），供 CDP 与测试断言；同页第三方脚本可读，内容等价于已渲染的版本号，不含会话、token 或路径。
 - 上下文上限、提示词覆盖、工具开关的实际执行在 `control.js`（preset 平面）；control 未挂载时这些功能不生效。
 
+### 技能目录（0.49.0，只读）
+
+- 面板的「技能」卡片**只展示不修改**：不启用/禁用、不改 `SKILL.md`、不新建或删除技能。
+- 技能是否进模型 / 是否可被用户调用，是**文件属性**（`SKILL.md` frontmatter 的 `disable-model-invocation` / `user-invocable`），不是运行时开关。宿主的 `ctx.skills` 注册表没有「按会话过滤」的接口，所以这里不提供开关按钮——硬做只能靠注册同名 runtime stub 遮蔽 provider 候选，那会让正文也取不到，不是真正的管理。
+- 扫描根由会话工作目录决定，**不接受任意 `?cwd=`**：否则这个只读路由会变成「输入任意路径、返回其中文件的绝对路径」的枚举器。
+- **数据来源有两层，卡片会标出来**：宿主 `ctx.skills` 注册表能读到就用它（`来源：宿主注册表`，权威）；读不到就用标准根目录扫描（`来源：目录扫描`）。
+- **为什么常常是扫盘**：宿主的技能 provider 注册在 agent preset 的作用域层，而本插件是**宿主平面**插件，没有那个作用域 key（`ScopeKey` 是 `dsh-scope` 的模块私有 Symbol，插件又按「不 import 任何 npm 包」运行，拿不到）。注册表按全局层读出的是空目录，所以扫盘才是常态。
+- **扫盘看不到的**：`customSkillDirs` 里额外配置的目录（如 preset 自带的 bundle 技能目录）、`runtime` 注册的内存技能、以及别的 provider 提供的技能。要看到这些只能等宿主暴露作用域或提供跨层查询。
+- 扫盘遵循宿主规则：只扫根的**顶层**（不递归找嵌套 `SKILL.md`），目录包用 `<name>/SKILL.md`、扁平用 `<name>.md`，同名按 rank 先到先得，跳过 `.system` 等隐藏项，跟随符号链接（悬空链接跳过）。
+- 目录查询有 8s 超时；provider 卡住时返回 500 并写 warn 日志，不会让请求无限挂住。
+- `complete: false`（部分 provider 未完成发现）会如实显示为「列表可能不完整」，不当作全量。
+
 - 插件不会修改会话历史来“修复”旧提示词；它只影响后续请求。
 - 配置写入会改动 profile 的 `cordis.patch.yml`，请保留备份。
 - 如果面板数字与实际 provider 用量差异较大，以 provider 的 usage 为准。

@@ -56,6 +56,16 @@ function makeReact(initialStates = {}) {
     useId: () => ':r0:',
     useEffect: () => {},
     useLayoutEffect: () => {},
+    /**
+     * 重新渲染前必须把 hook 序号归零。
+     *
+     * 没这一步时，第二次渲染从上次的 cursor 继续，同一个组件的 useState 会落到
+     * 新的下标上 —— 读回来的就不是原来那份状态（tab 切了也看不到变化）。
+     * 真实 React 按调用顺序而非全局计数来对应 hook，这里就是在模拟那个行为。
+     */
+    __resetCursor: () => {
+      cursor = 0
+    },
   }
 }
 
@@ -81,6 +91,66 @@ function panelFor(tab, extraStates = {}) {
   for (const inject of loaded.slotInjects) inject.callback()
   const registration = loaded.slotRegistrations.find((entry) => entry.definition?.name === 'settings.section')
   return { panel: registration?.component, loaded }
+}
+
+/**
+ * 渲染到指定 tab。
+ *
+ * 产品代码里 tab 是 `CtxPanel` 的第一个 `useState`，测试不能靠注入槽位猜下标；
+ * 这里走真实交互：先渲染一次，拿到带 `data-embodiment-tab` 的按钮，调它的 onClick,
+ * 再把 cursor 归零重渲染。产品代码零改动。
+ */
+function renderTab(tab, extraStates = {}) {
+  const react = makeReact({ 0: readyStatus, ...extraStates })
+  const loaded = loadClient(source, { react })
+  for (const inject of loaded.slotInjects) inject.callback()
+  const registration = loaded.slotRegistrations.find((entry) => entry.definition?.name === 'settings.section')
+  const component = registration?.component
+  if (!component) throw new Error('找不到 settings.section 组件')
+
+  const first = component({ t, title: 'Context' })
+  if (tab !== 'overview') {
+    const button = collect(first).find((element) => element.props && element.props['data-embodiment-tab'] === tab)
+    if (!button || typeof button.props.onClick !== 'function') {
+      throw new Error(`找不到 tab 按钮：${tab}`)
+    }
+    button.props.onClick()
+  }
+  react.__resetCursor()
+  return { tree: component({ t, title: 'Context' }), react, loaded }
+}
+
+/**
+ * 递归渲染子组件。
+ *
+ * `CtxPanel` 的树里，卡片都是 `h(SkillsCard, {...})` 这样的**组件元素**——它们
+ * 只有被 React 调和器调用后才产出 DOM 标记。这个 harness 没有调和器，所以以前只
+ * 看得到顶层元素（tab 按钮、tabpanel 壳），卡片内部（`data-embodiment-skills` 之类）
+ * 永远看不见，"到不了 Settings 分支"其实是"没渲染子组件"。
+ *
+ * 这里手动把函数组件与 class 组件（如 `CardBoundary`）各调一次，深度优先展开。
+ */
+function renderDeep(node) {
+  if (Array.isArray(node)) return node.map((element) => renderDeep(element))
+  if (!node || typeof node !== 'object') return node
+  const type = node.type
+  const props = node.props || {}
+  if (typeof type === 'function') {
+    let rendered
+    if (type.prototype && typeof type.prototype.render === 'function') {
+      const instance = new type(props)
+      rendered = instance.render()
+    } else {
+      rendered = type(props)
+    }
+    return renderDeep(rendered)
+  }
+  return { ...node, props: { ...props, children: renderDeep(props.children) } }
+}
+
+/** 在未深度渲染的原始树里按组件名找元素（用于给卡片注入 props）。 */
+function findComponent(node, name) {
+  return collect(node).find((element) => typeof element.type === 'function' && element.type.name === name) ?? null
 }
 
 const collect = (node, out = []) => {
@@ -246,6 +316,91 @@ if (overview) {
   }
 }
 
+
+
+// ── Settings 分支：渲染到设置页并用 renderDeep 展开子组件 ──────────────────────
+{
+  const settingsTree = renderTab('settings').tree
+  check('能渲染到 Settings 分支', Boolean(settingsTree), 'renderTab 返回空')
+
+  const skillCard = findComponent(settingsTree, 'SkillsCard')
+  check('Settings 里挂了 SkillsCard', Boolean(skillCard))
+
+  const skillsPayload = {
+    ok: true,
+    via: 'registry',
+    scopeApplied: true,
+    complete: true,
+    cwd: '/w',
+    counts: { total: 8, model: 7, user: 8 },
+    skills: [
+      { name: 'alpha-skill', description: 'from project', source: 'project-agents', path: '/w/.agents/skills/alpha-skill/SKILL.md', modelInvocable: true, userInvocable: true },
+      { name: 'beta-skill', description: 'hidden from model', source: 'project-agents', path: '/w/.agents/skills/beta-skill/SKILL.md', modelInvocable: false, userInvocable: true },
+      { name: 'gamma-skill', description: 'user level', source: 'user-agents', path: '/a/gamma/SKILL.md', modelInvocable: true, userInvocable: true },
+      { name: 'delta-skill', description: 'also user', source: 'user-agents', path: '/a/delta/SKILL.md', modelInvocable: true, userInvocable: false },
+      { name: 'epsilon-skill', description: 'x', source: 'user-agents', path: '/a/epsilon/SKILL.md', modelInvocable: true, userInvocable: true },
+      { name: 'zeta-skill', description: 'x', source: 'user-dsh', path: '/d/zeta/SKILL.md', modelInvocable: true, userInvocable: true },
+      { name: 'eta-skill', description: 'x', source: 'user-dsh', path: '/d/eta/SKILL.md', modelInvocable: true, userInvocable: true },
+      { name: 'theta-skill', description: 'x', source: 'user-dsh', path: '/d/theta/SKILL.md', modelInvocable: true, userInvocable: true },
+    ],
+  }
+
+  if (skillCard) {
+    // 直接给卡片喂 props，绕开 hook 槽位猜测——测的是卡片真正的输入契约。
+    const rendered = renderDeep({
+      ...skillCard,
+      props: { ...skillCard.props, data: skillsPayload, loading: false, error: null, reload: () => {} },
+    })
+    const nodes = collect(rendered)
+    const groups = nodes.filter((element) => typeof element.props?.['data-embodiment-skill-group'] === 'string')
+    check('技能按来源分组（3 组）', groups.length === 3, groups.map((element) => element.props['data-embodiment-skill-group']).join(','))
+    check('分组标题带组内数量', groups.every((element) => /\u00b7 \d+$/u.test(String(element.props.children))), groups.map((element) => String(element.props.children)).join(' | '))
+    const rows = nodes.filter((element) => typeof element.props?.['data-embodiment-skill'] === 'string')
+    check('8 个技能各一行', rows.length === 8, rows.length)
+    const copies = nodes.filter((element) => typeof element.props?.['data-embodiment-skill-copy'] === 'string')
+    check('每行有复制路径按钮', copies.length === 8, copies.length)
+    const toggles = nodes.filter((element) => typeof element.props?.['data-embodiment-skill-toggle'] === 'string')
+    check('每行有查看按钮', toggles.length === 8, toggles.length)
+    const search = nodes.filter((element) => element.props?.['data-embodiment-skill-search'] === '1')
+    check('技能超过 6 个时出现筛选框', search.length === 1, search.length)
+    const texts = nodes.map((element) => String(element.props?.children ?? '')).join(' ')
+    check('显示数据来源', texts.includes('skillsVia'), texts.slice(0, 80))
+    check('scope 已生效时不提示「可能不全」', !texts.includes('skillsGlobalOnly'))
+    check('model/user 徽章按 invocation 区分', nodes.filter((element) => String(element.props?.children ?? '') === 'skillsModelNo').length === 1)
+  }
+
+  const labsCard = findComponent(settingsTree, 'LabsCard')
+  if (labsCard) {
+    const expanded = collect(renderDeep({ ...labsCard, props: { ...labsCard.props } }))
+    const toggle = expanded.find((element) => element.props?.['data-embodiment-labs-toggle'] === '1')
+    check('Labs 卡片有展开按钮', Boolean(toggle))
+  } else {
+    check('Settings 里挂了 LabsCard', false)
+  }
+
+  const inventoryCard = findComponent(settingsTree, 'InventoryCard')
+  check('Settings 里挂了 InventoryCard', Boolean(inventoryCard))
+
+  const pricingSection = findComponent(settingsTree, 'PricingSection')
+  check('Settings 里挂了 PricingSection', Boolean(pricingSection))
+
+  const dataCard = findComponent(settingsTree, 'DataCard')
+  check('Settings 里挂了 DataCard', Boolean(dataCard))
+
+  const sessionBudget = findComponent(settingsTree, 'SessionBudgetCard')
+  check('Settings 里挂了 SessionBudgetCard', Boolean(sessionBudget))
+}
+
+// ── 其它 tab 的卡片也要真渲染（以前只到顶层壳）──────────────────────────────
+{
+  const trendTree = renderDeep(renderTab('trend').tree)
+  const trendNodes = collect(trendTree)
+  check('trend tab 渲染出 TrendCard 内容', trendNodes.some((element) => String(element.props?.children ?? '').length > 0))
+  check('trend tab 无卡片级报错', !trendNodes.some((element) => element.props?.['data-embodiment-card-error'] === '1'), trendNodes.filter((element) => element.props?.['data-embodiment-card-error'] === '1').length)
+
+  const eventsTree = renderDeep(renderTab('events').tree)
+  check('events tab 渲染无卡片级报错', !collect(eventsTree).some((element) => element.props?.['data-embodiment-card-error'] === '1'))
+}
 
 const failed = checks.filter((item) => !item.ok)
 console.log(`\n[render] ${checks.length - failed.length}/${checks.length} 项通过`)

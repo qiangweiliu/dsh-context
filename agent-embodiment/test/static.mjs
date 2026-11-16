@@ -302,8 +302,7 @@ for (const inject of secondMount.slotInjects) inject.callback()
   check('技能模块不写盘（只读）', !/writeFileSync|mkdirSync|unlinkSync/u.test(readFileSync(new URL('../routes-skills.js', import.meta.url), 'utf8')))
 }
 
-// 技能卡片的分组/筛选/复制路径只有源码断言：现有 render harness 到不了 Settings 分支
-// （tab 是 CtxPanel 的第一个 useState，注入槽位不可靠），如实记录在这里。
+// 技能卡片的标记在 render.mjs 里有行为级断言；这里再锁一层源码，防止片段被误删。
 {
   check('技能卡片按来源分组', clientSource.includes("'data-embodiment-skill-group'"))
   check('技能卡片提供筛选框', clientSource.includes("'data-embodiment-skill-search'"))

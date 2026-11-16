@@ -2,6 +2,25 @@
 
 格式参考 Keep a Changelog；版本遵循 SemVer。DSH 兼容版本写在每个条目的 Compatibility 下。
 
+## [0.50.1] - 2026-11-16
+
+### Fixed
+
+- **测试基建：`render.mjs` 的 mock 真正渲染子组件了。** 之前它只产出顶层元素树，`h(SkillsCard, …)` 这类**组件元素**从未被调用，所以卡片内部标记（`data-embodiment-skills` 等）永远不出现——上一轮记录的「到不了 Settings 分支」其实是「没渲染子组件」。补了三处：
+  - `react.__resetCursor()`：重渲染前把 hook 序号归零。不归零时第二次渲染的 `useState` 会落到新下标，读回的是别的状态（切了 tab 也看不到变化）。
+  - `renderTab(tab)`：渲染后点真实 tab 按钮的 `onClick`（`data-embodiment-tab`），再重渲染。走真实交互，不猜槽位、不改产品代码。
+  - `renderDeep(node)`：递归调用函数组件与 class 组件的 `render()`（`CardBoundary` 属后者），把整棵子树展开。
+
+### Tests
+
+- `render.mjs` 36 → **55**：新增 Settings 分支的卡片级断言——技能按来源分组（3 组，标题带数量）、8 行各带查看/复制按钮、>6 个技能出现筛选框、`via` 来源提示、`scopeApplied` 时不出「可能不全」、model/user 徽章按 invocation 区分；另外断言 Settings 挂了 `InventoryCard` / `PricingSection` / `DataCard` / `SessionBudgetCard` / `LabsCard`，以及 trend / events 两个 tab 无卡片级报错。
+- 单元 905 → **924**；集成 181 不变；lint 0。
+
+### Docs
+
+- `LIMITATIONS.md`：收窄已知缺口——分组/复制/徽章/来源提示现在有行为级测试，**只剩筛选框的输入交互没测**（要测它得能独立挂载卡片，当前 harness 做不到）。
+- `CLAUDE.md`：记录这三处 harness 修正，避免以后有人以为 `render.mjs` 能测卡片却没有。
+
 ## [0.50.0] - 2026-11-16
 
 ### Added

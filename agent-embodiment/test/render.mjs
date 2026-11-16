@@ -246,6 +246,7 @@ if (overview) {
   }
 }
 
+
 const failed = checks.filter((item) => !item.ok)
 console.log(`\n[render] ${checks.length - failed.length}/${checks.length} 项通过`)
 if (failed.length > 0) {

@@ -56,6 +56,7 @@ import {
   setCompacting,
   setControlActive,
   setControlBudget,
+  setSkillsScope,
 } from './state.js'
 
 export const name = 'agent-embodiment-control'
@@ -164,12 +165,90 @@ export function apply(ctx, config) {
   /** 每个 agent 上次自动压缩的时间（WeakMap：agent 释放即回收）。 */
   const lastRun = new WeakMap()
 
+  // ── 技能作用域探测（只为让宿主面板看到 preset 层的技能）─────────────────
+  //
+  // `ScopeKey` 是 `@deepseek-ai/dsh-scope` 里 `Symbol('dsh.scope')` 上的模块私有值，
+  // 本插件不 import 任何 npm 包，拿不到那个符号；但符号属性**可枚举**，而且只有运行在
+  // preset 作用域内的这一半手里有带 tag 的 ctx。所以：枚举 ct x上的自有 symbol 值作为
+  // 候选，用注册表实测「哪个候选能多列出技能」，验证通过才写进共享状态。宿主半侧读它
+  // 传 `scope`。探测失败就保持 undefined —— 行为退化成 0.49.0（只读全局层）。
+  //
+  // 安全：`chainLayers` 对陌生 key 只是查不到层（等同全局），传错不会抛错。
+  const scopeCandidates = []
+  const rememberScopeCandidates = (context) => {
+    if (!context || typeof context !== 'object') return
+    let symbols
+    try {
+      symbols = Object.getOwnPropertySymbols(context)
+    } catch {
+      return
+    }
+    for (const symbol of symbols) {
+      let value
+      try {
+        value = context[symbol]
+      } catch {
+        continue
+      }
+      if (value && typeof value === 'object' && !Array.isArray(value) && !scopeCandidates.includes(value)) {
+        scopeCandidates.push(value)
+      }
+    }
+  }
+
+  let scopeProbeState = 'idle' // idle | done | unavailable
+  let scopeProbeAttempts = 0
+  // 不能直接读 ctx.skills：Cordis 对未声明 inject 的访问会抛错。用 ctx.inject 晚绑定。
+  let skillsService
+  const probeSkillsScope = async (agent) => {
+    // 找到就停；没找到允许再试几次——agent 的 ctx 可能在 apply 之后才带来新的候选。
+    if (scopeProbeState !== 'idle') return
+    if (scopeProbeAttempts >= 3) return
+    rememberScopeCandidates(agent?.ctx)
+    rememberScopeCandidates(ctx)
+    if (scopeCandidates.length === 0) return
+    const skills = skillsService
+    // 注册表还没挂上：不算一次尝试，等 inject 回调触发时再试。
+    if (!skills || typeof skills.snapshot !== 'function') return
+    scopeProbeAttempts += 1
+    try {
+      const base = await skills.snapshot({})
+      const baseCount = Array.isArray(base?.skills) ? base.skills.length : 0
+      for (const candidate of scopeCandidates) {
+        let scoped
+        try {
+          scoped = await skills.snapshot({ scope: candidate })
+        } catch {
+          continue
+        }
+        const count = Array.isArray(scoped?.skills) ? scoped.skills.length : 0
+        if (count > baseCount) {
+          setSkillsScope(candidate)
+          scopeProbeState = 'done'
+          log('debug', `skills scope detected: ${count} vs ${baseCount}`)
+          return
+        }
+      }
+      log('debug', `skills scope not found (base ${baseCount}, attempts ${scopeProbeAttempts})`)
+    } catch (error) {
+      log('debug', `skills scope probe failed: ${error instanceof Error ? error.message : String(error)}`)
+    }
+  }
+
+  ctx.inject(['skills'], (sub) => {
+    skillsService = sub?.skills
+    // 注册表一到就试一次：这样面板第一次请求就可能是 preset 视角，而不是先给扫盘近似。
+    void probeSkillsScope(null)
+  })
+
   // ── 工具 / 提示词开关：按 agent 作用域应用 ────────────────────────────────
   const agentGates = new WeakMap()
 
   const syncGates = (agent) => {
     const sessionId = sessionIdOf(agent)
     if (!sessionId || !agent?.ctx) return
+    // 顺手做一次技能作用域探测（幂等；只在第一次真正有 agent 时触发）。
+    void probeSkillsScope(agent)
     let gate = agentGates.get(agent)
     if (!gate) {
       gate = { denyKey: '', dispose: null, promptInstalled: false }

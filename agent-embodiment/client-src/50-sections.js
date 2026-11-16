@@ -835,10 +835,11 @@
     }
 
     /**
-     * 技能目录（只读）。宿主把技能能力做成 `ctx.skills` 注册表，文件系统 provider 扫描
-     * `.dsh/skills`、`.agents/skills`、`~/.dsh/skills`、`~/.agents/skills` 等根目录。
-     * 这里只展示「有什么、来自哪里、进不进模型」，不提供开关：技能的 invocation 由各自
-     * SKILL.md 的 frontmatter 决定，改它等于改文件，那是另一个动作。
+     * 技能目录（只读）。
+     *
+     * 数据由两条路径提供（宿主注册表 / 标准根目录扫描），响应里的 `via` 会说明这次是哪条；
+     * 卡片如实显示，不假装两者等价。这里只展示「有什么、来自哪里、进不进模型」，不提供开关：
+     * 技能的 invocation 由各自 SKILL.md 的 frontmatter 决定，改它等于改文件，那是另一个动作。
      */
     function SkillsCard(props) {
       const t = props.t
@@ -847,6 +848,8 @@
       const [openName, setOpenName] = react.useState(null)
       const [bodies, setBodies] = react.useState({})
       const [bodyError, setBodyError] = react.useState(null)
+      const [query, setQuery] = react.useState('')
+      const [copied, setCopied] = react.useState(null)
 
       const toggleBody = (name) => {
         if (openName === name) {
@@ -856,13 +859,25 @@
         setOpenName(name)
         if (bodies[name] !== undefined) return
         setBodyError(null)
-        const query = props.sessionId ? `&sessionId=${encodeURIComponent(String(props.sessionId))}` : ''
-        fetchJson(`${STATUS_PATH}/skills/body?name=${encodeURIComponent(name)}${query}`)
+        const suffix = props.sessionId ? `&sessionId=${encodeURIComponent(String(props.sessionId))}` : ''
+        fetchJson(`${STATUS_PATH}/skills/body?name=${encodeURIComponent(name)}${suffix}`)
           .then((payload) => {
             if (payload && payload.ok) setBodies((previous) => ({ ...previous, [name]: payload }))
             else throw new Error((payload && payload.error) || 'invalid payload')
           })
           .catch((failure) => setBodyError(String((failure && failure.message) || failure)))
+      }
+
+      /**
+       * 复制技能文件路径。浏览器可能在非安全上下文里没有 clipboard，所以失败就静默——
+       * 不弹错误，也不假装成功。
+       */
+      const copyPath = (name, path) => {
+        if (typeof navigator === 'undefined' || !navigator.clipboard || typeof navigator.clipboard.writeText !== 'function') return
+        navigator.clipboard.writeText(String(path)).then(() => {
+          setCopied(name)
+          setTimeout(() => setCopied((current) => (current === name ? null : current)), 1500)
+        }).catch(() => {})
       }
 
       const head = h('div', { style: styles.cardHead },
@@ -894,40 +909,77 @@
       }
 
       const skills = Array.isArray(data.skills) ? data.skills : []
-      const rows = skills.length > 0
-        ? h('ul', { style: styles.insightList }, skills.map((skill) => {
-          const body = bodies[skill.name]
-          const isOpen = openName === skill.name
-          return h('li', { key: skill.name, style: styles.insightItem, 'data-embodiment-skill': skill.name },
-            h('div', { style: { display: 'flex', alignItems: 'center', gap: '6px', flexWrap: 'wrap', minWidth: 0 } },
-              h('span', { style: { ...styles.badge, ...(skill.modelInvocable ? styles.badgeOk : styles.badgeWarn) }, title: t('skillsModelHint') }, skill.modelInvocable ? t('skillsModelYes') : t('skillsModelNo')),
-              h('span', { style: { ...styles.badge, ...(skill.userInvocable ? styles.badgeOk : styles.badgeWarn) }, title: t('skillsUserHint') }, skill.userInvocable ? t('skillsUserYes') : t('skillsUserNo')),
-              h('span', { style: { fontFamily: 'ui-monospace, SFMono-Regular, Menlo, monospace', fontSize: '12px' }, title: skill.path || '' }, skill.name),
-              skill.source ? h('span', { style: styles.cardSub }, skill.source) : null,
-              h('button', { type: 'button', style: styles.copyBtn, onClick: () => toggleBody(skill.name), 'data-embodiment-skill-toggle': skill.name }, isOpen ? t('collapse') : t('skillsView')),
-            ),
-            h('p', { style: { ...styles.text, margin: '2px 0 0' } }, skill.description || ''),
-            isOpen && skill.whenToUse ? h('p', { style: { ...styles.text, margin: '2px 0 0', opacity: 0.8 } }, skill.whenToUse) : null,
-            isOpen
-              ? (body
-                ? h('div', { style: { marginTop: '6px' } },
-                  body.path ? h('div', { style: { ...styles.cardSub, fontSize: '11px', wordBreak: 'break-all' } }, body.path) : null,
-                  h('pre', { style: styles.pre }, body.content || ''),
-                  body.truncated ? h('p', { style: { ...styles.text, fontSize: '11px' } }, t('skillsTruncated')) : null,
-                )
-                : h('p', { style: { ...styles.text, marginTop: '6px' } }, bodyError || t('loading')))
+      const needle = query.trim().toLowerCase()
+      const matches = needle.length === 0
+        ? skills
+        : skills.filter((skill) => `${skill.name} ${skill.description || ''} ${skill.whenToUse || ''}`.toLowerCase().includes(needle))
+
+      // 按来源根分组：同名不同根的技能在视觉上要能分开，用户才知道该改哪个文件。
+      const groups = []
+      for (const skill of matches) {
+        const source = skill.source || 'unknown'
+        const existing = groups.find((group) => group.source === source)
+        if (existing) existing.items.push(skill)
+        else groups.push({ source, items: [skill] })
+      }
+
+      const renderRow = (skill) => {
+        const body = bodies[skill.name]
+        const isOpen = openName === skill.name
+        return h('li', { key: skill.name, style: styles.insightItem, 'data-embodiment-skill': skill.name },
+          h('div', { style: { display: 'flex', alignItems: 'center', gap: '6px', flexWrap: 'wrap', minWidth: 0 } },
+            h('span', { style: { ...styles.badge, ...(skill.modelInvocable ? styles.badgeOk : styles.badgeWarn) }, title: t('skillsModelHint') }, skill.modelInvocable ? t('skillsModelYes') : t('skillsModelNo')),
+            h('span', { style: { ...styles.badge, ...(skill.userInvocable ? styles.badgeOk : styles.badgeWarn) }, title: t('skillsUserHint') }, skill.userInvocable ? t('skillsUserYes') : t('skillsUserNo')),
+            h('span', { style: { fontFamily: 'ui-monospace, SFMono-Regular, Menlo, monospace', fontSize: '12px' }, title: skill.path || '' }, skill.name),
+            h('button', { type: 'button', style: styles.copyBtn, onClick: () => toggleBody(skill.name), 'data-embodiment-skill-toggle': skill.name }, isOpen ? t('collapse') : t('skillsView')),
+            skill.path
+              ? h('button', { type: 'button', style: styles.copyBtn, onClick: () => copyPath(skill.name, skill.path), 'data-embodiment-skill-copy': skill.name }, copied === skill.name ? t('skillsCopied') : t('skillsCopyPath'))
               : null,
-          )
-        }))
-        : h('p', { style: styles.emptyText }, t('skillsEmpty'))
+          ),
+          h('p', { style: { ...styles.text, margin: '2px 0 0' } }, skill.description || ''),
+          isOpen && skill.whenToUse ? h('p', { style: { ...styles.text, margin: '2px 0 0', opacity: 0.8 } }, skill.whenToUse) : null,
+          isOpen
+            ? (body
+              ? h('div', { style: { marginTop: '6px' } },
+                body.path ? h('div', { style: { ...styles.cardSub, fontSize: '11px', wordBreak: 'break-all' } }, body.path) : null,
+                h('pre', { style: styles.pre }, body.content || ''),
+                body.truncated ? h('p', { style: { ...styles.text, fontSize: '11px' } }, t('skillsTruncated')) : null,
+              )
+              : h('p', { style: { ...styles.text, marginTop: '6px' } }, bodyError || t('loading')))
+            : null,
+        )
+      }
+
+      const body = skills.length === 0
+        ? h('p', { style: styles.emptyText }, t('skillsEmpty'))
+        : (matches.length === 0
+          ? h('p', { style: styles.emptyText }, t('skillsNoMatch'))
+          : h('div', null, groups.map((group) => h('div', { key: group.source, style: { marginTop: '6px' } },
+            h('div', { style: { ...styles.cardSub, fontSize: '11px', textTransform: 'uppercase', letterSpacing: '0.04em' }, 'data-embodiment-skill-group': group.source },
+              `${group.source} · ${group.items.length}`),
+            h('ul', { style: styles.insightList }, group.items.map(renderRow)),
+          ))))
 
       return h('div', { style: styles.card, 'data-embodiment-skills': '1' },
         head,
         h('p', { style: styles.text }, t('skillsHint')),
         data.complete === false ? h('p', { style: { ...styles.banner, margin: '0 0 6px' } }, t('skillsIncomplete')) : null,
         data.via ? h('p', { style: { ...styles.cardSub, fontSize: '11px' } }, t('skillsVia').replace('{via}', t(data.via === 'registry' ? 'skillsViaRegistry' : data.via === 'registry-empty' ? 'skillsViaRegistryEmpty' : 'skillsViaFilesystem'))) : null,
+        data.via === 'registry' && data.scopeApplied === false
+          ? h('p', { style: { ...styles.cardSub, fontSize: '11px' } }, t('skillsGlobalOnly'))
+          : null,
         data.cwd ? h('p', { style: { ...styles.cardSub, fontSize: '11px', wordBreak: 'break-all' } }, t('skillsCwd').replace('{cwd}', String(data.cwd))) : null,
-        rows,
+        skills.length > 6 || needle.length > 0
+          ? h('input', {
+            type: 'search',
+            value: query,
+            placeholder: t('skillsSearch'),
+            onChange: (event) => setQuery(event.target.value),
+            'data-embodiment-skill-search': '1',
+            style: { ...styles.input, margin: '6px 0', width: '100%' },
+          })
+          : null,
+        body,
       )
     }
 

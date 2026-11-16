@@ -2,6 +2,32 @@
 
 格式参考 Keep a Changelog；版本遵循 SemVer。DSH 兼容版本写在每个条目的 Compatibility 下。
 
+## [0.50.0] - 2026-11-16
+
+### Added
+
+- **技能视角接入 preset 作用域**：面板现在读的是**当前 preset 层**的技能目录（`via: registry` + `scopeApplied: true`），不再只读全局层。
+
+  0.49.0 里注册表在全局层永远是空的——provider 注册在 agent preset 的作用域层，而 `ScopeKey` 是 `@deepseek-ai/dsh-scope` 里 `Symbol('dsh.scope')` 上的模块私有值，插件不 import 任何 npm 包，拿不到它。解法：**符号属性可枚举**，而只有运行在 preset 作用域内的 `control.js` 手里有带 tag 的 ctx —— 它枚举自有 symbol 值作为候选，**用注册表实测「哪个候选能多列出技能」**，验证通过才写进共享 `state.js`，宿主半侧读来传给 `snapshot({ scope })`。候选传错也只是「查不到层」，等同全局（`chainLayers` 是安全的全函数），不会抛错也不会崩。
+
+- **技能卡片体验**：技能超过 6 个时出现筛选框（按名称/描述/`whenToUse` 过滤）、按来源根分组显示（`source · 数量`）、每行「复制路径」按钮。`scopeApplied === false` 时卡片明说「宿主目录里可能还有更多技能没列在这里」。
+
+### Fixed
+
+- 更正 0.49.0 的一个误判：当时我说「preset 配了 `customSkillDirs`，模型能看到 11 个而面板只有 7 个」。实际那是**另一个 preset**（video-production bundle）的配置，当前会话用的 preset 没有它 —— 面板的 7 个是对的。真正的缺陷是「只读全局层（0 个）」，已由作用域接入修掉；`customSkillDirs` 只有在与控制半侧同一个 preset 时才会被看见，这条已写进 `LIMITATIONS.md`。
+
+### Tests
+
+- `routes-skills.mjs` 62 → **67**：有 scope 时传给注册表并标注 `scopeApplied: true`、无 scope 时不传该字段且标注 `false`、正文请求同样带 scope。
+- `static.mjs` 121 → **126**：锁住技能卡片的分组标记、筛选框、复制路径按钮、`scopeApplied` 提示文案、复制失败静默。
+- 单元 898 → **905**；集成 181 不变；lint 0。
+- **如实记录的缺口**：卡片的「分组 / 筛选 / 复制」只有源码断言，没有行为级测试——现有 `render.mjs` 的 mock 到不了 Settings 分支（`tab` 是第一个 `useState`，槽位注入不可靠）。已写进 `LIMITATIONS.md`。
+
+### Docs
+
+- `LIMITATIONS.md` 重写技能一节：三态数据来源（registry+scope / registry 无 scope / 目录扫描）、**视角边界**（展示控制半侧所在 preset，不随会话切换）、扫盘规则、测试缺口。
+- `README.md`、`CLAUDE.md` 同步作用域探测的存在与原因。
+
 ## [0.49.0] - 2026-11-16
 
 ### Added

@@ -218,6 +218,7 @@ export function createSkillRoutes(deps) {
     timeoutMs = SKILLS_TIMEOUT_MS,
     resolveHomes,
     scanRoots = scanSkillRoots,
+    getScopeKey,
   } = deps
 
   const log = (message) => {
@@ -290,22 +291,25 @@ export function createSkillRoutes(deps) {
    */
   const collectSkills = async (cwd) => {
     const homes = typeof resolveHomes === 'function' ? resolveHomes() : {}
+    const scope = typeof getScopeKey === 'function' ? getScopeKey() : undefined
+    const scopeApplied = Boolean(scope)
     const registry = getSkills()
     if (registry && typeof registry.snapshot === 'function') {
-      const snapshot = await withTimeout(registry.snapshot({ cwd }), timeoutMs)
+      const snapshot = await withTimeout(registry.snapshot(scope ? { cwd, scope } : { cwd }), timeoutMs)
       const rows = Array.isArray(snapshot?.skills) ? snapshot.skills.map(toRow) : []
       if (rows.length > 0) {
-        return { via: 'registry', complete: snapshot?.complete !== false, skills: rows }
+        return { via: 'registry', scopeApplied, complete: snapshot?.complete !== false, skills: rows }
       }
       const scanned = scanRoots(planSkillRoots({ cwd, ...homes }))
       return {
         via: scanned.length > 0 ? 'filesystem' : 'registry-empty',
+        scopeApplied,
         complete: snapshot?.complete !== false,
         skills: scanned,
       }
     }
     const scanned = scanRoots(planSkillRoots({ cwd, ...homes }))
-    return { via: scanned.length > 0 ? 'filesystem' : 'unavailable', complete: true, skills: scanned }
+    return { via: scanned.length > 0 ? 'filesystem' : 'unavailable', scopeApplied, complete: true, skills: scanned }
   }
 
   const skillsHandler = (request, response) => {
@@ -320,6 +324,7 @@ export function createSkillRoutes(deps) {
           ok: true,
           generatedAt: new Date().toISOString(),
           via: collected.via,
+          scopeApplied: collected.scopeApplied === true,
           cwd: cwd ?? null,
           cwdSource: source,
           complete: collected.complete !== false,
@@ -354,8 +359,9 @@ export function createSkillRoutes(deps) {
      */
     const loadBody = async () => {
       const registry = getSkills()
+      const scope = typeof getScopeKey === 'function' ? getScopeKey() : undefined
       if (registry && typeof registry.get === 'function') {
-        const definition = await withTimeout(registry.get(name, { cwd }), timeoutMs)
+        const definition = await withTimeout(registry.get(name, scope ? { cwd, scope } : { cwd }), timeoutMs)
         if (definition) {
           const content = typeof definition.content === 'string' ? definition.content : ''
           return {

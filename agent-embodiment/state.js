@@ -41,6 +41,31 @@ let defaultKeepTokens = 0
 /** sessionId -> token 预算 */
 const overrides = new Map()
 
+/**
+ * 技能注册表的查看作用域（`SkillViewOptions.scope`）。
+ *
+ * 为什么需要它：宿主把技能 provider 注册在 agent preset 的作用域层里，注册表读目录时必须
+ * 带上 `scope` 才会合并那一层；而这台机器上 preset 配了 `customSkillDirs`，不带 scope 就
+ * 会有技能看不见（实测 7/11）。
+ *
+ * 为什么由控制半侧写：`ScopeKey` 是 `@deepseek-ai/dsh-scope` 里 `Symbol('dsh.scope')` 上的
+ * 模块私有值，插件按「不 import 任何 npm 包」运行、拿不到那个符号；但符号属性是可枚举的，
+ * 而只有运行在 preset 作用域内的 `control.js` 手里有那个带 tag 的 ctx。所以它探测出来写这里，
+ * 宿主半侧读来用。
+ *
+ * 探测失败（宿主改结构、control 没挂载）时保持 undefined —— 注册表读全局层，行为与 0.49.0 一致。
+ */
+let skillsScope
+
+export function setSkillsScope(scope) {
+  skillsScope = scope && typeof scope === 'object' ? scope : undefined
+  return skillsScope !== undefined
+}
+
+export function getSkillsScope() {
+  return skillsScope
+}
+
 /** 控制半侧最近的运行状态，供宿主面板展示。 */
 export const control = {
   /** 控制半侧是否已激活（挂在能看到 compaction 服务的位置）。 */

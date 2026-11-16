@@ -794,6 +794,49 @@ UI-PROPOSAL §9 里剩的两项，一项真做、一项早就做了。
 - 测试：单元 898（`routes-skills` 62、`static` 121）、集成 181、lint 0。
 
 
+## E61. v0.50.0 技能视角接入 preset 作用域 + 一处误判更正（2026-11-16）
+
+这一轮是「优化新加的技能功能」，但最有价值的产出是**发现我上一轮的一个判断是错的**。
+
+### 先说错在哪
+
+0.49.0 的 E60 写着「preset 配了 `customSkillDirs`，模型能看到 11 个而面板只有 7 个」。查证后：**那是另一个 preset 的配置**。这个 profile 里有两个 `skill-filesystem` 行——
+
+| 行 | 所属 | 配置 |
+| --- | --- | --- |
+| 第 55 行 | 第一条 preset（我们的 control 也在这里） | 无 `customSkillDirs`，只有默认根 |
+| 第 542 行 | video-production bundle preset | `customSkillDirs: .../bundles/video-production/skills`（4 个技能） |
+
+当前会话跑的是第一条 preset，它有 7 个（2 个探针项目 + 5 个用户级）。**面板的 7 个是对的**，我把「另一个 preset 的目录」当成了「模型此刻也能看到的目录」。
+
+### 真正的缺陷是另一个
+
+注册表在**全局层**读出来是 0。因为 provider 注册在 preset 作用域层，`collectFresh` 用的是 `options.scope`，不给 scope 就只读全局。所以 0.49.0 的 7 个其实是**目录扫描的近似结果**，不是宿主的答案。
+
+### 拿到 scope 的办法
+
+`ScopeKey` 是 `dsh-scope` 里 `Symbol('dsh.scope')` 上的模块私有值，插件不 import 任何 npm 包，正常拿不到。但在真实 Cordis 上打样验证了一件事：`ctx.extend({ [kScope]: key })` 打出来的符号属性是**可枚举的**（`Object.getOwnPropertySymbols` 能看到，值原样取回，root 上没有），而且 scoped ctx 上只有这一个自有 symbol。
+
+于是：只有运行在 preset 作用域内的 `control.js` 手里有那个 ctx。它枚举自有 symbol 值作候选，**用注册表实测「哪个候选能多列出技能」**（不是靠符号名字猜），验证通过才写共享 `state.js`，宿主半侧读来传 `snapshot({ scope })`。传错候选也只是查不到层——`chainLayers` 对陌生 key 是安全的全函数。
+
+实测结果：`via: registry`、`scopeApplied: true`、7 个，来源 `project-agents` + `user-agents`。数据从「扫盘近似」升级成「宿主答案」。
+
+### 启动瞬间的过渡态
+
+实测：进程刚起来、注册表服务还没被我们的 `ctx.inject(['skills'])` 回调拿到时，第一次 `/status/skills` 是 `via: filesystem`（扫盘近似）；几秒后同样的请求变成 `via: registry`、`scopeApplied: true`。不假装这是缺陷——响应把两种状态都标出来了，面板照着显示「来源：目录扫描 / 宿主注册表」，用户不会误以为看到的是权威结果。
+
+顺带修了一个真 bug：第一版在 `apply` 里直接读 `ctx.skills`，Cordis 直接抛 `cannot get property "skills" without inject`，`test/control.mjs` 当场抓到。改成 `ctx.inject(['skills'], …)` 晚绑定。
+
+### 体验三项
+
+筛选框（>6 个技能才出现）、按来源根分组（`source · 数量`）、每行「复制路径」。`scopeApplied === false` 时明说「宿主目录里可能还有更多技能没列在这里」——这是对「空结果看起来像成功」那道教训的正面处理。
+
+### 一处如实记录的取舍
+
+想给分组/筛选加行为级测试，但现有 `render.mjs` 的 mock **到不了 Settings 分支**（`tab` 是 `CtxPanel` 的第一个 `useState`，槽位注入不可靠，点 tab 的 onClick 也不生效）。没有硬凑，改成源码级断言 + 把缺口写进 `LIMITATIONS.md`。测试基建的债要还，但不在这一轮。
+
+- 测试：单元 905（`routes-skills` 67、`static` 126）、集成 181、lint 0。
+
 ## 已知限制（unknown）
 
 - 未进行独立安全审计；本文件不声称“安全通过”。

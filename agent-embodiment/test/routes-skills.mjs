@@ -198,6 +198,40 @@ const build = (overrides = {}) => createSkillRoutes({
   check('引号包裹的值会去掉引号', parseSkillFile('---\nname: quoted-skill\ndescription: "quoted desc"\n---\nb', 'x')?.description === 'quoted desc')
 }
 
+// ── 作用域：拿到 key 就传给注册表，拿不到就不传 ──
+{
+  const seen = []
+  const fakeScope = { id: 'scope' }
+  const routes = build({
+    getScopeKey: () => fakeScope,
+    getSkills: () => ({ ...okRegistry, snapshot: async (options) => { seen.push(options); return okRegistry.snapshot() } }),
+  })
+  const response = await run(routes.skillsHandler, makeRequest('/api/agent-embodiment/status/skills'))
+  check('有 scope 时传给注册表', seen[0]?.scope === fakeScope, seen[0]?.scope ? 'present' : 'absent')
+  check('有 scope 时响应标注 scopeApplied', response.body?.scopeApplied === true, response.body?.scopeApplied)
+}
+
+{
+  const seen = []
+  const routes = build({
+    getScopeKey: () => undefined,
+    getSkills: () => ({ ...okRegistry, snapshot: async (options) => { seen.push(options); return okRegistry.snapshot() } }),
+  })
+  const response = await run(routes.skillsHandler, makeRequest('/api/agent-embodiment/status/skills'))
+  check('无 scope 时不传该字段', seen[0]?.scope === undefined, Object.keys(seen[0] ?? {}).join(','))
+  check('无 scope 时 scopeApplied=false', response.body?.scopeApplied === false, response.body?.scopeApplied)
+}
+
+{
+  const seen = []
+  const routes = build({
+    getScopeKey: () => ({ id: 'scope' }),
+    getSkills: () => ({ get: async (name, options) => { seen.push(options); return { name, description: '', content: 'x', invocation: { modelInvocable: true, userInvocable: true } } } }),
+  })
+  await run(routes.skillBodyHandler, makeRequest('/api/agent-embodiment/status/skills/body?name=alpha-skill'))
+  check('正文请求也带 scope', seen[0]?.scope !== undefined, Object.keys(seen[0] ?? {}).join(','))
+}
+
 // ── 纯函数：根目录规划（rank 顺序）──
 {
   const roots = planSkillRoots({ cwd: '/w', dshHome: '/h', agentsHome: '/a' })

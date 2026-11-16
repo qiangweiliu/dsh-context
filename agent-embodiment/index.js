@@ -23,6 +23,7 @@ import { fileURLToPath } from 'node:url'
 import { detectProfileName, migrateStateFiles, resolveStateRoots, stateDirFor } from './profile.js'
 import { createScaffoldRoutes } from './routes-scaffold.js'
 import { createSkillRoutes } from './routes-skills.js'
+import { getSkillsScope } from './state.js'
 import { createSessionRoutes } from './routes-session.js'
 import { createStatusRoutes } from './routes-status.js'
 import { createInventoryRoutes } from './routes-inventory.js'
@@ -1547,6 +1548,8 @@ export function apply(ctx, config) {
     requireMethod,
     requestUrl,
     getSkills: () => RUNTIME.getSkills(),
+    // 技能作用域由控制半侧（preset 平面）探测后写入共享状态；没有就传 undefined，行为退回只读全局层。
+    getScopeKey: () => getSkillsScope(),
     getCwdForSession: (sessionId) => {
       const sessions = RUNTIME.getSessions()
       if (!sessions || typeof sessions.get !== 'function') return null

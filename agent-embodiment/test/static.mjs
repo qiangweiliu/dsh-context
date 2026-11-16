@@ -302,6 +302,16 @@ for (const inject of secondMount.slotInjects) inject.callback()
   check('技能模块不写盘（只读）', !/writeFileSync|mkdirSync|unlinkSync/u.test(readFileSync(new URL('../routes-skills.js', import.meta.url), 'utf8')))
 }
 
+// 技能卡片的分组/筛选/复制路径只有源码断言：现有 render harness 到不了 Settings 分支
+// （tab 是 CtxPanel 的第一个 useState，注入槽位不可靠），如实记录在这里。
+{
+  check('技能卡片按来源分组', clientSource.includes("'data-embodiment-skill-group'"))
+  check('技能卡片提供筛选框', clientSource.includes("'data-embodiment-skill-search'"))
+  check('技能卡片提供复制路径', clientSource.includes("'data-embodiment-skill-copy'"))
+  check('scope 未生效时提示可能不全', clientSource.includes('skillsGlobalOnly'))
+  check('复制走 clipboard 且失败静默', clientSource.includes('navigator.clipboard.writeText') && clientSource.includes('.catch(() => {})'))
+}
+
 check('client 重复挂载只注册一次', firstMount.slotRegistrations.length === 5 && secondMount.slotRegistrations.length === 0, `${firstMount.slotRegistrations.length}/${secondMount.slotRegistrations.length}`)
 
 const failed = checks.filter((entry) => !entry.ok)

@@ -2,6 +2,25 @@
 
 格式参考 Keep a Changelog；版本遵循 SemVer。DSH 兼容版本写在每个条目的 Compatibility 下。
 
+## [0.50.2] - 2026-11-17
+
+### Fixed
+
+- **测试：技能筛选的输入交互补上了。** 0.50.1 记的欠账是「筛选框输入交互没测」，因为要给卡片注入 `query` 得先数出面板用了多少个 hook。改法是把 mock React 的 hook 状态**按组件隔离**（真实 React 就是每个组件一份 hook 链表）：
+  - `makeReact(initialStates, componentStates)`：顶层仍用数字下标（旧调用照旧），组件级用 `{ SkillsCard: { 3: "delta" } }`。
+  - `renderDeep` 调用组件前 `__enterComponent(name)`、之后 `__exitComponent()`，组件内 `useState` 序号从 0 起。
+  - 好处：**面板结构变了也不会失效**——注入的是「卡片第 4 个 `useState`」，不是「整棵树第 37 个 hook」。
+
+### Tests
+
+- `render.mjs` 55 → **61**：空查询 4 行、命中名称只留 1 行、**命中描述也能找到**（证明筛选不只匹配 name）、大小写不敏感、无命中显示空提示、以及「筛选不匹配来源根名」——这条把实现边界钉死了（筛选范围只有 name / description / whenToUse）。
+- 单元 924 → **930**；集成 181 不变；lint 0。
+
+### Docs
+
+- `LIMITATIONS.md`：删掉「筛选输入交互未测」的欠账，改为说明卡片的分组/筛选/复制/徽章/来源提示都有行为级测试，并写明筛选范围不含 `source`。
+- `CLAUDE.md`：补 per-component 隔离的用法与「不用数 hook」的原因。
+
 ## [0.50.1] - 2026-11-16
 
 ### Fixed

@@ -24,12 +24,47 @@ function check(name, condition, detail) {
   console.log(`${condition ? 'ok  ' : 'FAIL'} - ${name}${condition || detail === undefined ? '' : ` (${typeof detail === 'string' ? detail : JSON.stringify(detail)})`}`)
 }
 
-/** 最小 React：记录 hook 序号，第 N 次 useState 可注入初值；effect 不执行（避免真的 fetch）。 */
-function makeReact(initialStates = {}) {
-  const states = new Map()
-  const refs = new Map()
-  let cursor = 0
+/**
+ * 最小 React：记录 hook 序号，第 N 次 useState 可注入初值；effect 不执行（避免真的 fetch）。
+ *
+ * hook 状态**按组件隔离**：真实 React 每个组件实例各有一份 hook 链表，序号从 0 起；
+ * 这里用 `__enterComponent(name)` 模拟。不隔离时，卡片（如 SkillsCard）的 useState
+ * 序号会被面板里前面的 hook 推高，想给卡片注入某个初值就得数出面板用了多少个 hook——
+ * 一改面板结构就失效。
+ *
+ * @param {Record<number, unknown>} initialStates - 顶层组件（CtxPanel）的状态初值。
+ * @param {Record<string, Record<number, unknown>>} componentStates - 按组件名注入的初值，
+ *   例如 `{ SkillsCard: { 3: 'delta' } }` 表示 SkillsCard 第 4 个 useState 初值为 'delta'。
+ */
+function makeReact(initialStates = {}, componentStates = {}) {
+  const scopes = new Map()
+  const current = { name: null, stack: [] }
+  const scopeFor = (name) => {
+    let scope = scopes.get(name)
+    if (!scope) {
+      scope = { states: new Map(), refs: new Map(), cursor: 0 }
+      scopes.set(name, scope)
+    }
+    return scope
+  }
+  const scopeName = () => current.name ?? '__root'
+  const injectedFor = (name) => (name === '__root' ? initialStates : componentStates[name] ?? {})
   return {
+    /**
+     * 进出组件：`renderDeep` 在调用组件函数前后调用，模拟 React 的「当前渲染组件」。
+     * 每次进入都把该组件的游标归零（一次渲染从第一个 hook 开始）。
+     */
+    __enterComponent: (name) => {
+      current.stack.push(current.name)
+      current.name = name ?? 'anonymous'
+      scopeFor(current.name).cursor = 0
+    },
+    __exitComponent: () => {
+      current.name = current.stack.length > 0 ? current.stack.pop() : null
+    },
+    /** 看看某个组件当前的 hook 状态（调试/断言用）。 */
+    __scopeOf: (name) => scopes.get(name) ?? null,
+    __componentStates: componentStates,
     createElement: (type, props, ...children) => ({ type, props: { ...(props || {}), children: children.length <= 1 ? children[0] : children } }),
     Fragment: Symbol('Fragment'),
     Component: class Component {
@@ -42,14 +77,21 @@ function makeReact(initialStates = {}) {
       }
     },
     useState(init) {
-      const index = cursor++
-      if (!states.has(index)) states.set(index, Object.prototype.hasOwnProperty.call(initialStates, index) ? initialStates[index] : typeof init === 'function' ? init() : init)
-      return [states.get(index), (next) => states.set(index, typeof next === 'function' ? next(states.get(index)) : next)]
+      const name = scopeName()
+      const scope = scopeFor(name)
+      const index = scope.cursor++
+      if (!scope.states.has(index)) {
+        const injected = injectedFor(name)
+        scope.states.set(index, Object.prototype.hasOwnProperty.call(injected, index) ? injected[index] : typeof init === 'function' ? init() : init)
+      }
+      return [scope.states.get(index), (next) => scope.states.set(index, typeof next === 'function' ? next(scope.states.get(index)) : next)]
     },
     useRef(value) {
-      const index = cursor++
-      if (!refs.has(index)) refs.set(index, { current: value })
-      return refs.get(index)
+      const name = scopeName()
+      const scope = scopeFor(name)
+      const index = scope.cursor++
+      if (!scope.refs.has(index)) scope.refs.set(index, { current: value })
+      return scope.refs.get(index)
     },
     useCallback: (fn) => fn,
     useMemo: (fn) => fn(),
@@ -64,7 +106,7 @@ function makeReact(initialStates = {}) {
      * 真实 React 按调用顺序而非全局计数来对应 hook，这里就是在模拟那个行为。
      */
     __resetCursor: () => {
-      cursor = 0
+      scopeFor(scopeName()).cursor = 0
     },
   }
 }
@@ -117,7 +159,7 @@ function renderTab(tab, extraStates = {}) {
     button.props.onClick()
   }
   react.__resetCursor()
-  return { tree: component({ t, title: 'Context' }), react, loaded }
+  return { tree: component({ t, title: 'Context' }), react, loaded, component, states: extraStates }
 }
 
 /**
@@ -130,22 +172,28 @@ function renderTab(tab, extraStates = {}) {
  *
  * 这里手动把函数组件与 class 组件（如 `CardBoundary`）各调一次，深度优先展开。
  */
-function renderDeep(node) {
-  if (Array.isArray(node)) return node.map((element) => renderDeep(element))
+function renderDeep(node, react = null) {
+  if (Array.isArray(node)) return node.map((element) => renderDeep(element, react))
   if (!node || typeof node !== 'object') return node
   const type = node.type
   const props = node.props || {}
   if (typeof type === 'function') {
     let rendered
-    if (type.prototype && typeof type.prototype.render === 'function') {
-      const instance = new type(props)
-      rendered = instance.render()
-    } else {
-      rendered = type(props)
+    // 通知 mock 当前渲染的是哪个组件：hook 序号与状态按组件隔离，和真实 React 一致。
+    if (react && typeof react.__enterComponent === 'function') react.__enterComponent(type.name)
+    try {
+      if (type.prototype && typeof type.prototype.render === 'function') {
+        const instance = new type(props)
+        rendered = instance.render()
+      } else {
+        rendered = type(props)
+      }
+    } finally {
+      if (react && typeof react.__exitComponent === 'function') react.__exitComponent()
     }
-    return renderDeep(rendered)
+    return renderDeep(rendered, react)
   }
-  return { ...node, props: { ...props, children: renderDeep(props.children) } }
+  return { ...node, props: { ...props, children: renderDeep(props.children, react) } }
 }
 
 /** 在未深度渲染的原始树里按组件名找元素（用于给卡片注入 props）。 */
@@ -400,6 +448,70 @@ if (overview) {
 
   const eventsTree = renderDeep(renderTab('events').tree)
   check('events tab 渲染无卡片级报错', !collect(eventsTree).some((element) => element.props?.['data-embodiment-card-error'] === '1'))
+}
+
+
+// ── 技能筛选：真的改输入值，看行数变化 ────────────────────────────────────────
+// 靠 per-component 状态隔离：给 SkillsCard 的第 4 个 useState（query）注入初值，
+// 不必数面板用了多少个 hook，面板结构变了也不会失效。
+{
+  const payload = {
+    ok: true,
+    via: 'registry',
+    scopeApplied: true,
+    complete: true,
+    cwd: '/w',
+    counts: { total: 4, model: 4, user: 4 },
+    skills: [
+      { name: 'alpha-skill', description: 'from project', source: 'project-agents', path: '/w/a/SKILL.md', modelInvocable: true, userInvocable: true },
+      { name: 'beta-skill', description: 'hidden from model', source: 'project-agents', path: '/w/b/SKILL.md', modelInvocable: false, userInvocable: true },
+      { name: 'gamma-skill', description: 'user level', source: 'user-agents', path: '/a/g/SKILL.md', modelInvocable: true, userInvocable: true },
+      { name: 'delta-skill', description: 'needs ffmpeg', source: 'user-agents', path: '/a/d/SKILL.md', modelInvocable: true, userInvocable: false },
+    ],
+  }
+
+  /** 用给定 query 渲染一次卡片，返回行名与文本节点。 */
+  const renderWithQuery = (query) => {
+    const react = makeReact({ 0: readyStatus }, { SkillsCard: { 3: query } })
+    const loaded = loadClient(source, { react })
+    for (const inject of loaded.slotInjects) inject.callback()
+    const registration = loaded.slotRegistrations.find((entry) => entry.definition?.name === 'settings.section')
+    const component = registration.component
+    const first = component({ t, title: 'Context' })
+    const tabButton = collect(first).find((element) => element.props?.['data-embodiment-tab'] === 'settings')
+    tabButton.props.onClick()
+    react.__resetCursor()
+    const tree = component({ t, title: 'Context' })
+    const cardElement = collect(tree).find((element) => typeof element.type === 'function' && element.type.name === 'SkillsCard')
+    if (!cardElement) return null
+    const rendered = renderDeep({ ...cardElement, props: { ...cardElement.props, data: payload, loading: false, error: null, reload: () => {} } }, react)
+    const nodes = collect(rendered)
+    return {
+      names: nodes.filter((element) => typeof element.props?.['data-embodiment-skill'] === 'string').map((element) => element.props['data-embodiment-skill']),
+      texts: nodes.map((element) => String(element.props?.children ?? '')).join(' '),
+    }
+  }
+
+  const unfiltered = renderWithQuery('')
+  check('筛选：空查询显示全部 4 个', Array.isArray(unfiltered?.names) && unfiltered.names.length === 4, unfiltered?.names?.join(','))
+
+  const byName = renderWithQuery('delta')
+  check('筛选：命中名称时只留 1 行', byName?.names?.length === 1 && byName.names[0] === 'delta-skill', byName?.names?.join(','))
+
+  // 命中描述而不是名称：证明筛选不只看 name
+  const byDescription = renderWithQuery('ffmpeg')
+  check('筛选：命中描述也能找到', byDescription?.names?.length === 1 && byDescription.names[0] === 'delta-skill', byDescription?.names?.join(','))
+
+  // 筛选只覆盖 name / description / whenToUse，不覆盖 source：这两个技能描述里没有 'user-agents'
+  const bySource = renderWithQuery('user-agents')
+  check('筛选：不匹配来源名（范围仅名称/描述/whenToUse）', bySource?.names?.length === 0, bySource?.names?.join(','))
+
+  const noMatch = renderWithQuery('zzz-nothing')
+  check('筛选：无命中时显示空提示', noMatch?.names?.length === 0 && noMatch.texts.includes('skillsNoMatch'), noMatch?.texts?.slice(0, 60))
+
+  // 大小写不敏感（实现里统一 toLowerCase）
+  const upper = renderWithQuery('DELTA')
+  check('筛选：大小写不敏感', upper?.names?.length === 1, upper?.names?.join(','))
 }
 
 const failed = checks.filter((item) => !item.ok)

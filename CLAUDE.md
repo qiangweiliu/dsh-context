@@ -4,7 +4,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## 项目概览
 
-DeepSeek Harness（DSH）的 agent 具身与上下文管理插件仓库。市场显示名 `Agent Embodiment` / `智能体具身`；包名/目录 `agent-embodiment`；短品牌 `embody`。旧名 `ctx-mon-and-con` 仅用于历史记录和兼容别名。可发布的主体是 `agent-embodiment/`（npm 包名 `agent-embodiment`，当前 `package.json` 版本 `0.50.2`），其余目录是配套资产：
+DeepSeek Harness（DSH）的 agent 具身与上下文管理插件仓库。市场显示名 `Agent Embodiment` / `智能体具身`；包名/目录 `agent-embodiment`；短品牌 `embody`。旧名 `ctx-mon-and-con` 仅用于历史记录和兼容别名。可发布的主体是 `agent-embodiment/`（npm 包名 `agent-embodiment`，当前 `package.json` 版本 `0.50.3`），其余目录是配套资产：
 
 - `eval/`：提示词 / 推理档位对照评测（GSM8K、MATH Level 5），以及 Tier B 50 题深度套件与结果报告。
 - `research/`、`explore/`：对 DSH 插件机制、compaction、UI 的逆向调研与设计笔记。
@@ -43,7 +43,7 @@ node test/routes-status.mjs   # 状态/live/导出三条路由的直接单测（
 node test/routes-skills.mjs   # 技能目录两条只读路由 + 目录扫描（注册表/扫盘选择 / frontmatter 解析 / 符号链接 / 超时）
 ```
 
-当前基线（0.50.2）：client-build 6/6、static 126/126、metrics 66/66、state 26/26、compaction-plan 17/17、prompt-assembly 28/28、persist 7/7、profile 18/18、scaffold 170/170、templates 126/126、security 22/22、insights 34/34、render 61/61、fetch-chain 3/3、mount-guard 7/7、locale-keys 6/6、analytics 27/27、runtime 35/35、docs-guard 12/12、routes-scaffold 17/17、routes-session 28/28、routes-status 24/24、routes-skills 67/67（共 930）；集成 control 55/55、smoke 115/115、prompt-state 11/11（共 181）。
+当前基线（0.50.3）：client-build 6/6、static 126/126、metrics 66/66、state 26/26、compaction-plan 17/17、prompt-assembly 28/28、persist 7/7、profile 18/18、scaffold 170/170、templates 126/126、security 22/22、insights 34/34、render 61/61、fetch-chain 3/3、mount-guard 7/7、locale-keys 6/6、analytics 27/27、runtime 35/35、docs-guard 15/15、routes-scaffold 17/17、routes-session 28/28、routes-status 24/24、routes-skills 68/68（共 932）；集成 control 55/55、smoke 115/115、prompt-state 11/11（共 181）。
 
 CI 在 `.github/workflows/test.yml`：Node 20/22/24 三档跑单元 + `npm run lint`；另有 integration job 从 npm 安装 Cordis（4.0.5 / 4.1.0 两档）跑 control/smoke/prompt-state，不依赖本机 app.asar。两种 job 都带 npm 缓存与 `concurrency` 取消。
 
@@ -75,7 +75,7 @@ npm run lint                # oxlint（devDependency；CI 也跑，0 error）
 ### 版本号同步与 client 构建
 
 ```bash
-node scripts/bump-version.mjs 0.50.2   # package.json / client-src 与 client.js 的 CLIENT_VERSION / README / IMPLEMENTATION 一次改齐
+node scripts/bump-version.mjs 0.50.3   # package.json / client-src 与 client.js 的 CLIENT_VERSION / README / IMPLEMENTATION 一次改齐
 cd agent-embodiment && npm run build:client   # 改过 client-src/ 后必须重建 client.js
 ```
 
@@ -106,6 +106,8 @@ node eval/deep/compare.mjs --markdown            # 四组对照表
 bash scripts/wsl-install.sh web
 bash scripts/wsl-uninstall.sh web
 bash scripts/wsl-start-web.sh 3080        # 启动 WSL web profile，输出带 token 的 URL
+bash scripts/deploy-plugin.sh              # 演练：同步 agent-embodiment 到 WSL + Windows 已装副本
+bash scripts/deploy-plugin.sh --apply --check   # 真拷并跑 node --check（默认不重启 DSH）
 node scripts/ui-probe.mjs "<url>" --section=...
 node scripts/ui-screenshot.mjs "<url>" <out.png>
 node scripts/wait-for-agent-embodiment.mjs "<url>" 15   # 等待运行中的实例热加载插件
@@ -216,6 +218,7 @@ UI 脚本通过 Windows Edge 的 CDP 连接（`scripts/lib/cdp.mjs`，默认 Edg
 - 第三方插件不能默认 `import '@deepseek-ai/*'`；集成测试才从 app.asar 解出真实 Cordis。
 - Agent 脚手架生成 preset 时，`dsh-subagent` service 与 `spawn` provider 已由基础组合全局提供，preset 只挂 `dsh-tool-subagent`；重复挂载会让 preset 激活失败（E18 实测）。
 - 测试会临时改 `HOME`/`USERPROFILE` 到临时目录并 **`delete process.env.DSH_HOME`**（`smoke.mjs`、`prompt-state.mjs`），避免污染真实 profile —— 0.32.0 起插件按 `DSH_HOME` 定位状态目录，不清掉这个变量就会写到真实 dsh home。
+- **`scripts/deploy-plugin.sh` 的 Windows 目标靠目录特征探测**（找 `Desktop/context/agent-embodiment`），不要改回用 `$USER` 猜：WSL 用户名（`wu`）和 Windows 账户名（`40410`）经常不同，猜错了会拷到一个不存在的目录而不报错。
 - 单元套件依赖仓库布局：`test/static.mjs` 会读 `../../README.md` 断言版本副本一致，所以在独立安装副本（如 `~/dsh-plugins/agent-embodiment`）里 `npm test` 会 `ENOENT`。验收脚本因此在源码检出目录跑单元、只在安装副本跑 `node --check` 与集成（`scripts/wsl-verify.sh`）。
 - 不要手改 `cordis.yml`（恒为空）；用户 tweak 写 `cordis.patch.yml`，插件自身走 `ctx.configEditor`。
 - 追加到用户消息末尾的提示词不是隐藏指令，会在会话历史里可见；不要把它当作秘密注入机制。
@@ -234,7 +237,7 @@ UI 脚本通过 Windows Edge 的 CDP 连接（`scripts/lib/cdp.mjs`，默认 Edg
 - `agent-embodiment/README.md`：用户功能与入口。
 - `agent-embodiment/docs/IMPLEMENTATION.md`：实现细节、路由清单、测试结果（最接近架构总览）。
 - `agent-embodiment/docs/LIMITATIONS.md`：行为边界与已知限制。
-- `agent-embodiment/docs/EVIDENCE.md`：逐版本 UI/运行证据（E16–E63 覆盖 0.19–0.50）。
+- `agent-embodiment/docs/EVIDENCE.md`：逐版本 UI/运行证据（E16–E64 覆盖 0.19–0.50）。
 - `agent-embodiment/docs/CORE-FUNCTION-AUDIT.md`：核心功能冲突、实现一致性与 P1/P2 审计结论。
 - `agent-embodiment/docs/RELEASE-PLAN.md`：0.22.0 → 1.0.0 的版本路线图、发布门禁、兼容矩阵与回滚步骤。
 - `agent-embodiment/docs/UI-PROPOSAL.md`：面板信息架构与视觉提案；§9 是实测核对（§2 的 14 条问题到 0.47.0 全部落地，含一次自查失败的记录）。`static.mjs` 会断言该文档登记的组件都存在于 `client.js`，并锁住焦点环 / `prefers-reduced-motion` 两段样式注入。

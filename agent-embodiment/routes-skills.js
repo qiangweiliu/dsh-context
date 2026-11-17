@@ -352,6 +352,9 @@ export function createSkillRoutes(deps) {
       return send(400, { ok: false, error: 'name must be a kebab-case skill name' })
     }
     const { cwd, source } = resolveCwd(url)
+    // 与列表响应同一个字段：正文也可能由扫盘路径产出，前端要能一致地判断视角是否完整。
+    const scope = typeof getScopeKey === 'function' ? getScopeKey() : undefined
+    const scopeApplied = Boolean(scope)
 
     /**
      * 与列表同一条取数路径：注册表能给就用注册表（权威正文），否则按目录扫描
@@ -359,7 +362,6 @@ export function createSkillRoutes(deps) {
      */
     const loadBody = async () => {
       const registry = getSkills()
-      const scope = typeof getScopeKey === 'function' ? getScopeKey() : undefined
       if (registry && typeof registry.get === 'function') {
         const definition = await withTimeout(registry.get(name, scope ? { cwd, scope } : { cwd }), timeoutMs)
         if (definition) {
@@ -422,6 +424,7 @@ export function createSkillRoutes(deps) {
           userInvocable: loaded.userInvocable,
           cwd: cwd ?? null,
           cwdSource: source,
+          scopeApplied,
           truncated,
           chars: content.length,
           content: truncated ? content.slice(0, MAX_BODY_CHARS) : content,

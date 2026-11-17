@@ -230,6 +230,7 @@ const build = (overrides = {}) => createSkillRoutes({
   })
   await run(routes.skillBodyHandler, makeRequest('/api/agent-embodiment/status/skills/body?name=alpha-skill'))
   check('正文请求也带 scope', seen[0]?.scope !== undefined, Object.keys(seen[0] ?? {}).join(','))
+  check('正文响应也标注 scopeApplied', (await run(routes.skillBodyHandler, makeRequest('/api/agent-embodiment/status/skills/body?name=alpha-skill'))).body?.scopeApplied === true, 'missing')
 }
 
 // ── 纯函数：根目录规划（rank 顺序）──

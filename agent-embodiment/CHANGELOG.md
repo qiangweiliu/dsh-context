@@ -2,6 +2,26 @@
 
 格式参考 Keep a Changelog；版本遵循 SemVer。DSH 兼容版本写在每个条目的 Compatibility 下。
 
+## [0.50.3] - 2026-11-17
+
+### Added
+
+- **`scripts/deploy-plugin.sh`**：把「同步到已安装副本」固化成一条命令，不再每轮临时写。默认演练（`--apply` 才真拷），排除项（`test/deps` / `node_modules` / `.git`）只写一处供两侧共用；`--check` 拷完跑 `node --check` 并打印两侧版本；`--wsl-only` / `--windows-only` 可分开跑。Windows 用户目录**按目录特征探测**（`Desktop/context/agent-embodiment`），不靠 `$USER` 猜——WSL 用户名和 Windows 账户名经常不同，第一版就猜错成了 `/mnt/c/Users/wu`。
+
+### Fixed
+
+- **`/status/skills/body` 补 `scopeApplied`**：列表响应一直有这个字段，正文没有。前端要判断「这次的视角是否完整」时，两张卡片得用两套逻辑。现在两条路由一致。
+- **`docs-guard` 覆盖另外三份版本副本**：以前只断言 6 处，`CHANGELOG` / `RELEASE-PLAN` / `EVIDENCE` 全靠手工同步。加了三断言：CHANGELOG 顶部条目版本、RELEASE-PLAN「当前版本」行的版本区间必须包含当前版本、EVIDENCE 记录当前版本。**加完立刻抓到一处真滞后**：`RELEASE-PLAN` 里标着「当前版本」的行还停在 `0.34.0–0.34.1`，实际已经是 0.50.x —— 这正是「文档说当前是 X，代码已经是 Y」那种最误导人的滞后。
+
+### Docs
+
+- `RELEASE-PLAN.md` 补齐 `0.35.0`–`0.50.3` 五行（架构收敛 / 安全审计 / UI 与模板决策 / 技能目录），「当前版本」标记挪到当前行。
+
+### Tests
+
+- `docs-guard` 12 → **15**；`routes-skills` 67 → **68**（正文响应带 `scopeApplied`）。单元 930 → **932**。lint 0。
+- 新断言做过**反向验证**：把 RELEASE-PLAN 的当前版本行改回 `0.34.x`，docs-guard 立刻红；还原后恢复全绿。不做这一步的话，一条「永远通过」的断言比没有更糟。
+
 ## [0.50.2] - 2026-11-17
 
 ### Fixed

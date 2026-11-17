@@ -41,6 +41,35 @@ check('IMPLEMENTATION 提到当前版本', implementation.includes(version), ver
 const claudeVersion = (claude.match(/当前 `package\.json` 版本 `([\d.]+)`/u) || [])[1]
 check('CLAUDE 项目概览的版本号与 package.json 一致', claudeVersion === version, { version, claudeVersion })
 
+// 1.1) 另外三份「抄了版本号」的文档：以前全靠手工同步，漏过。
+const changelog = read('../CHANGELOG.md')
+const releasePlan = read('../docs/RELEASE-PLAN.md')
+const evidence = read('../docs/EVIDENCE.md')
+
+// Keep a Changelog 的约定是「最新条目在最上面」，所以顶部那一条必须是当前版本。
+const changelogTop = (changelog.match(/^## \[([\d.]+)\]/mu) || [])[1]
+check('CHANGELOG 顶部条目的版本与 package.json 一致', changelogTop === version, { version, changelogTop })
+
+// 路线图表格里标着「当前版本」的那一行，其版本区间必须包含当前版本 —— 否则就是
+// 「文档说当前是 X，代码已经是 Y」这种最误导人的滞后。
+const currentRow = releasePlan.split('\n').find((line) => line.includes('**当前版本**')) ?? ''
+const rowVersions = [...currentRow.matchAll(/(\d+\.\d+\.\d+)/gu)].map((match) => match[1])
+const coversCurrent = rowVersions.length > 0 && (() => {
+  const toNumber = (text) => text.split('.').map(Number)
+  const [low, high] = rowVersions.length > 1 ? [rowVersions[0], rowVersions[1]] : [rowVersions[0], rowVersions[0]]
+  const current = toNumber(version)
+  const compare = (left, right) => {
+    for (let index = 0; index < 3; index += 1) {
+      if (left[index] !== right[index]) return left[index] - right[index]
+    }
+    return 0
+  }
+  return compare(current, toNumber(low)) >= 0 && compare(current, toNumber(high)) <= 0
+})()
+check('RELEASE-PLAN 标注的「当前版本」覆盖 package.json 版本', coversCurrent, { version, row: currentRow.trim().slice(0, 80), rowVersions })
+
+check('EVIDENCE 记录了当前版本', evidence.includes(version), version)
+
 // 2) 预算回退值：代码里只有一处定义，文档必须写同一个数字。
 const budgetText = String(FALLBACK_BUDGET_TOKENS)
 check('LIMITATIONS 记录的回退预算与 state.js 一致', limitations.includes(budgetText), { budgetText })

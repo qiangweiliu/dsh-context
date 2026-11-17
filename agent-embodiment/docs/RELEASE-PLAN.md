@@ -67,7 +67,12 @@ Tier B 证据（50 题）：
 | `0.28.0`–`0.29.1` | minor/patch | 已发布 | 可维护性 | `client.js` 拆 `client-src` + 构建与防漂移测试、写操作统一 `postJson`、**不再发布 npm**（只走市场 + 源码安装） |
 | `0.30.0`–`0.31.0` | minor | 已发布 | 数据正确性与可验证性 | 峰谷价保存回归修复、`window.__agentEmbodiment` 探针（Desktop CDP 可断言）、节假日跨年健康提醒、死词典键清理（37 → 0） |
 | `0.32.0`–`0.33.0` | minor | 已发布 | 隔离与洞察 | 状态目录 / profile 识别尊重 `DSH_HOME`、4 条新洞察规则、`security-audit` 0.32.0 增量复核 |
-| `0.34.0`–`0.34.1` | patch | **当前版本** | 文档与测试准确性 | `PERMISSIONS`/`LIMITATIONS` 15 处复核（含 403 语义、环境变量披露两处实质错误）、模板跨文件引用一致性测试、审计与路线图对齐 |
+| `0.34.0`–`0.34.1` | patch | 已发布 | 文档与测试准确性 | `PERMISSIONS`/`LIMITATIONS` 15 处复核（含 403 语义、环境变量披露两处实质错误）、模板跨文件引用一致性测试、审计与路线图对齐 |
+| `0.35.0`–`0.36.0` | minor | 已发布 | 可维护性 | 体积/成本视图拆分、scaffold 三路由外移（`routes-scaffold.js`） |
+| `0.37.0`–`0.43.0` | minor | 已发布 | 架构收敛 | 逐块外移 `routes-session`/`runtime`/`analytics`/`routes-status`/`compaction-plan`/`prompt-assembly`/`routes-inventory`；`index.js` 2157 → 1681 行，`apply()` 里不再有 handler 实现 |
+| `0.44.0`–`0.46.0` | minor/patch | 已发布 | 安全与验证 | 0.45 独立安全审计（F1–F9）、0.46 修复 9 条并加 `test/security.mjs` 22 项回归 |
+| `0.47.0`–`0.48.0` | minor | 已发布 | UI 与模板决策 | 面板 §2 十四条全部落地（含焦点环 / 减少动效）；4 个 `experimental` 模板**决定不转正**，评估工具归档 `eval/deep/archive/templates/` |
+| `0.49.0`–`0.50.3` | minor/patch | **当前版本** | 技能目录（只读） | 技能列表与正文两条只读路由、preset 作用域探测（反射拿 `ScopeKey`）、筛选/分组/复制路径、render harness 三层修正（cursor 重置 / tab 点击 / `renderDeep` / per-component hook） |
 | `1.0.0` | major | 2026-12 起，按门禁 | 稳定承诺 | 移除 `/ctx` 别名与旧状态迁移、冻结配置面、**独立安全审查**、兼容矩阵 |
 
 ---

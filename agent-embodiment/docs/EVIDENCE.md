@@ -886,6 +886,45 @@ makeReact({ 0: readyStatus }, { SkillsCard: { 3: 'delta' } })  // 卡片第 4 �
 
 - 测试：单元 930（`render` 61、`static` 126）、集成 181、lint 0。
 
+## E64. v0.50.3 把「重复劳动」变成「自动化」（2026-11-17）
+
+这一轮不做新功能，做的是**让我自己少犯错**的三件事。
+
+### 1. docs-guard 覆盖到另外三份版本副本
+
+以前它只断言 6 处（client 两份 CLIENT_VERSION、三份 README/IMPLEMENTATION、CLAUDE）。`CHANGELOG` / `RELEASE-PLAN` / `EVIDENCE` 一直靠手工同步 —— 而这三轮里我确实漏过（0.50.0 漏 CLAUDE，是 docs-guard 抓到的）。
+
+新加三条，**加完立刻抓到一处真滞后**：
+
+```
+FAIL - RELEASE-PLAN 标注的「当前版本」覆盖 package.json 版本
+  {"version":"0.50.2","row":"| `0.34.0`–`0.34.1` | patch | **当前版本** | ..."}
+```
+
+那份路线图停在 0.34.1，后面 0.35 → 0.50 十几版全没记 —— 而它还把 0.34.1 标成「当前版本」。这种滞后比漏写更糟：读的人会以为当前就是 0.34.x。已补齐五行。
+
+### 2. 新断言做了反向验证
+
+把 RELEASE-PLAN 的「当前版本」行改回 `0.34.0–0.34.1` 再跑 → docs-guard 立刻红；还原 → 恢复全绿。
+
+**不验证这一步的话，一条永远通过的断言比没有更糟**——0.50.2 那次我就写过一条「筛选后行数减少」，其实没实现筛选、数字碰巧对。
+
+### 3. 部署脚本固化，并且第一次跑就踩了自己的坑
+
+`scripts/deploy-plugin.sh` 默认演练、`--apply` 才拷，排除项只写一处。第一版用 `${USER}` 猜 Windows 用户目录，演练输出直接暴露：
+
+```
+Windows → /mnt/c/Users/wu/dsh-plugins/agent-embodiment   ← 错了
+```
+
+WSL 用户名是 `wu`，Windows 账户是 `40410`。改成按目录特征探测（`Desktop/context/agent-embodiment`），现在正确指向 `/mnt/c/Users/40410/...`。
+
+### 4. 接口不一致
+
+`/status/skills/body` 补上 `scopeApplied`（列表一直有）。前端要判断「视角是否完整」时不必再两套逻辑。
+
+- 测试：单元 932（`docs-guard` 15、`routes-skills` 68）、集成 181、lint 0。
+
 ## 已知限制（unknown）
 
 - 未进行独立安全审计；本文件不声称“安全通过”。

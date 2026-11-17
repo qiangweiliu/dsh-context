@@ -111,6 +111,36 @@ const atDshHome = await call(routes.scaffoldGenerateHandler, 'POST', { template:
 check('生成拒绝 DSH_HOME（400）', atDshHome.statusCode === 400, json(atDshHome).error)
 check('isProtectedScaffoldPath 对临时目录放行', isProtectedScaffoldPath(resolve(tmpdir(), 'unit-scaffold-ok'), { home: resolve(homedir()), dshHome: join(resolve(homedir()), '.dsh') }) === false)
 
+// ── 8.3 短名：能展开就放行，展不开才拒绝 ──
+// 背景（0.50.4 的 Windows CI 实测）：runner 的 tmpdir 是
+// `C:\Users\RUNNER~1\AppData\Local\Temp`，旧实现一见 `~N` 就判受保护，
+// 于是「生成到临时目录」整条路都 400。长用户名下的真实用户同样会踩。
+{
+  const home = 'C:\\Users\\runneradmin'
+  const roots = { home, dshHome: join(home, '.dsh') }
+  const shortTmp = 'C:\\Users\\RUNNER~1\\AppData\\Local\\Temp\\unit-scaffold-ok'
+
+  // 展开成功 → 落到长名临时目录，应当放行
+  const expanded = isProtectedScaffoldPath(shortTmp, roots, {
+    expand: (input) => String(input).replace(/RUNNER~1/i, 'runneradmin'),
+  })
+  check('8.3 短名可展开时放行（不再一律拒绝）', expanded === false, expanded)
+
+  // 展开失败 → 仍按受保护处理（无法确定真实目录就不猜）
+  const unresolved = isProtectedScaffoldPath(shortTmp, roots, { expand: () => undefined })
+  check('8.3 短名展不开时仍拒绝', unresolved === true, unresolved)
+
+  // 展开后落在系统目录 → 仍然拒绝，不能靠短名绕过
+  const intoWindows = isProtectedScaffoldPath('C:\\Users\\RUNNER~1\\AppData\\Local\\Temp\\x', { home, dshHome: join(home, '.dsh') }, {
+    expand: () => 'C:\\Windows\\System32\\drivers',
+  })
+  check('短名展开到系统目录仍拒绝', intoWindows === true, intoWindows)
+
+  // 展开后落在 home 下 → 仍然拒绝
+  const intoHome = isProtectedScaffoldPath(shortTmp, roots, { expand: () => join(home, 'Documents', 'x') })
+  check('短名展开到 home 下仍拒绝', intoHome === true, intoHome)
+}
+
 // ── 生成：真实落盘 + 覆盖语义 + AGENTS 合并 ──
 const workspace = mkdtempSync(join(tmpdir(), 'ctx-scaffold-'))
 const gen = await call(routes.scaffoldGenerateHandler, 'POST', {

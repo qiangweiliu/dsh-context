@@ -951,6 +951,48 @@ WSL 用户名是 `wu`，Windows 账户是 `40410`。改成按目录特征探测�
 
 插入后做了 YAML 解析校验（WSL 的 `pyyaml`）：`jobs: [unit, unit-windows, integration]`，`unit-windows` 7 个 step。
 
+## E66. v0.50.5 Windows CI 第一次跑就抓出真缺陷（2026-11-17）
+
+0.50.4 加了 `unit-windows` job，第一次跑就红了。**它抓到的不是 CI 特有问题，而是真实用户会踩的缺陷。**
+
+### 拿不到日志，怎么定位
+
+未鉴权访问不到 job 日志（`/actions/jobs/{id}/logs` 返回 403），也没有 `gh`/token。两步间接取证：
+
+1. **把 `npm test` 拆成逐文件 step**：失败 step 的名字就是文件名 → `test routes-scaffold` 失败。
+   （第一次拆错了：`indexOf` 命中 ubuntu job 里同样的 `- run: npm test` 文本，改成先定位 `unit-windows:` 段落。）
+2. **把断言失败输出成 GitHub annotation**（`::error title=...::`）：annotation 通过 job 的 `check_run_url` 能读到，不需要日志。于是拿到具体哪几条断言失败，再往测试里插一条临时探针把实际路径打出来。
+
+### 真因
+
+```
+tmpdir = C:\Users\RUNNER~1\AppData\Local\Temp     ← 8.3 短名
+isProtectedScaffoldPath(...) = true               ← 被判受保护 → 生成返回 400
+```
+
+守卫里有一条规则：「8.3 短名（`PROGRA~1`、`RUNNER~1`）一律按受保护处理」。当初的考虑是「无法展开就不能猜」。问题是**长用户名下的 Windows 用户，`%TEMP%` 本身就是短名路径** —— 这些人做脚手架会一直 400，而错误信息只会说「目录受保护」，完全指不到真实原因。
+
+### 修法
+
+先展开、再比较：把路径中**已存在的那一段**用 `realpathSync.native` 展开成长名（目标目录通常还不存在，所以从目标往上找第一个存在的祖先，剩余段接回去），然后所有比较都用展开后的路径。
+
+安全语义没放松：
+
+| 情况 | 结果 |
+| --- | --- |
+| 展开成功，落到临时目录 | 放行 |
+| 展开成功，落到 `C:\Windows` / Program Files / home | 仍拒绝 |
+| 展开失败，或展开后仍带 `~N` | 仍拒绝（无法确定就不猜） |
+
+附带收益：中间的 junction / 符号链接也会被解开，指向系统目录的链接照样判受保护。
+
+### 验证
+
+- 新增 4 条断言（注入 `expand` 覆盖确定行为）：可展开放行 / 展不开拒绝 / 展开到系统目录拒绝 / 展开到 home 拒绝。
+- 另用本机真实短名手工验证：`C:\PROGRA~1\some\dir` → `true`（展开成 `C:\Program Files`），临时目录 → `false`。**这一步是为了确认走的真是文件系统，而不是我注入的假函数。**
+
+- 测试：单元 936（`routes-scaffold` 21）、集成 181、lint 0。
+
 ## 已知限制（unknown）
 
 - 未进行独立安全审计；本文件不声称“安全通过”。

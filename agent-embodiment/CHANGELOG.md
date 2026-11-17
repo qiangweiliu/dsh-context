@@ -2,6 +2,18 @@
 
 格式参考 Keep a Changelog；版本遵循 SemVer。DSH 兼容版本写在每个条目的 Compatibility 下。
 
+## [0.50.4] - 2026-11-17
+
+### Added
+
+- **CI 增加 `unit-windows` job**（`windows-latest`，Node 22）。这个插件的主要运行环境是 Windows 桌面版 DSH，但此前 CI 只在 ubuntu 上跑，平台差异（路径分隔符、大小写、进程权限、换行符）全靠每次手工验。现在 `node --check` + 单元套件 + lint 在 Windows 上自动跑；集成 job 仍只在 ubuntu（那套需要本机 `app.asar`，CI 里没有）。
+- Windows job 里加了一条**换行符守卫**：`client-build` 是字节级比对，检出时若被转成 CRLF 会红得莫名其妙。`.gitattributes` 已强制 `eol=lf`，这里用 node 显式断言一次，出问题能立刻定位到换行而不是去猜构建脚本。
+
+### Notes
+
+- 只跑 Node 22 而不是三档：平台相关的坑与 Node 版本基本无关，三档一起跑意义不大、还费额度。
+- 命令统一用 `shell: bash`（runner 自带 Git Bash），与 ubuntu job 语义一致，避免 PowerShell 对 `&&` 与引号的处理差异。
+
 ## [0.50.3] - 2026-11-17
 
 ### Added

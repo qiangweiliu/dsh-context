@@ -925,6 +925,32 @@ WSL 用户名是 `wu`，Windows 账户是 `40410`。改成按目录特征探测�
 
 - 测试：单元 932（`docs-guard` 15、`routes-skills` 68）、集成 181、lint 0。
 
+## E65. v0.50.4 CI 覆盖 Windows（2026-11-17）
+
+这个插件的主要运行环境是 Windows 桌面版 DSH，但 CI 一直只有 `ubuntu-latest`。平台差异（路径分隔符、大小写、进程权限、换行符）全靠我每轮手工在 Windows 上跑一遍单元。
+
+### 加了什么
+
+`unit-windows` job（`windows-latest`，Node 22）：`node --check` + `npm test` + `npm run lint` + 一条换行符守卫。集成 job 不变——它需要本机 `app.asar`，CI 里没有。
+
+三个决定：
+
+| 决定 | 原因 |
+| --- | --- |
+| 只跑 Node 22 | 平台相关的坑与 Node 版本基本无关；三档一起跑意义不大还费额度 |
+| `shell: bash` | runner 自带 Git Bash，命令语义与 ubuntu job 一致，避开 PowerShell 对 `&&` 与引号的处理差异 |
+| 单独的换行符守卫 | `client-build` 是字节级比对；检出若被转成 CRLF，失败信息会指向构建脚本而不是换行 |
+
+### 过程中把一个文件写坏过，而且是同一个坑踩了两次
+
+第一次插入 job 用 `String.replace(原文, 替换文本)`，替换文本里含**美元符紧跟单引号**——JS 会把它当成「匹配之后的全部内容」，直接把 workflow 接成半截。`git checkout` 还原后改用函数式拼接，才写对。
+
+第二次是在写这份 EVIDENCE 的脚本里，同样的字符组合把脚本自己弄成语法错误。所以这段文字现在改用文字描述那个字符组合，不再直接写它。
+
+顺手把 shell 里的同类转义也换掉了：换行符检查改用 node 读文件判断 `charCode 13`，不依赖 shell 的引号规则。
+
+插入后做了 YAML 解析校验（WSL 的 `pyyaml`）：`jobs: [unit, unit-windows, integration]`，`unit-windows` 7 个 step。
+
 ## 已知限制（unknown）
 
 - 未进行独立安全审计；本文件不声称“安全通过”。

@@ -36,6 +36,34 @@ jobs:
       - run: npm test
       - run: npm run lint
 
+  # Windows 单元 job：这个插件的主要运行环境是 Windows 桌面版 DSH，但以前 CI 只在
+  # ubuntu 上跑，Windows 差异（路径分隔符、大小写、进程权限、换行符）全靠人手验。
+  # 只跑 Node 22：平台相关的坑与 Node 版本基本无关，三档一起跑意义不大、还费额度。
+  # 不跑集成：那套需要本机 app.asar，CI 里没有。
+  unit-windows:
+    runs-on: windows-latest
+    timeout-minutes: 20
+    defaults:
+      run:
+        working-directory: agent-embodiment
+        # 用 bash（runner 自带 Git Bash）：与 ubuntu job 的命令语义一致，
+        # 也避免 PowerShell 对 && 与引号的处理差异。
+        shell: bash
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+          cache-dependency-path: agent-embodiment/package-lock.json
+      - run: npm ci --ignore-scripts
+      - run: node --check index.js && node --check control.js && node --check client.js && node --check persist.js && node --check profile.js
+      - run: npm test
+      - run: npm run lint
+      # 换行符守卫：client-build 是字节级比对，检出时若被转成 CRLF 会红得莫名其妙。
+      # .gitattributes 已强制 eol=lf；这里用 node 显式确认一次，出问题能立刻定位。
+      - run: |
+          node -e "const s=require('fs').readFileSync('client.js','utf8'); if (s.includes(String.fromCharCode(13))) { console.error('client.js 含 CRLF —— 检查 .gitattributes 与 core.autocrlf'); process.exit(1) } console.log('换行符 OK（LF）')"
   integration:
     runs-on: ubuntu-latest
     timeout-minutes: 20
